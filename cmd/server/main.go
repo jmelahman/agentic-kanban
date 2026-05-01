@@ -70,17 +70,25 @@ func run(addr, dataDirOverride string, portStart, portEnd int) error {
 
 	// Ensure a shared docker network so session containers can resolve and
 	// reach the kanban API by container name. Failures here are non-fatal:
-	// session→kanban callbacks (status updates) just won't work.
-	netCtx, netCancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer netCancel()
-	if err := dockerClient.EnsureNetwork(netCtx, docker.KanbanNetworkName); err != nil {
+	// session→kanban callbacks (status updates) just won't work. Each docker
+	// call gets its own timeout so a slow daemon on one step can't starve the
+	// next.
+	ensureCtx, ensureCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := dockerClient.EnsureNetwork(ensureCtx, docker.KanbanNetworkName); err != nil {
 		log.Printf("ensure network %s: %v", docker.KanbanNetworkName, err)
 	}
-	selfName := dockerClient.SelfContainerName(netCtx)
+	ensureCancel()
+
+	selfCtx, selfCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	selfName := dockerClient.SelfContainerName(selfCtx)
+	selfCancel()
+
 	if selfName != "" {
-		if err := dockerClient.ConnectContainer(netCtx, docker.KanbanNetworkName, selfName); err != nil {
+		connCtx, connCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := dockerClient.ConnectContainer(connCtx, docker.KanbanNetworkName, selfName); err != nil {
 			log.Printf("connect kanban to %s network: %v", docker.KanbanNetworkName, err)
 		}
+		connCancel()
 	}
 
 	hookRunner := hooks.NewRunner(store)
