@@ -94,6 +94,16 @@ func ResetHard(repoPath, ref string) {
 	_ = exec.Command("git", "-C", repoPath, "reset", "--hard", ref).Run()
 }
 
+// AddAll stages every change in the worktree.
+func AddAll(worktreePath string) error {
+	return run("git", "-C", worktreePath, "add", "-A")
+}
+
+// Commit creates a commit with the given message in the worktree.
+func Commit(worktreePath, message string) error {
+	return run("git", "-C", worktreePath, "commit", "-m", message)
+}
+
 // IsClean reports whether the worktree has no uncommitted changes.
 func IsClean(worktreePath string) (bool, error) {
 	cmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")

@@ -175,10 +175,11 @@ func (h *handlers) getBoard(w http.ResponseWriter, r *http.Request) {
 }
 
 type boardStateResp struct {
-	Board    *db.Board    `json:"board"`
-	Columns  []db.Column  `json:"columns"`
-	Tickets  []db.Ticket  `json:"tickets"`
-	Sessions []db.Session `json:"sessions"`
+	Board       *db.Board    `json:"board"`
+	Columns     []db.Column  `json:"columns"`
+	Tickets     []db.Ticket  `json:"tickets"`
+	Sessions    []db.Session `json:"sessions"`
+	MergeConfig MergeConfig  `json:"merge_config"`
 }
 
 func (h *handlers) boardState(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +204,13 @@ func (h *handlers) boardState(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	writeJSON(w, 200, boardStateResp{Board: board, Columns: cols, Tickets: tickets, Sessions: sessions})
+	writeJSON(w, 200, boardStateResp{
+		Board:       board,
+		Columns:     cols,
+		Tickets:     tickets,
+		Sessions:    sessions,
+		MergeConfig: loadMergeConfig(board.SourceRepoPath),
+	})
 }
 
 // Tickets
@@ -402,6 +409,15 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
 		httpError(w, err, 404)
+		return
+	}
+	board, err := h.store.GetBoard(r.Context(), t.BoardID)
+	if err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	if !loadMergeConfig(board.SourceRepoPath).allows(req.Strategy) {
+		httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
 		return
 	}
 	sess, err := h.store.GetSessionByTicket(r.Context(), id)

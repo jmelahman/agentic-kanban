@@ -3,8 +3,10 @@ package session
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jmelahman/kanban/internal/db"
@@ -271,7 +273,18 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 	if clean, err := git.IsClean(sess.WorktreePath); err != nil {
 		return fmt.Errorf("check worktree clean: %w", err)
 	} else if !clean {
-		return fmt.Errorf("worktree has uncommitted changes; commit or stash before merging")
+		if err := git.AddAll(sess.WorktreePath); err != nil {
+			return fmt.Errorf("stage pending changes: %w", err)
+		}
+		msg := ticket.Title
+		if generated, err := m.generateCommitMessage(ctx, sess, ticket.Title); err == nil {
+			msg = generated
+		} else {
+			log.Printf("merge: ai commit message unavailable, using ticket title: %v", err)
+		}
+		if err := git.Commit(sess.WorktreePath, msg); err != nil {
+			return fmt.Errorf("commit pending changes: %w", err)
+		}
 	}
 	if clean, err := git.IsClean(board.SourceRepoPath); err != nil {
 		return fmt.Errorf("check source repo clean: %w", err)
@@ -315,6 +328,39 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 		return fmt.Errorf("unknown strategy %q (want merge-commit, squash, or rebase)", strategy)
 	}
 	return nil
+}
+
+// generateCommitMessage runs `claude -p` inside the session's container,
+// piping the staged diff in via stdin, and returns its trimmed first line.
+// Returns an error when the container is not running or claude fails.
+func (m *Manager) generateCommitMessage(ctx context.Context, sess *db.Session, ticketTitle string) (string, error) {
+	if sess.ContainerID == nil || *sess.ContainerID == "" {
+		return "", fmt.Errorf("container not running")
+	}
+	prompt := fmt.Sprintf(
+		"Write a one-line git commit message in imperative mood for the staged diff piped via stdin. The change is for the ticket %q. Output only the commit message text - no preamble, no quotes, no markdown, no code fences.",
+		ticketTitle,
+	)
+	script := "cd /workspace && git diff --staged --no-color | claude --model haiku -p " + shellQuote(prompt)
+	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	defer cancel()
+	out, err := m.docker.ExecRun(cctx, *sess.ContainerID, []string{"sh", "-lc", script})
+	if err != nil {
+		return "", err
+	}
+	msg := strings.TrimSpace(out)
+	if i := strings.IndexByte(msg, '\n'); i >= 0 {
+		msg = msg[:i]
+	}
+	msg = strings.Trim(msg, "\"' \t")
+	if msg == "" {
+		return "", fmt.Errorf("empty message")
+	}
+	return msg, nil
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func (m *Manager) Proxies() *docker.ProxyManager { return m.proxies }

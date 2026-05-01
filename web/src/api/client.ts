@@ -34,11 +34,18 @@ export type Session = {
   stopped_at?: number;
 };
 
+export type MergeConfig = {
+  allow_merge_commit: boolean;
+  allow_squash: boolean;
+  allow_rebase: boolean;
+};
+
 export type BoardState = {
   board: Board;
   columns: Column[];
   tickets: Ticket[];
   sessions: Session[];
+  merge_config: MergeConfig;
 };
 
 export type DiscoveredTask = {

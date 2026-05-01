@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, BoardState, Session } from "../api/client";
+import { api, ApiError, BoardState, MergeConfig, Session } from "../api/client";
 import { useToast } from "../toast";
 import { PendingButton } from "./PendingButton";
 import { TasksPanel } from "./TasksPanel";
@@ -23,9 +23,26 @@ function errorMessage(err: unknown): string {
   return String(err);
 }
 
+type MergeStrategy = "merge-commit" | "squash" | "rebase";
+
+const MERGE_STRATEGY_LABELS: Record<MergeStrategy, string> = {
+  "merge-commit": "create a merge commit",
+  squash: "squash and merge",
+  rebase: "rebase and merge",
+};
+
+function enabledMergeStrategies(cfg: MergeConfig): MergeStrategy[] {
+  const out: MergeStrategy[] = [];
+  if (cfg.allow_merge_commit) out.push("merge-commit");
+  if (cfg.allow_squash) out.push("squash");
+  if (cfg.allow_rebase) out.push("rebase");
+  return out;
+}
+
 export function SessionPane({
   boardId,
   baseBranch,
+  mergeConfig,
   ticketId,
   session,
   onClose,
@@ -33,6 +50,7 @@ export function SessionPane({
 }: {
   boardId: number;
   baseBranch: string;
+  mergeConfig: MergeConfig;
   ticketId: number | null;
   session: Session | null;
   onClose: () => void;
@@ -168,7 +186,7 @@ export function SessionPane({
     },
   });
   const mergeMut = useMutation({
-    mutationFn: (strategy: "merge-commit" | "squash" | "rebase") => api.mergeTicket(ticketId!, strategy),
+    mutationFn: (strategy: MergeStrategy) => api.mergeTicket(ticketId!, strategy),
     onSuccess: (_data, strategy) => {
       setMergeMenuOpen(false);
       toast.push("success", `${strategy} into ${baseBranch} succeeded`);
@@ -182,6 +200,7 @@ export function SessionPane({
   });
 
   if (ticketId == null) return null;
+  const mergeStrategies = enabledMergeStrategies(mergeConfig);
   const status = session?.status;
   const isRunning = status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
@@ -268,7 +287,17 @@ export function SessionPane({
               )}
             </div>
           )}
-          {session && (
+          {session && mergeStrategies.length === 1 && (
+            <PendingButton
+              className="rounded bg-red-700 px-2 py-1 disabled:opacity-50"
+              onClick={() => mergeMut.mutate(mergeStrategies[0])}
+              pending={mergeMut.isPending}
+              idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+              pendingLabel="merging…"
+              title={`integrate into ${baseBranch}`}
+            />
+          )}
+          {session && mergeStrategies.length > 1 && (
             <div className="relative" ref={mergeMenuRef}>
               <PendingButton
                 className="rounded bg-red-700 px-2 py-1 disabled:opacity-50"
@@ -280,24 +309,15 @@ export function SessionPane({
               />
               {mergeMenuOpen && (
                 <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
-                  <button
-                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
-                    onClick={() => mergeMut.mutate("merge-commit")}
-                  >
-                    create a merge commit
-                  </button>
-                  <button
-                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
-                    onClick={() => mergeMut.mutate("squash")}
-                  >
-                    squash and merge
-                  </button>
-                  <button
-                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
-                    onClick={() => mergeMut.mutate("rebase")}
-                  >
-                    rebase and merge
-                  </button>
+                  {mergeStrategies.map((s) => (
+                    <button
+                      key={s}
+                      className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
+                      onClick={() => mergeMut.mutate(s)}
+                    >
+                      {MERGE_STRATEGY_LABELS[s]}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
