@@ -10,92 +10,9 @@ import (
 // active state so the ticket badge in the UI reflects what claude is doing.
 //
 // The hook commands rely on KANBAN_SESSION_ID and KANBAN_API_URL being
-// injected into the session's environment by the session manager. Each hook
-// shells out to .claude/kanban-status.sh, which logs every attempt (and the
-// resulting curl exit code / HTTP status) to $TMPDIR/kanban-status-hook.log
-// so failures on host-mode runs are debuggable instead of silently swallowed.
+// injected into the session container's environment by the session manager.
+// Failures are swallowed so the agent never blocks on a kanban outage.
 const claudeSettings = `{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/kanban-status.sh\" working user_prompt_submit"
-          }
-        ]
-      }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/kanban-status.sh\" idle stop"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh \"${CLAUDE_PROJECT_DIR:-.}/.claude/kanban-status.sh\" awaiting_perm notification"
-          }
-        ]
-      }
-    ]
-  }
-}
-`
-
-// kanbanStatusScript posts a status update to the kanban API and appends a
-// structured log line per invocation. Errors are tolerated (the agent must
-// never block on a kanban outage) but they are recorded so we can tell the
-// difference between "hook never fired", "env vars missing", "DNS failed",
-// and "API rejected the payload" -- which is exactly the ambiguity that
-// prompted this script in the first place.
-const kanbanStatusScript = `#!/bin/sh
-# Usage: kanban-status.sh <status> <event>
-status="${1:-}"
-event="${2:-}"
-log="${KANBAN_STATUS_LOG:-${TMPDIR:-/tmp}/kanban-status-hook.log}"
-ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u)"
-
-# Best-effort: ignore failures so the hook never blocks claude.
-{
-  printf '[%s] event=%s status=%s session=%s api=%s\n' \
-    "$ts" "$event" "$status" "${KANBAN_SESSION_ID:-<unset>}" "${KANBAN_API_URL:-<unset>}"
-} >>"$log" 2>/dev/null
-
-if [ -z "$KANBAN_SESSION_ID" ] || [ -z "$KANBAN_API_URL" ]; then
-  printf '[%s]   skip: KANBAN_SESSION_ID or KANBAN_API_URL is empty (not running through kanban session manager?)\n' "$ts" >>"$log" 2>/dev/null
-  exit 0
-fi
-
-url="$KANBAN_API_URL/api/sessions/$KANBAN_SESSION_ID/status"
-body="{\"status\":\"$status\"}"
-
-# -w prints curl's view of the result; -o /dev/null discards the response body.
-# stderr captures connection failures (DNS, refused, timeout). 2>&1 routes both
-# into the log so we get the full picture for any failure mode.
-result="$(curl -sS -m 5 -o /dev/null \
-  -w 'http_code=%{http_code} time=%{time_total}s url=%{url_effective}' \
-  -X PATCH -H 'Content-Type: application/json' \
-  -d "$body" "$url" 2>&1)"
-rc=$?
-printf '[%s]   curl exit=%s %s\n' "$ts" "$rc" "$result" >>"$log" 2>/dev/null
-exit 0
-`
-
-// legacyClaudeSettings is the previous template that called curl inline and
-// silenced all errors. Worktrees created before the helper-script refactor
-// still carry this file, and because writeClaudeSettings preserves existing
-// settings, the new logging helper never replaces it. We hash-match against
-// this exact content so we can safely overwrite kanban-authored legacy files
-// without clobbering anything a user customized.
-const legacyClaudeSettings = `{
   "hooks": {
     "UserPromptSubmit": [
       {
@@ -132,26 +49,16 @@ const legacyClaudeSettings = `{
 `
 
 // writeClaudeSettings writes .claude/settings.local.json into the worktree if
-// it does not already exist, plus the helper kanban-status.sh script the
-// hooks invoke. Existing settings.local.json is left alone so user-authored
-// hook configuration is preserved -- except when its contents exactly match
-// a known legacy kanban template, in which case it is upgraded in place. The
-// helper script is overwritten on every call so bug fixes in the script roll
-// out without manual cleanup.
+// it does not already exist. Existing files are left alone so user-authored
+// hook configuration is preserved.
 func writeClaudeSettings(worktreePath string) error {
 	dir := filepath.Join(worktreePath, ".claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	scriptPath := filepath.Join(dir, "kanban-status.sh")
-	if err := os.WriteFile(scriptPath, []byte(kanbanStatusScript), 0o755); err != nil {
-		return err
+	path := filepath.Join(dir, "settings.local.json")
+	if _, err := os.Stat(path); err == nil {
+		return nil
 	}
-	settingsPath := filepath.Join(dir, "settings.local.json")
-	if existing, err := os.ReadFile(settingsPath); err == nil {
-		if string(existing) != legacyClaudeSettings {
-			return nil
-		}
-	}
-	return os.WriteFile(settingsPath, []byte(claudeSettings), 0o644)
+	return os.WriteFile(path, []byte(claudeSettings), 0o644)
 }
