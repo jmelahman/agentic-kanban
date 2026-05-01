@@ -7,6 +7,17 @@ services:
       dockerfile: Dockerfile
       cache_from:
         - lahmanja/kanban:latest
+      # Build metadata. Resolve on the host since .git is dockerignored and
+      # worktrees only stash a gitdir pointer. Set these alongside your other
+      # env vars when invoking `docker compose up --build`, e.g.:
+      #   VERSION=$(git describe --tags --always) \
+      #   COMMIT=$(git rev-parse HEAD) \
+      #   DIRTY=$(test -n "$(git status --porcelain)" && echo true || echo false) \
+      #   docker compose up -d --build
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-none}
+        DIRTY: ${DIRTY:-false}
     restart: unless-stopped
     ports:
       - "127.0.0.1:7474:7474"

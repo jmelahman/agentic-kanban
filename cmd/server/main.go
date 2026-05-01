@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 	"time"
 
@@ -24,16 +25,17 @@ import (
 	"github.com/jmelahman/kanban/internal/session"
 )
 
-// Build metadata. These are populated at build time via -ldflags -X. The
-// defaults make `go run` and dev builds explicit instead of looking like a
-// release.
+// Build metadata. Populated at build time via -ldflags -X (see Dockerfile /
+// docker-bake.hcl). When unset (e.g. `go run`, `go build` without ldflags) we
+// fall back to runtime/debug.ReadBuildInfo, which Go auto-populates from the
+// local VCS state — so dev builds still self-describe without any wrapper.
 var (
-	version = "dev"
-	commit  = "none"
-	dirty   = "false"
+	version = ""
+	commit  = ""
+	dirty   = ""
 )
 
-// BuildInfo describes the running binary. dirty is true when the source tree
+// BuildInfo describes the running binary. Dirty is true when the source tree
 // had uncommitted changes at build time.
 type BuildInfo struct {
 	Version string `json:"version"`
@@ -41,10 +43,36 @@ type BuildInfo struct {
 	Dirty   bool   `json:"dirty"`
 }
 
-// Build returns the build metadata for the running binary.
+// Build returns the build metadata for the running binary, falling back to
+// runtime/debug VCS info when ldflags weren't set.
 func Build() BuildInfo {
-	return BuildInfo{Version: version, Commit: commit, Dirty: dirty == "true" || dirty == "1"}
+	v, c, d := version, commit, asBool(dirty)
+	if v == "" || c == "" || dirty == "" {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			for _, s := range info.Settings {
+				switch s.Key {
+				case "vcs.revision":
+					if c == "" {
+						c = s.Value
+					}
+				case "vcs.modified":
+					if dirty == "" {
+						d = asBool(s.Value)
+					}
+				}
+			}
+		}
+	}
+	if v == "" {
+		v = "dev"
+	}
+	if c == "" {
+		c = "none"
+	}
+	return BuildInfo{Version: v, Commit: c, Dirty: d}
 }
+
+func asBool(s string) bool { return s == "true" || s == "1" }
 
 func Root() *cobra.Command {
 	var addr string
@@ -52,14 +80,15 @@ func Root() *cobra.Command {
 	var portRangeStart int
 	var portRangeEnd int
 
-	commitLabel := commit
-	if Build().Dirty {
+	bi := Build()
+	commitLabel := bi.Commit
+	if bi.Dirty {
 		commitLabel += "-dirty"
 	}
 	cmd := &cobra.Command{
 		Use:     "kanban",
 		Short:   "Kanban board for managing AI agent sessions",
-		Version: fmt.Sprintf("%s\ncommit %s", version, commitLabel),
+		Version: fmt.Sprintf("%s\ncommit %s", bi.Version, commitLabel),
 	}
 
 	serve := &cobra.Command{
@@ -138,11 +167,7 @@ func run(addr, dataDirOverride string, portStart, portEnd int) error {
 		Hooks:    hookRunner,
 		Config:   cfg,
 		Bus:      bus,
-		Build: api.BuildInfo{
-			Version: version,
-			Commit:  commit,
-			Dirty:   dirty == "true" || dirty == "1",
-		},
+		Build: api.BuildInfo(Build()),
 	})
 
 	pollerCtx, pollerCancel := context.WithCancel(context.Background())
