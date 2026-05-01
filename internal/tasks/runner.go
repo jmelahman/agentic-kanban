@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 
@@ -89,16 +90,31 @@ type vsLaunchConfig struct {
 	Env     map[string]string `json:"env"`
 }
 
+// separatorLabel matches dummy entries some launch.json files use as visual
+// section headers in the VS Code Run/Debug sidebar (e.g. "--- Tasks ---").
+// They aren't real runnable configs and should be hidden from the catalog.
+var separatorLabel = regexp.MustCompile(`^-{2,}.*-{2,}$`)
+
 // Discover walks the worktree looking for VS Code tasks/launch entries.
-func Discover(worktreePath string) ([]VSCodeTask, error) {
+// Returns parsed entries plus human-readable warnings for any parse failures
+// so they can be surfaced to the user instead of silently dropped.
+func Discover(worktreePath string) ([]VSCodeTask, []string, error) {
 	var out []VSCodeTask
+	var warnings []string
 
 	tasksPath := filepath.Join(worktreePath, ".vscode", "tasks.json")
 	if data, err := os.ReadFile(tasksPath); err == nil {
 		var file vsTasksFile
-		if err := json.Unmarshal(stripComments(data), &file); err == nil {
+		if err := json.Unmarshal(stripComments(data), &file); err != nil {
+			msg := fmt.Sprintf(".vscode/tasks.json: %v", err)
+			log.Print(msg)
+			warnings = append(warnings, msg)
+		} else {
 			for _, t := range file.Tasks {
 				if t.Label == "" || t.Command == "" {
+					continue
+				}
+				if separatorLabel.MatchString(strings.TrimSpace(t.Label)) {
 					continue
 				}
 				out = append(out, VSCodeTask{
@@ -115,9 +131,16 @@ func Discover(worktreePath string) ([]VSCodeTask, error) {
 	launchPath := filepath.Join(worktreePath, ".vscode", "launch.json")
 	if data, err := os.ReadFile(launchPath); err == nil {
 		var file vsLaunchFile
-		if err := json.Unmarshal(stripComments(data), &file); err == nil {
+		if err := json.Unmarshal(stripComments(data), &file); err != nil {
+			msg := fmt.Sprintf(".vscode/launch.json: %v", err)
+			log.Print(msg)
+			warnings = append(warnings, msg)
+		} else {
 			for _, c := range file.Configurations {
 				if c.Program == "" {
+					continue
+				}
+				if separatorLabel.MatchString(strings.TrimSpace(c.Name)) {
 					continue
 				}
 				out = append(out, VSCodeTask{
@@ -130,7 +153,7 @@ func Discover(worktreePath string) ([]VSCodeTask, error) {
 			}
 		}
 	}
-	return out, nil
+	return out, warnings, nil
 }
 
 // PortFor returns the container port for a task label, sourced from the

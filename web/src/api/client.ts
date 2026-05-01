@@ -64,6 +64,11 @@ export type DiscoveredTask = {
   has_port: boolean;
 };
 
+export type DiscoverTasksResult = {
+  tasks: DiscoveredTask[];
+  warnings: string[];
+};
+
 export type TaskRun = {
   id: number;
   session_id: number;
@@ -147,7 +152,7 @@ export const api = {
   startSession: (id: number) => request<Session>(`/api/sessions/${id}/start`, { method: "POST" }),
   stopSession: (id: number) => request<void>(`/api/sessions/${id}/stop`, { method: "POST" }),
 
-  discoverTasks: (sessionId: number) => request<DiscoveredTask[]>(`/api/sessions/${sessionId}/discover-tasks`),
+  discoverTasks: (sessionId: number) => request<DiscoverTasksResult>(`/api/sessions/${sessionId}/discover-tasks`),
   listTaskRuns: (sessionId: number) => request<TaskRun[]>(`/api/sessions/${sessionId}/task-runs`),
   startTaskRun: (sessionId: number, label: string) =>
     request<TaskRun>(`/api/sessions/${sessionId}/task-runs`, { method: "POST", body: JSON.stringify({ label }) }),

@@ -42,11 +42,21 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
     onError: (err) => toast.push("error", errorMessage(err)),
   });
 
+  const warnings = tasksQ.data?.warnings ?? [];
+  const lastWarningKey = useRef<string>("");
+  useEffect(() => {
+    const key = warnings.join("\n");
+    if (key && key !== lastWarningKey.current) {
+      lastWarningKey.current = key;
+      for (const w of warnings) toast.push("error", w);
+    }
+  }, [warnings, toast]);
+
   if (session.status === "stopped") {
     return <p className="p-4 text-sm text-zinc-400">Start the session to discover tasks.</p>;
   }
 
-  const tasks = tasksQ.data ?? [];
+  const tasks = tasksQ.data?.tasks ?? [];
   const runs = runsQ.data ?? [];
   const ports = portsQ.data ?? [];
   const portByContainer = new Map(ports.map((p) => [p.container_port, p]));

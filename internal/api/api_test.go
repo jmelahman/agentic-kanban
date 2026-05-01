@@ -258,13 +258,22 @@ func TestTasks(t *testing.T) {
 	tk := e.seedTicket(board, "DoTasks")
 	sess := e.seedSession(tk)
 
-	t.Run("discover_empty_worktree_returns_array", func(t *testing.T) {
+	t.Run("discover_empty_worktree_returns_empty", func(t *testing.T) {
 		_ = os.MkdirAll(sess.WorktreePath, 0o755)
 		resp := e.get(fmt.Sprintf("/api/sessions/%d/discover-tasks", sess.ID))
 		assertStatus(t, resp, 200)
-		body := readBody(t, resp)
-		if strings.TrimSpace(string(body)) != "[]" {
-			t.Errorf("empty discover = %s; want []", body)
+		var body struct {
+			Tasks    []map[string]any `json:"tasks"`
+			Warnings []string         `json:"warnings"`
+		}
+		if err := json.Unmarshal(readBody(t, resp), &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Tasks) != 0 {
+			t.Errorf("empty discover tasks = %v; want []", body.Tasks)
+		}
+		if len(body.Warnings) != 0 {
+			t.Errorf("empty discover warnings = %v; want []", body.Warnings)
 		}
 	})
 
@@ -290,21 +299,60 @@ container_port = 3000
 
 		resp := e.get(fmt.Sprintf("/api/sessions/%d/discover-tasks", sess.ID))
 		assertStatus(t, resp, 200)
-		var found []map[string]any
-		if err := json.Unmarshal(readBody(t, resp), &found); err != nil {
+		var body struct {
+			Tasks    []map[string]any `json:"tasks"`
+			Warnings []string         `json:"warnings"`
+		}
+		if err := json.Unmarshal(readBody(t, resp), &body); err != nil {
 			t.Fatal(err)
 		}
-		if len(found) != 1 {
-			t.Fatalf("found = %d tasks; want 1: %+v", len(found), found)
+		if len(body.Tasks) != 1 {
+			t.Fatalf("found = %d tasks; want 1: %+v", len(body.Tasks), body.Tasks)
 		}
-		if found[0]["label"] != "Start Frontend" {
-			t.Errorf("label = %v; want 'Start Frontend'", found[0]["label"])
+		if body.Tasks[0]["label"] != "Start Frontend" {
+			t.Errorf("label = %v; want 'Start Frontend'", body.Tasks[0]["label"])
 		}
-		if found[0]["has_port"] != true {
-			t.Errorf("has_port = %v; want true", found[0]["has_port"])
+		if body.Tasks[0]["has_port"] != true {
+			t.Errorf("has_port = %v; want true", body.Tasks[0]["has_port"])
 		}
-		if cp, _ := found[0]["container_port"].(float64); int(cp) != 3000 {
-			t.Errorf("container_port = %v; want 3000", found[0]["container_port"])
+		if cp, _ := body.Tasks[0]["container_port"].(float64); int(cp) != 3000 {
+			t.Errorf("container_port = %v; want 3000", body.Tasks[0]["container_port"])
+		}
+		if len(body.Warnings) != 0 {
+			t.Errorf("warnings = %v; want []", body.Warnings)
+		}
+	})
+
+	t.Run("discover_reports_invalid_json_warning", func(t *testing.T) {
+		_ = os.MkdirAll(filepath.Join(sess.WorktreePath, ".vscode"), 0o755)
+		if err := os.WriteFile(filepath.Join(sess.WorktreePath, ".vscode", "tasks.json"), []byte(`{ "tasks": [`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			// Restore the valid file the next subtest expects.
+			tasksJSON := `{
+				"version": "2.0.0",
+				"tasks": [
+					{"label": "Start Frontend", "type": "shell", "command": "npm", "args": ["run", "dev"]}
+				]
+			}`
+			_ = os.WriteFile(filepath.Join(sess.WorktreePath, ".vscode", "tasks.json"), []byte(tasksJSON), 0o644)
+		})
+
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/discover-tasks", sess.ID))
+		assertStatus(t, resp, 200)
+		var body struct {
+			Tasks    []map[string]any `json:"tasks"`
+			Warnings []string         `json:"warnings"`
+		}
+		if err := json.Unmarshal(readBody(t, resp), &body); err != nil {
+			t.Fatal(err)
+		}
+		if len(body.Warnings) == 0 {
+			t.Fatalf("expected a warning for invalid tasks.json; got none")
+		}
+		if !strings.Contains(body.Warnings[0], "tasks.json") {
+			t.Errorf("warning = %q; want to mention tasks.json", body.Warnings[0])
 		}
 	})
 

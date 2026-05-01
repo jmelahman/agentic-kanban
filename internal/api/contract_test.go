@@ -27,7 +27,7 @@ func TestContract_NoNullArrays(t *testing.T) {
 		{"listBoards", "/api/boards", expectTopLevelArray},
 		{"boardState_seeded", fmt.Sprintf("/api/boards/%d/state", seededBoard.ID), expectArrayFields("columns", "tickets", "sessions")},
 		{"boardState_empty", fmt.Sprintf("/api/boards/%d/state", emptyBoard.ID), expectArrayFields("columns", "tickets", "sessions")},
-		{"discoverTasks", fmt.Sprintf("/api/sessions/%d/discover-tasks", sess.ID), expectTopLevelArray},
+		{"discoverTasks", fmt.Sprintf("/api/sessions/%d/discover-tasks", sess.ID), expectArrayFields("tasks", "warnings")},
 		{"listTaskRuns_empty", fmt.Sprintf("/api/sessions/%d/task-runs", sess.ID), expectTopLevelArray},
 		{"listPorts_empty", fmt.Sprintf("/api/sessions/%d/ports", sess.ID), expectTopLevelArray},
 	}

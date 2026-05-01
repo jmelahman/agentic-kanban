@@ -597,6 +597,11 @@ type taskInfo struct {
 	HasPort       bool `json:"has_port"`
 }
 
+type discoverTasksResp struct {
+	Tasks    []taskInfo `json:"tasks"`
+	Warnings []string   `json:"warnings"`
+}
+
 func (h *handlers) discoverTasks(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.store.GetSession(r.Context(), id)
@@ -604,7 +609,7 @@ func (h *handlers) discoverTasks(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 404)
 		return
 	}
-	found, _ := tasks.Discover(sess.WorktreePath)
+	found, warnings, _ := tasks.Discover(sess.WorktreePath)
 	out := make([]taskInfo, 0, len(found))
 	for _, t := range found {
 		info := taskInfo{VSCodeTask: t}
@@ -614,7 +619,10 @@ func (h *handlers) discoverTasks(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, info)
 	}
-	writeJSON(w, 200, out)
+	if warnings == nil {
+		warnings = []string{}
+	}
+	writeJSON(w, 200, discoverTasksResp{Tasks: out, Warnings: warnings})
 }
 
 func (h *handlers) listTaskRuns(w http.ResponseWriter, r *http.Request) {
@@ -643,7 +651,7 @@ func (h *handlers) createTaskRun(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 400)
 		return
 	}
-	found, err := tasks.Discover(sess.WorktreePath)
+	found, _, err := tasks.Discover(sess.WorktreePath)
 	if err != nil {
 		httpError(w, err, 500)
 		return
