@@ -43,6 +43,8 @@ export function SessionPane({
   const [tab, setTab] = useState<"terminal" | "tasks">("terminal");
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
+  const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
+  const mergeMenuRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState<number>(() => loadInitialWidth());
   const [resizing, setResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -89,6 +91,15 @@ export function SessionPane({
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
   }, [syncMenuOpen]);
+
+  useEffect(() => {
+    if (!mergeMenuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (!mergeMenuRef.current?.contains(e.target as Node)) setMergeMenuOpen(false);
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [mergeMenuOpen]);
 
   const boardKey = ["board", boardId] as const;
 
@@ -142,6 +153,19 @@ export function SessionPane({
     },
     onError: (err) => {
       setSyncMenuOpen(false);
+      toast.push("error", errorMessage(err));
+    },
+  });
+  const mergeMut = useMutation({
+    mutationFn: (strategy: "merge-commit" | "squash" | "rebase") => api.mergeTicket(ticketId!, strategy),
+    onSuccess: (_data, strategy) => {
+      setMergeMenuOpen(false);
+      toast.push("success", `${strategy} into ${baseBranch} succeeded`);
+      qc.invalidateQueries({ queryKey: boardKey });
+      onClose();
+    },
+    onError: (err) => {
+      setMergeMenuOpen(false);
       toast.push("error", errorMessage(err));
     },
   });
@@ -228,6 +252,40 @@ export function SessionPane({
                     onClick={() => syncMut.mutate("merge")}
                   >
                     merge from <span className="font-mono">{baseBranch}</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {session && (
+            <div className="relative" ref={mergeMenuRef}>
+              <PendingButton
+                className="rounded bg-red-700 px-2 py-1 disabled:opacity-50"
+                onClick={() => setMergeMenuOpen((v) => !v)}
+                pending={mergeMut.isPending}
+                idleLabel="merge ▾"
+                pendingLabel="merging…"
+                title={`integrate into ${baseBranch}`}
+              />
+              {mergeMenuOpen && (
+                <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
+                    onClick={() => mergeMut.mutate("merge-commit")}
+                  >
+                    create a merge commit
+                  </button>
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
+                    onClick={() => mergeMut.mutate("squash")}
+                  >
+                    squash and merge
+                  </button>
+                  <button
+                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
+                    onClick={() => mergeMut.mutate("rebase")}
+                  >
+                    rebase and merge
                   </button>
                 </div>
               )}

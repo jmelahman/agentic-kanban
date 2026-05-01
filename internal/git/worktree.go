@@ -41,6 +41,43 @@ func Merge(worktreePath, ref string) error {
 	return run("git", "-C", worktreePath, "merge", "--no-edit", ref)
 }
 
+// MergeNoFF merges branch into the currently checked-out branch in repoPath
+// always creating a merge commit, even when fast-forward is possible.
+func MergeNoFF(repoPath, branch string) error {
+	return run("git", "-C", repoPath, "merge", "--no-ff", "--no-edit", branch)
+}
+
+// MergeSquash squashes branch into the index of repoPath without committing,
+// then creates a single commit with message.
+func MergeSquash(repoPath, branch, message string) error {
+	if err := run("git", "-C", repoPath, "merge", "--squash", branch); err != nil {
+		return err
+	}
+	return run("git", "-C", repoPath, "commit", "-m", message)
+}
+
+// MergeFFOnly fast-forwards the currently checked-out branch in repoPath to
+// branch. Fails if a fast-forward isn't possible.
+func MergeFFOnly(repoPath, branch string) error {
+	return run("git", "-C", repoPath, "merge", "--ff-only", branch)
+}
+
+// CurrentBranch returns the short branch name checked out in repoPath, or an
+// empty string if HEAD is detached.
+func CurrentBranch(repoPath string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "symbolic-ref", "--quiet", "--short", "HEAD")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		// Non-zero exit on detached HEAD; surface as empty string, not error.
+		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
 // RebaseAbort aborts an in-progress rebase. Errors are swallowed.
 func RebaseAbort(worktreePath string) {
 	_ = exec.Command("git", "-C", worktreePath, "rebase", "--abort").Run()
@@ -49,6 +86,12 @@ func RebaseAbort(worktreePath string) {
 // MergeAbort aborts an in-progress merge. Errors are swallowed.
 func MergeAbort(worktreePath string) {
 	_ = exec.Command("git", "-C", worktreePath, "merge", "--abort").Run()
+}
+
+// ResetHard resets the currently checked-out branch in repoPath to ref.
+// Errors are swallowed; used to recover from a failed squash commit.
+func ResetHard(repoPath, ref string) {
+	_ = exec.Command("git", "-C", repoPath, "reset", "--hard", ref).Run()
 }
 
 // IsClean reports whether the worktree has no uncommitted changes.

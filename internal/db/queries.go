@@ -201,6 +201,19 @@ func (s *Store) MoveTicket(ctx context.Context, ticketID, columnID int64, positi
 	return err
 }
 
+// MaxTicketPosition returns the largest position among non-archived tickets in
+// columnID, or 0 if the column is empty.
+func (s *Store) MaxTicketPosition(ctx context.Context, columnID int64) (int, error) {
+	var maxPos sql.NullInt64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT MAX(position) FROM tickets WHERE column_id=? AND archived_at IS NULL`, columnID,
+	).Scan(&maxPos)
+	if err != nil {
+		return 0, err
+	}
+	return int(maxPos.Int64), nil
+}
+
 func (s *Store) ArchiveTicket(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE tickets SET archived_at=unixepoch() WHERE id=?`, id)
 	return err

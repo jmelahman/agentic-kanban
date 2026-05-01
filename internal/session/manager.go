@@ -247,6 +247,76 @@ func (m *Manager) Sync(ctx context.Context, sessionID int64, strategy string) er
 	return nil
 }
 
+// Merge integrates the session's branch into the board's base branch in the
+// source repo. The source repo must be clean and have base_branch checked out.
+// On any git failure the source repo and worktree are restored to their
+// pre-merge state. Strategy is one of "merge-commit", "squash", "rebase".
+func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) error {
+	sess, err := m.store.GetSession(ctx, sessionID)
+	if err != nil {
+		return err
+	}
+	if sess.WorktreePath == "" || sess.BranchName == "" {
+		return fmt.Errorf("session has no worktree")
+	}
+	board, err := m.boardForSession(ctx, sess)
+	if err != nil {
+		return err
+	}
+	ticket, err := m.store.GetTicket(ctx, sess.TicketID)
+	if err != nil {
+		return err
+	}
+
+	if clean, err := git.IsClean(sess.WorktreePath); err != nil {
+		return fmt.Errorf("check worktree clean: %w", err)
+	} else if !clean {
+		return fmt.Errorf("worktree has uncommitted changes; commit or stash before merging")
+	}
+	if clean, err := git.IsClean(board.SourceRepoPath); err != nil {
+		return fmt.Errorf("check source repo clean: %w", err)
+	} else if !clean {
+		return fmt.Errorf("source repo has uncommitted changes; commit or stash before merging")
+	}
+	cur, err := git.CurrentBranch(board.SourceRepoPath)
+	if err != nil {
+		return fmt.Errorf("read source repo branch: %w", err)
+	}
+	if cur != board.BaseBranch {
+		return fmt.Errorf("source repo must have %s checked out (currently on %q)", board.BaseBranch, cur)
+	}
+	baseHead, err := git.CurrentHead(board.SourceRepoPath, "HEAD")
+	if err != nil {
+		return fmt.Errorf("read base head: %w", err)
+	}
+
+	switch strategy {
+	case "merge-commit":
+		if err := git.MergeNoFF(board.SourceRepoPath, sess.BranchName); err != nil {
+			git.MergeAbort(board.SourceRepoPath)
+			return fmt.Errorf("merge aborted: %w", err)
+		}
+	case "squash":
+		msg := fmt.Sprintf("%s (#%d)", ticket.Title, ticket.ID)
+		if err := git.MergeSquash(board.SourceRepoPath, sess.BranchName, msg); err != nil {
+			git.MergeAbort(board.SourceRepoPath)
+			git.ResetHard(board.SourceRepoPath, baseHead)
+			return fmt.Errorf("squash aborted: %w", err)
+		}
+	case "rebase":
+		if err := git.Rebase(sess.WorktreePath, board.BaseBranch); err != nil {
+			git.RebaseAbort(sess.WorktreePath)
+			return fmt.Errorf("rebase aborted: %w", err)
+		}
+		if err := git.MergeFFOnly(board.SourceRepoPath, sess.BranchName); err != nil {
+			return fmt.Errorf("fast-forward aborted: %w", err)
+		}
+	default:
+		return fmt.Errorf("unknown strategy %q (want merge-commit, squash, or rebase)", strategy)
+	}
+	return nil
+}
+
 func (m *Manager) Proxies() *docker.ProxyManager { return m.proxies }
 
 func (m *Manager) Docker() *docker.Client { return m.docker }

@@ -382,6 +382,71 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+type mergeTicketReq struct {
+	Strategy string `json:"strategy"`
+}
+
+func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	var req mergeTicketReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpError(w, err, 400)
+		return
+	}
+	switch req.Strategy {
+	case "merge-commit", "squash", "rebase":
+	default:
+		httpError(w, fmt.Errorf("strategy must be merge-commit, squash, or rebase"), 400)
+		return
+	}
+	t, err := h.store.GetTicket(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 404)
+		return
+	}
+	sess, err := h.store.GetSessionByTicket(r.Context(), id)
+	if err != nil || sess == nil {
+		httpError(w, fmt.Errorf("no session for ticket"), 404)
+		return
+	}
+	cols, err := h.store.ListColumns(r.Context(), t.BoardID)
+	if err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	var doneCol *db.Column
+	for i := range cols {
+		if cols[i].Name == "Done" {
+			doneCol = &cols[i]
+			break
+		}
+	}
+	if doneCol == nil {
+		httpError(w, fmt.Errorf("board has no Done column"), 409)
+		return
+	}
+	if err := h.sessions.Merge(r.Context(), sess.ID, req.Strategy); err != nil {
+		httpError(w, err, 409)
+		return
+	}
+	maxPos, err := h.store.MaxTicketPosition(r.Context(), doneCol.ID)
+	if err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	if err := h.store.MoveTicket(r.Context(), t.ID, doneCol.ID, maxPos+1); err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	if err := h.sessions.Destroy(r.Context(), sess.ID); err != nil {
+		log.Printf("merge: destroy session %d: %v", sess.ID, err)
+	}
+	if updated, _ := h.store.GetTicket(r.Context(), id); updated != nil {
+		h.bus.publish(updated.BoardID, "ticket_moved", updated)
+	}
+	w.WriteHeader(204)
+}
+
 // Sessions
 
 func (h *handlers) ensureSession(w http.ResponseWriter, r *http.Request) {
