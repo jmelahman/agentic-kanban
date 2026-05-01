@@ -19,6 +19,7 @@ type Deps struct {
 	Sessions *session.Manager
 	Hooks    *hooks.Runner
 	Config   *config.Config
+	Bus      *EventBus
 }
 
 // NewMux assembles the HTTP routes and embedded frontend.
@@ -26,7 +27,10 @@ func NewMux(d Deps) http.Handler {
 	mux := http.NewServeMux()
 
 	taskRunner := tasks.NewRunner(d.Store, d.Docker, d.Hooks)
-	bus := newEventBus()
+	bus := d.Bus
+	if bus == nil {
+		bus = NewEventBus()
+	}
 
 	h := &handlers{
 		store:    d.Store,

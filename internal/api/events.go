@@ -12,16 +12,16 @@ type event struct {
 	Data any    `json:"data"`
 }
 
-type eventBus struct {
+type EventBus struct {
 	mu   sync.Mutex
 	subs map[int64]map[chan event]struct{}
 }
 
-func newEventBus() *eventBus {
-	return &eventBus{subs: map[int64]map[chan event]struct{}{}}
+func NewEventBus() *EventBus {
+	return &EventBus{subs: map[int64]map[chan event]struct{}{}}
 }
 
-func (b *eventBus) publish(boardID int64, typ string, data any) {
+func (b *EventBus) Publish(boardID int64, typ string, data any) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for ch := range b.subs[boardID] {
@@ -32,7 +32,7 @@ func (b *eventBus) publish(boardID int64, typ string, data any) {
 	}
 }
 
-func (b *eventBus) subscribe(boardID int64) (chan event, func()) {
+func (b *EventBus) subscribe(boardID int64) (chan event, func()) {
 	ch := make(chan event, 16)
 	b.mu.Lock()
 	defer b.mu.Unlock()

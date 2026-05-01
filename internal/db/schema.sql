@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   container_name TEXT,
   status TEXT NOT NULL DEFAULT 'stopped',
   started_at INTEGER,
-  stopped_at INTEGER
+  stopped_at INTEGER,
+  pr_state TEXT NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS port_allocations (

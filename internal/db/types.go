@@ -39,6 +39,7 @@ type Session struct {
 	Status        string  `json:"status"`
 	StartedAt     *int64  `json:"started_at,omitempty"`
 	StoppedAt     *int64  `json:"stopped_at,omitempty"`
+	PRState       string  `json:"pr_state,omitempty"`
 }
 
 type PortAllocation struct {

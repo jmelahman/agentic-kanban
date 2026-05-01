@@ -19,6 +19,7 @@ import (
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
+	"github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/session"
 )
@@ -95,13 +96,20 @@ func run(addr, dataDirOverride string, portStart, portEnd int) error {
 	sessionMgr := session.NewManager(store, dockerClient, hookRunner)
 	sessionMgr.SetAPIBase(buildAPIBase(selfName, addr))
 
+	bus := api.NewEventBus()
+
 	mux := api.NewMux(api.Deps{
 		Store:    store,
 		Docker:   dockerClient,
 		Sessions: sessionMgr,
 		Hooks:    hookRunner,
 		Config:   cfg,
+		Bus:      bus,
 	})
+
+	pollerCtx, pollerCancel := context.WithCancel(context.Background())
+	defer pollerCancel()
+	go github.NewPoller(store, bus, sessionMgr, 30*time.Second).Start(pollerCtx)
 
 	srv := &http.Server{
 		Addr:              addr,

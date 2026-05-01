@@ -25,7 +25,7 @@ type handlers struct {
 	hooks    *hooks.Runner
 	config   *config.Config
 	tasks    *tasks.Runner
-	bus      *eventBus
+	bus      *EventBus
 }
 
 func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
@@ -250,13 +250,13 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	h.bus.publish(boardID, "ticket_created", t)
+	h.bus.Publish(boardID, "ticket_created", t)
 	h.hooks.Fire(&board.ID, hooks.EventTicketCreated, map[string]string{
 		"ticket_id": fmt.Sprintf("%d", t.ID),
 		"board":    board.Name,
 	})
 	if sess, err := h.sessions.Ensure(r.Context(), board, t); err == nil {
-		h.bus.publish(boardID, "session_updated", sess)
+		h.bus.Publish(boardID, "session_updated", sess)
 	}
 	writeJSON(w, 201, t)
 }
@@ -279,7 +279,7 @@ func (h *handlers) moveTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	t, _ := h.store.GetTicket(r.Context(), id)
 	if t != nil {
-		h.bus.publish(t.BoardID, "ticket_moved", t)
+		h.bus.Publish(t.BoardID, "ticket_moved", t)
 	}
 	w.WriteHeader(204)
 }
@@ -298,7 +298,7 @@ func (h *handlers) archiveTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	h.bus.publish(t.BoardID, "ticket_archived", t)
+	h.bus.Publish(t.BoardID, "ticket_archived", t)
 	board, _ := h.store.GetBoard(r.Context(), t.BoardID)
 	if board != nil {
 		h.hooks.Fire(&board.ID, hooks.EventTicketArchived, map[string]string{
@@ -325,7 +325,7 @@ func (h *handlers) unarchiveTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	updated, _ := h.store.GetTicket(r.Context(), id)
 	if updated != nil {
-		h.bus.publish(updated.BoardID, "ticket_unarchived", updated)
+		h.bus.Publish(updated.BoardID, "ticket_unarchived", updated)
 	}
 	w.WriteHeader(204)
 }
@@ -358,7 +358,7 @@ func (h *handlers) deleteTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	h.bus.publish(t.BoardID, "ticket_deleted", t)
+	h.bus.Publish(t.BoardID, "ticket_deleted", t)
 	w.WriteHeader(204)
 }
 
@@ -405,7 +405,7 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 409)
 		return
 	}
-	h.bus.publish(t.BoardID, "session_updated", sess)
+	h.bus.Publish(t.BoardID, "session_updated", sess)
 	w.WriteHeader(204)
 }
 
@@ -478,7 +478,7 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("merge: destroy session %d: %v", sess.ID, err)
 	}
 	if updated, _ := h.store.GetTicket(r.Context(), id); updated != nil {
-		h.bus.publish(updated.BoardID, "ticket_moved", updated)
+		h.bus.Publish(updated.BoardID, "ticket_moved", updated)
 	}
 	w.WriteHeader(204)
 }
@@ -502,7 +502,7 @@ func (h *handlers) ensureSession(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	h.bus.publish(board.ID, "session_updated", sess)
+	h.bus.Publish(board.ID, "session_updated", sess)
 	writeJSON(w, 201, sess)
 }
 
@@ -514,7 +514,7 @@ func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
-		h.bus.publish(t.BoardID, "session_updated", sess)
+		h.bus.Publish(t.BoardID, "session_updated", sess)
 	}
 	writeJSON(w, 200, sess)
 }
@@ -528,7 +528,7 @@ func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {
 	sess, _ := h.store.GetSession(r.Context(), id)
 	if sess != nil {
 		if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
-			h.bus.publish(t.BoardID, "session_updated", sess)
+			h.bus.Publish(t.BoardID, "session_updated", sess)
 		}
 	}
 	w.WriteHeader(204)
@@ -573,7 +573,7 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	sess.Status = req.Status
 	t, _ := h.store.GetTicket(r.Context(), sess.TicketID)
 	if t != nil {
-		h.bus.publish(t.BoardID, "session_updated", sess)
+		h.bus.Publish(t.BoardID, "session_updated", sess)
 		var boardID *int64
 		if board, _ := h.store.GetBoard(r.Context(), t.BoardID); board != nil {
 			boardID = &board.ID
