@@ -70,11 +70,9 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
               className="rounded bg-zinc-900 px-2 py-1"
               value={harness}
               onChange={(e) => setHarness(e.target.value)}
-              disabled={!settingsQ.data || harnessesQ.isLoading}
+              disabled={settingsQ.isLoading || harnessesQ.isLoading}
             >
-              {harnesses.length === 0 && settingsQ.data ? (
-                <option value={settingsQ.data.harness}>{settingsQ.data.harness}</option>
-              ) : null}
+              <option value="">— use project / default —</option>
               {harnesses.map((h) => (
                 <option key={h.id} value={h.id}>
                   {h.label}
@@ -82,8 +80,10 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
               ))}
             </select>
             <span className="text-xs text-zinc-500">
-              The CLI to launch in each session's terminal. Takes effect on the next session
-              attach; running terminals keep their current process.
+              Saved to <span className="font-mono">~/.config/kanban/config.toml</span>. Takes
+              effect on the next session attach; running terminals keep their current process.
+              Leave unset to fall back to the repo's <span className="font-mono">.kanban.toml</span>
+              {" "}or the default.
             </span>
           </label>
           <div className="mt-2 flex items-center justify-end gap-2">

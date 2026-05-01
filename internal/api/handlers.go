@@ -844,24 +844,24 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 404)
 		return
 	}
-	settings, err := h.store.GetAppSettings(r.Context())
-	if err != nil {
-		httpError(w, err, 500)
-		return
+	repoPath := ""
+	if board, err := h.boardForSession(r.Context(), sess); err == nil && board != nil {
+		repoPath = board.SourceRepoPath
 	}
-	cmd := harness.Get(settings.Harness).PTYCommand
-	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, cmd, "/workspace")
+	resolved, _ := harness.Resolve(repoPath)
+	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, resolved.PTYCommand, "/workspace")
 }
 
-// Settings
+// Settings — backed by the user-level config file at
+// $XDG_CONFIG_HOME/kanban/config.toml. Empty harness == "no user override".
+
+type settingsResp struct {
+	Harness string `json:"harness"`
+}
 
 func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
-	s, err := h.store.GetAppSettings(r.Context())
-	if err != nil {
-		httpError(w, err, 500)
-		return
-	}
-	writeJSON(w, 200, s)
+	id, _ := harness.ReadUserHarness()
+	writeJSON(w, 200, settingsResp{Harness: id})
 }
 
 func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
@@ -872,27 +872,31 @@ func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 400)
 		return
 	}
-	cur, err := h.store.GetAppSettings(r.Context())
-	if err != nil {
+	if req.Harness == nil {
+		writeJSON(w, 200, settingsResp{Harness: firstNonEmpty(harness.ReadUserHarness)})
+		return
+	}
+	id := *req.Harness
+	if id != "" && !harness.IsKnown(id) {
+		httpError(w, fmt.Errorf("unknown harness %q", id), 400)
+		return
+	}
+	if err := harness.WriteUserHarness(id); err != nil {
 		httpError(w, err, 500)
 		return
 	}
-	if req.Harness != nil {
-		if !harness.IsKnown(*req.Harness) {
-			httpError(w, fmt.Errorf("unknown harness %q", *req.Harness), 400)
-			return
-		}
-		cur.Harness = *req.Harness
-	}
-	if err := h.store.UpdateAppSettings(r.Context(), cur); err != nil {
-		httpError(w, err, 500)
-		return
-	}
-	writeJSON(w, 200, cur)
+	writeJSON(w, 200, settingsResp{Harness: id})
 }
 
 func (h *handlers) listHarnesses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, harness.Registry)
+}
+
+func firstNonEmpty(read func() (string, bool)) string {
+	if v, ok := read(); ok {
+		return v
+	}
+	return ""
 }
 
 // helpers

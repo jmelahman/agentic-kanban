@@ -299,12 +299,8 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			return fmt.Errorf("stage pending changes: %w", err)
 		}
 		msg := ticket.Title
-		settings, sErr := m.store.GetAppSettings(ctx)
-		hID := harness.Default().ID
-		if sErr == nil {
-			hID = settings.Harness
-		}
-		if generated, err := m.generateCommitMessage(ctx, sess, harness.Get(hID), ticket.Title); err == nil {
+		h, _ := harness.Resolve(board.SourceRepoPath)
+		if generated, err := m.generateCommitMessage(ctx, sess, h, ticket.Title); err == nil {
 			msg = generated
 		} else {
 			log.Printf("merge: ai commit message unavailable, using ticket title: %v", err)
