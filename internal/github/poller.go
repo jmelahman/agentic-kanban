@@ -1,15 +1,19 @@
-// Package github polls `gh pr list` per board and moves tickets between
-// columns according to the PR's state, mirroring how the session manager
-// reflects Claude session state on a ticket.
+// Package github polls the GitHub REST API per board and moves tickets
+// between columns according to the PR's state, mirroring how the session
+// manager reflects Claude session state on a ticket.
 package github
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"net/url"
+	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/jmelahman/kanban/internal/db"
@@ -21,6 +25,10 @@ const (
 	PRStateOpen   = "open"
 	PRStateMerged = "merged"
 	PRStateClosed = "closed"
+
+	defaultAPIBase = "https://api.github.com"
+	prPageSize     = 100
+	prMaxPages     = 2
 )
 
 // Config captures the [github] section of the merged kanban config (user
@@ -86,6 +94,7 @@ type Poller struct {
 	bus      Publisher
 	sessions SessionDestroyer
 	interval time.Duration
+	http     *http.Client
 }
 
 // NewPoller constructs a poller. interval is the global tick rate.
@@ -93,16 +102,17 @@ func NewPoller(store *db.Store, bus Publisher, sessions SessionDestroyer, interv
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
-	return &Poller{store: store, bus: bus, sessions: sessions, interval: interval}
+	return &Poller{
+		store:    store,
+		bus:      bus,
+		sessions: sessions,
+		interval: interval,
+		http:     &http.Client{Timeout: 20 * time.Second},
+	}
 }
 
-// Start blocks until ctx is done, ticking once per interval. If `gh` isn't
-// on PATH, logs once and returns without polling.
+// Start blocks until ctx is done, ticking once per interval.
 func (p *Poller) Start(ctx context.Context) {
-	if _, err := exec.LookPath("gh"); err != nil {
-		log.Printf("github poller: gh CLI not found; auto-move disabled")
-		return
-	}
 	t := time.NewTicker(p.interval)
 	defer t.Stop()
 	p.tick(ctx)
@@ -135,9 +145,12 @@ func (p *Poller) tick(ctx context.Context) {
 }
 
 type ghPR struct {
-	HeadRefName string `json:"headRefName"`
-	State       string `json:"state"`
-	IsDraft     bool   `json:"isDraft"`
+	State    string  `json:"state"`     // "open" or "closed"
+	Draft    bool    `json:"draft"`
+	MergedAt *string `json:"merged_at"` // null until merged
+	Head     struct {
+		Ref string `json:"ref"`
+	} `json:"head"`
 }
 
 func (p *Poller) syncBoard(ctx context.Context, board *db.Board, cfg Config) error {
@@ -154,20 +167,21 @@ func (p *Poller) syncBoard(ctx context.Context, board *db.Board, cfg Config) err
 	if len(branches) == 0 {
 		return nil
 	}
-	prs, err := listPRs(ctx, board.SourceRepoPath)
+	prs, err := p.listPRs(ctx, board.SourceRepoPath)
 	if err != nil {
 		return err
 	}
-	// `gh pr list` returns most-recent-first, so the first hit per branch wins.
+	// API returns most-recent-first when sorted by updated desc, so the first
+	// hit per branch wins.
 	byBranch := make(map[string]ghPR, len(prs))
 	for _, pr := range prs {
-		if _, ok := branches[pr.HeadRefName]; !ok {
+		if _, ok := branches[pr.Head.Ref]; !ok {
 			continue
 		}
-		if _, seen := byBranch[pr.HeadRefName]; seen {
+		if _, seen := byBranch[pr.Head.Ref]; seen {
 			continue
 		}
-		byBranch[pr.HeadRefName] = pr
+		byBranch[pr.Head.Ref] = pr
 	}
 	cols, err := p.store.ListColumns(ctx, board.ID)
 	if err != nil {
@@ -196,15 +210,16 @@ func (p *Poller) syncBoard(ctx context.Context, board *db.Board, cfg Config) err
 
 func classify(pr ghPR) string {
 	switch pr.State {
-	case "MERGED":
-		return PRStateMerged
-	case "CLOSED":
-		return PRStateClosed
-	case "OPEN":
-		if pr.IsDraft {
+	case "open":
+		if pr.Draft {
 			return PRStateDraft
 		}
 		return PRStateOpen
+	case "closed":
+		if pr.MergedAt != nil {
+			return PRStateMerged
+		}
+		return PRStateClosed
 	}
 	return ""
 }
@@ -277,27 +292,131 @@ func (p *Poller) applyTransition(ctx context.Context, board *db.Board, sess *db.
 	return nil
 }
 
-func listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
+func (p *Poller) listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
+	owner, repo, host, err := parseGitHubRepo(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	apiBase := apiBaseFor(host)
+	tok := token()
+
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(cctx, "gh", "pr", "list",
-		"--state", "all",
-		"--limit", "200",
-		"--json", "headRefName,state,isDraft",
-	)
-	cmd.Dir = repoPath
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("gh pr list: %w: %s", err, bytes.TrimSpace(stderr.Bytes()))
+
+	next := fmt.Sprintf("%s/repos/%s/%s/pulls?state=all&per_page=%d&sort=updated&direction=desc",
+		apiBase, url.PathEscape(owner), url.PathEscape(repo), prPageSize)
+
+	var all []ghPR
+	for page := 0; page < prMaxPages && next != ""; page++ {
+		req, err := http.NewRequestWithContext(cctx, http.MethodGet, next, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Accept", "application/vnd.github+json")
+		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		resp, err := p.http.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("github api: %w", err)
+		}
+		body, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("github api: read body: %w", err)
+		}
+		if resp.StatusCode/100 != 2 {
+			return nil, fmt.Errorf("github api %s: %s: %s",
+				next, resp.Status, strings.TrimSpace(string(body)))
+		}
+		var pageData []ghPR
+		if err := json.Unmarshal(body, &pageData); err != nil {
+			return nil, fmt.Errorf("github api: parse: %w", err)
+		}
+		all = append(all, pageData...)
+		next = parseNextLink(resp.Header.Get("Link"))
 	}
-	if stdout.Len() == 0 {
-		return nil, nil
+	return all, nil
+}
+
+func parseGitHubRepo(repoPath string) (owner, repo, host string, err error) {
+	cmd := exec.Command("git", "-C", repoPath, "remote", "get-url", "origin")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", "", "", fmt.Errorf("git remote get-url origin: %w", err)
 	}
-	var prs []ghPR
-	if err := json.Unmarshal(stdout.Bytes(), &prs); err != nil {
-		return nil, fmt.Errorf("parse gh pr list output: %w", err)
+	return parseRemoteURL(strings.TrimSpace(string(out)))
+}
+
+// parseRemoteURL handles the common GitHub remote shapes:
+//
+//	git@github.com:owner/repo(.git)
+//	ssh://git@github.com/owner/repo(.git)
+//	https://github.com/owner/repo(.git)
+func parseRemoteURL(remote string) (owner, repo, host string, err error) {
+	r := strings.TrimSuffix(remote, ".git")
+	if !strings.Contains(r, "://") && strings.Contains(r, ":") {
+		// SCP-style: [user@]host:owner/repo
+		at := strings.LastIndex(r, "@")
+		colon := strings.Index(r, ":")
+		if colon > at {
+			host = r[at+1 : colon]
+			path := strings.TrimPrefix(r[colon+1:], "/")
+			parts := strings.SplitN(path, "/", 2)
+			if len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+				return parts[0], parts[1], host, nil
+			}
+		}
+		return "", "", "", fmt.Errorf("unrecognized git remote: %s", remote)
 	}
-	return prs, nil
+	u, err := url.Parse(r)
+	if err != nil {
+		return "", "", "", fmt.Errorf("parse remote %q: %w", remote, err)
+	}
+	parts := strings.SplitN(strings.TrimPrefix(u.Path, "/"), "/", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", "", fmt.Errorf("unrecognized git remote: %s", remote)
+	}
+	return parts[0], parts[1], u.Host, nil
+}
+
+// apiBaseFor returns the REST API root for a given git host. Honors
+// GITHUB_API_URL (matching gh's convention) and falls back to the GitHub
+// Enterprise Server convention of https://<host>/api/v3 for unknown hosts.
+func apiBaseFor(host string) string {
+	if v := os.Getenv("GITHUB_API_URL"); v != "" {
+		return strings.TrimRight(v, "/")
+	}
+	if host == "" || host == "github.com" {
+		return defaultAPIBase
+	}
+	return "https://" + host + "/api/v3"
+}
+
+func token() string {
+	if v := os.Getenv("GH_TOKEN"); v != "" {
+		return v
+	}
+	return os.Getenv("GITHUB_TOKEN")
+}
+
+// parseNextLink extracts the URL of rel="next" from a GitHub Link header.
+func parseNextLink(h string) string {
+	if h == "" {
+		return ""
+	}
+	for _, part := range strings.Split(h, ",") {
+		seg := strings.TrimSpace(part)
+		end := strings.Index(seg, ">")
+		if end < 0 || !strings.HasPrefix(seg, "<") {
+			continue
+		}
+		u := seg[1:end]
+		params := seg[end+1:]
+		if strings.Contains(params, `rel="next"`) {
+			return u
+		}
+	}
+	return ""
 }
