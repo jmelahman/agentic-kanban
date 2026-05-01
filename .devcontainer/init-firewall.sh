@@ -32,6 +32,7 @@ done
 
 # Resolve allowed domains
 ALLOWED_DOMAINS=(
+    "github.com"
     "registry.npmjs.org"
     "api.anthropic.com"
     "api-staging.anthropic.com"

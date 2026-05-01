@@ -50,4 +50,12 @@ WORKDIR /workspace
 ARG CLAUDE_CODE_VERSION=latest
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} vite
 
+# Pre-seed GitHub's SSH host keys so git-over-SSH never prompts.  Keys are
+# pinned in-repo (verified against the fingerprints GitHub publishes at
+# https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/githubs-ssh-key-fingerprints)
+# rather than fetched at build time, so a compromised build-time network can't
+# inject a rogue key.
+COPY github_known_hosts /etc/ssh/ssh_known_hosts
+RUN chmod 644 /etc/ssh/ssh_known_hosts
+
 USER dev

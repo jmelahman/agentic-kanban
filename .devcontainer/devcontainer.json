@@ -9,12 +9,15 @@
     "source=${localEnv:XDG_RUNTIME_DIR}/docker.sock,target=/var/run/docker.sock,type=bind",
     "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind",
     "source=${localEnv:HOME}/.claude.json,target=/root/.claude.json,type=bind",
+    "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,readonly",
+    "source=${localEnv:SSH_AUTH_SOCK},target=/tmp/ssh-agent.sock,type=bind",
     "source=devcontainer-go-mod,target=/home/dev/go/pkg/mod,type=volume",
     "source=devcontainer-go-build,target=/root/.cache/go-build,type=volume",
     "source=devcontainer-npm,target=/root/.npm,type=volume"
   ],
   "containerEnv": {
-    "GH_TOKEN": "${localEnv:GH_TOKEN}"
+    "GH_TOKEN": "${localEnv:GH_TOKEN}",
+    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
   },
   "remoteUser": "root",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
