@@ -13,7 +13,19 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /web/dist ./web/dist
-RUN CGO_ENABLED=0 GOOS=linux go build -tags embed -trimpath -ldflags="-s -w" -o /out/kanban .
+ARG VERSION=""
+ARG COMMIT=""
+ARG DIRTY=""
+# Resolve build metadata from the in-context .git when not pinned by --build-arg.
+# Requires BUILDKIT_CONTEXT_KEEP_GIT_DIR=1 from the caller (set in docker-bake.hcl).
+RUN set -eu; \
+    VERSION="${VERSION:-$(git -C /src describe --tags --always 2>/dev/null || echo dev)}"; \
+    COMMIT="${COMMIT:-$(git -C /src rev-parse HEAD 2>/dev/null || echo none)}"; \
+    DIRTY="${DIRTY:-$(if [ -n "$(git -C /src status --porcelain 2>/dev/null)" ]; then echo true; else echo false; fi)}"; \
+    PKG=github.com/jmelahman/kanban/cmd/server; \
+    CGO_ENABLED=0 GOOS=linux go build -tags embed -trimpath \
+      -ldflags="-s -w -X ${PKG}.version=${VERSION} -X ${PKG}.commit=${COMMIT} -X ${PKG}.dirty=${DIRTY}" \
+      -o /out/kanban .
 
 FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
 RUN apk add --no-cache git ca-certificates

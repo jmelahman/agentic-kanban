@@ -27,6 +27,7 @@ type handlers struct {
 	config   *config.Config
 	tasks    *tasks.Runner
 	bus      *EventBus
+	build    BuildInfo
 }
 
 func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
@@ -35,6 +36,10 @@ func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (h *handlers) version(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.build)
 }
 
 // Boards

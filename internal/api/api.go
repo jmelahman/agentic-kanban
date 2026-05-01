@@ -12,6 +12,13 @@ import (
 	"github.com/jmelahman/kanban/web"
 )
 
+// BuildInfo is the build metadata surfaced via /api/version.
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Dirty   bool   `json:"dirty"`
+}
+
 // Deps wires together the dependencies for the HTTP layer.
 type Deps struct {
 	Store    *db.Store
@@ -20,6 +27,7 @@ type Deps struct {
 	Hooks    *hooks.Runner
 	Config   *config.Config
 	Bus      *EventBus
+	Build    BuildInfo
 }
 
 // NewMux assembles the HTTP routes and embedded frontend.
@@ -40,9 +48,11 @@ func NewMux(d Deps) http.Handler {
 		config:   d.Config,
 		tasks:    taskRunner,
 		bus:      bus,
+		build:    d.Build,
 	}
 
 	mux.HandleFunc("GET /api/health", h.health)
+	mux.HandleFunc("GET /api/version", h.version)
 
 	mux.HandleFunc("GET /api/boards", h.listBoards)
 	mux.HandleFunc("POST /api/boards", h.createBoard)

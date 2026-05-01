@@ -9,6 +9,7 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
   const { push } = useToast();
   const settingsQ = useQuery({ queryKey: ["settings"], queryFn: api.getSettings });
   const harnessesQ = useQuery({ queryKey: ["harnesses"], queryFn: api.listHarnesses });
+  const versionQ = useQuery({ queryKey: ["version"], queryFn: api.getVersion, staleTime: Infinity });
 
   const [harness, setHarness] = useState<string>("");
 
@@ -107,7 +108,19 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
             />
           </div>
         </form>
+        <footer className="border-t border-zinc-800 px-4 py-2 font-mono text-[11px] text-zinc-500">
+          {versionQ.data ? formatVersion(versionQ.data) : "…"}
+        </footer>
       </div>
     </div>
   );
+}
+
+function formatVersion(v: { version: string; commit: string; dirty: boolean }): string {
+  const sha = v.commit && v.commit !== "none" ? v.commit.slice(0, 7) : "";
+  const parts = [v.version || "dev"];
+  if (sha) parts.push(sha);
+  let s = parts.join(" · ");
+  if (v.dirty) s += "-dirty";
+  return s;
 }

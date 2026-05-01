@@ -24,10 +24,27 @@ import (
 	"github.com/jmelahman/kanban/internal/session"
 )
 
+// Build metadata. These are populated at build time via -ldflags -X. The
+// defaults make `go run` and dev builds explicit instead of looking like a
+// release.
 var (
 	version = "dev"
 	commit  = "none"
+	dirty   = "false"
 )
+
+// BuildInfo describes the running binary. dirty is true when the source tree
+// had uncommitted changes at build time.
+type BuildInfo struct {
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+	Dirty   bool   `json:"dirty"`
+}
+
+// Build returns the build metadata for the running binary.
+func Build() BuildInfo {
+	return BuildInfo{Version: version, Commit: commit, Dirty: dirty == "true" || dirty == "1"}
+}
 
 func Root() *cobra.Command {
 	var addr string
@@ -35,10 +52,14 @@ func Root() *cobra.Command {
 	var portRangeStart int
 	var portRangeEnd int
 
+	commitLabel := commit
+	if Build().Dirty {
+		commitLabel += "-dirty"
+	}
 	cmd := &cobra.Command{
 		Use:     "kanban",
 		Short:   "Kanban board for managing AI agent sessions",
-		Version: fmt.Sprintf("%s\ncommit %s", version, commit),
+		Version: fmt.Sprintf("%s\ncommit %s", version, commitLabel),
 	}
 
 	serve := &cobra.Command{
@@ -117,6 +138,11 @@ func run(addr, dataDirOverride string, portStart, portEnd int) error {
 		Hooks:    hookRunner,
 		Config:   cfg,
 		Bus:      bus,
+		Build: api.BuildInfo{
+			Version: version,
+			Commit:  commit,
+			Dirty:   dirty == "true" || dirty == "1",
+		},
 	})
 
 	pollerCtx, pollerCancel := context.WithCancel(context.Background())

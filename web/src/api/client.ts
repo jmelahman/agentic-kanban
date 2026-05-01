@@ -88,6 +88,8 @@ export type AppSettings = { harness: string };
 
 export type Harness = { id: string; label: string; pty_command: string[] };
 
+export type Version = { version: string; commit: string; dirty: boolean };
+
 export class ApiError extends Error {
   status: number;
   body: string;
@@ -160,6 +162,8 @@ export const api = {
   updateSettings: (input: { harness?: string }) =>
     request<AppSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(input) }),
   listHarnesses: () => request<Harness[]>("/api/harnesses"),
+
+  getVersion: () => request<Version>("/api/version"),
 };
 
 export type SubscribeOptions = {
