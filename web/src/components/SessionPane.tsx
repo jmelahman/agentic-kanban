@@ -63,9 +63,20 @@ export function SessionPane({
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
   const mergeMenuRef = useRef<HTMLDivElement | null>(null);
+  const paneRef = useRef<HTMLElement | null>(null);
   const [width, setWidth] = useState<number>(() => loadInitialWidth());
   const [resizing, setResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (ticketId == null) return;
+    const handler = (e: MouseEvent) => {
+      if (paneRef.current?.contains(e.target as Node)) return;
+      onClose();
+    };
+    window.addEventListener("mousedown", handler);
+    return () => window.removeEventListener("mousedown", handler);
+  }, [ticketId, onClose]);
 
   useEffect(() => {
     if (!fullscreen) return;
@@ -210,6 +221,7 @@ export function SessionPane({
 
   return (
     <aside
+      ref={paneRef}
       className={
         fullscreen
           ? "fixed inset-0 z-40 flex flex-col bg-zinc-950"
