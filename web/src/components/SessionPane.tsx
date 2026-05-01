@@ -87,7 +87,10 @@ export function SessionPane({
   useEffect(() => {
     if (ticketId == null) return;
     const handler = (e: MouseEvent) => {
-      if (paneRef.current?.contains(e.target as Node)) return;
+      const target = e.target as Element | null;
+      if (paneRef.current?.contains(target as Node)) return;
+      // Ticket clicks switch the active ticket themselves; skip close to avoid a flicker.
+      if (target?.closest("[data-ticket-card]")) return;
       onClose();
     };
     window.addEventListener("mousedown", handler);
