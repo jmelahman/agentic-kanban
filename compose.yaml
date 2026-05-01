@@ -22,3 +22,9 @@ services:
       - ${HOME}/.claude:${HOME}/.claude
       - ${HOME}/code:${HOME}/code
       - ${HOME}/.local/share/kanban:${HOME}/.local/share/kanban
+    networks:
+      - kanban-net
+
+networks:
+  kanban-net:
+    name: kanban-net

@@ -3,7 +3,8 @@
   "image": "lahmanja/devcontainer:latest",
   "runArgs": [
     "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW"
+    "--cap-add=NET_RAW",
+    "--network=kanban-net"
   ],
   "mounts": [
     "source=${localEnv:XDG_RUNTIME_DIR}/docker.sock,target=/var/run/docker.sock,type=bind",

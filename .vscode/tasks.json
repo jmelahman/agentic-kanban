@@ -13,7 +13,7 @@
     {
       "label": "Kanban Backend",
       "type": "shell",
-      "command": "go",
+      "command": "wgo",
       "args": ["run", ".", "serve"],
       "options": {
         "cwd": "${workspaceFolder}"

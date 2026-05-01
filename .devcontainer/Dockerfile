@@ -34,6 +34,8 @@ RUN ARCH="$(dpkg --print-architecture)" \
 ENV PATH="/usr/local/go/bin:/root/go/bin:/home/dev/go/bin:${PATH}" \
     GOPATH="/home/dev/go"
 
+RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@latest
+
 # Create non-root user
 RUN useradd -m -s /bin/bash dev && \
   echo "dev ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/dev && \
