@@ -21,6 +21,7 @@ import (
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 )
 
@@ -606,9 +607,9 @@ func (c *Client) ExecRun(ctx context.Context, containerID string, cmd []string) 
 		return "", err
 	}
 	defer att.Close()
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, att.Reader)
-	out := buf.String()
+	var stdout, stderr bytes.Buffer
+	_, _ = stdcopy.StdCopy(&stdout, &stderr, att.Reader)
+	out := stdout.String() + stderr.String()
 	inspect, err := c.cli.ContainerExecInspect(ctx, resp.ID)
 	if err != nil {
 		return out, err
