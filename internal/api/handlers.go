@@ -180,6 +180,7 @@ type boardStateResp struct {
 	Tickets     []db.Ticket  `json:"tickets"`
 	Sessions    []db.Session `json:"sessions"`
 	MergeConfig MergeConfig  `json:"merge_config"`
+	SyncConfig  SyncConfig   `json:"sync_config"`
 }
 
 func (h *handlers) boardState(w http.ResponseWriter, r *http.Request) {
@@ -210,6 +211,7 @@ func (h *handlers) boardState(w http.ResponseWriter, r *http.Request) {
 		Tickets:     tickets,
 		Sessions:    sessions,
 		MergeConfig: loadMergeConfig(board.SourceRepoPath),
+		SyncConfig:  loadSyncConfig(board.SourceRepoPath),
 	})
 }
 
@@ -374,6 +376,26 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 	if req.Strategy == "" {
 		req.Strategy = "rebase"
 	}
+	switch req.Strategy {
+	case "rebase", "merge":
+	default:
+		httpError(w, fmt.Errorf("strategy must be rebase or merge"), 400)
+		return
+	}
+	t, err := h.store.GetTicket(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 404)
+		return
+	}
+	board, err := h.store.GetBoard(r.Context(), t.BoardID)
+	if err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	if !loadSyncConfig(board.SourceRepoPath).allows(req.Strategy) {
+		httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
+		return
+	}
 	sess, err := h.store.GetSessionByTicket(r.Context(), id)
 	if err != nil || sess == nil {
 		httpError(w, fmt.Errorf("no session for ticket"), 404)
@@ -383,9 +405,7 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 409)
 		return
 	}
-	if t, _ := h.store.GetTicket(r.Context(), id); t != nil {
-		h.bus.publish(t.BoardID, "session_updated", sess)
-	}
+	h.bus.publish(t.BoardID, "session_updated", sess)
 	w.WriteHeader(204)
 }
 

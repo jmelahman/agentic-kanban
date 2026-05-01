@@ -40,12 +40,18 @@ export type MergeConfig = {
   allow_rebase: boolean;
 };
 
+export type SyncConfig = {
+  allow_rebase: boolean;
+  allow_merge: boolean;
+};
+
 export type BoardState = {
   board: Board;
   columns: Column[];
   tickets: Ticket[];
   sessions: Session[];
   merge_config: MergeConfig;
+  sync_config: SyncConfig;
 };
 
 export type DiscoveredTask = {

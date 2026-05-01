@@ -5,3 +5,12 @@ container_port = 7474
 [[task]]
 label = "Kanban Frontend"
 container_port = 5173
+
+[sync]
+allow_rebase = true
+allow_merge = false
+
+[merge]
+allow_merge_commit = false
+allow_squash = true
+allow_rebase = false

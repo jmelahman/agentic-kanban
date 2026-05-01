@@ -25,7 +25,7 @@ export function Board({ boardId }: { boardId: number }) {
   if (stateQ.isLoading) return <p className="p-4 text-sm text-zinc-400">Loading…</p>;
   if (!stateQ.data) return <p className="p-4 text-sm text-red-400">No data.</p>;
 
-  const { board, columns, tickets, sessions, merge_config } = stateQ.data;
+  const { board, columns, tickets, sessions, merge_config, sync_config } = stateQ.data;
   const sessionByTicket = new Map<number, (typeof sessions)[number]>(sessions.map((s) => [s.ticket_id, s]));
 
   function onDragEnd(e: DragEndEvent) {
@@ -59,6 +59,7 @@ export function Board({ boardId }: { boardId: number }) {
         boardId={boardId}
         baseBranch={board.base_branch}
         mergeConfig={merge_config}
+        syncConfig={sync_config}
         ticketId={activeTicket}
         session={activeTicket != null ? sessionByTicket.get(activeTicket) ?? null : null}
         onClose={() => setActiveTicket(null)}

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, BoardState, MergeConfig, Session } from "../api/client";
+import { api, ApiError, BoardState, MergeConfig, Session, SyncConfig } from "../api/client";
 import { useToast } from "../toast";
 import { PendingButton } from "./PendingButton";
 import { TasksPanel } from "./TasksPanel";
@@ -39,10 +39,25 @@ function enabledMergeStrategies(cfg: MergeConfig): MergeStrategy[] {
   return out;
 }
 
+type SyncStrategy = "rebase" | "merge";
+
+const SYNC_STRATEGY_LABELS: Record<SyncStrategy, string> = {
+  rebase: "rebase from",
+  merge: "merge from",
+};
+
+function enabledSyncStrategies(cfg: SyncConfig): SyncStrategy[] {
+  const out: SyncStrategy[] = [];
+  if (cfg.allow_rebase) out.push("rebase");
+  if (cfg.allow_merge) out.push("merge");
+  return out;
+}
+
 export function SessionPane({
   boardId,
   baseBranch,
   mergeConfig,
+  syncConfig,
   ticketId,
   session,
   onClose,
@@ -51,6 +66,7 @@ export function SessionPane({
   boardId: number;
   baseBranch: string;
   mergeConfig: MergeConfig;
+  syncConfig: SyncConfig;
   ticketId: number | null;
   session: Session | null;
   onClose: () => void;
@@ -188,7 +204,7 @@ export function SessionPane({
     },
   });
   const syncMut = useMutation({
-    mutationFn: (strategy: "rebase" | "merge") => api.syncTicket(ticketId!, strategy),
+    mutationFn: (strategy: SyncStrategy) => api.syncTicket(ticketId!, strategy),
     onSuccess: (_data, strategy) => {
       setSyncMenuOpen(false);
       toast.push("success", `${strategy} from ${baseBranch} succeeded`);
@@ -215,6 +231,7 @@ export function SessionPane({
 
   if (ticketId == null) return null;
   const mergeStrategies = enabledMergeStrategies(mergeConfig);
+  const syncStrategies = enabledSyncStrategies(syncConfig);
   const status = session?.status;
   const isRunning = status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
@@ -274,7 +291,17 @@ export function SessionPane({
               pendingLabel="stopping…"
             />
           )}
-          {session && (
+          {session && syncStrategies.length === 1 && (
+            <PendingButton
+              className="rounded bg-zinc-800 px-2 py-1 text-zinc-300 disabled:opacity-50"
+              onClick={() => syncMut.mutate(syncStrategies[0])}
+              pending={syncMut.isPending}
+              idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+              pendingLabel="syncing…"
+              title={`update from ${baseBranch}`}
+            />
+          )}
+          {session && syncStrategies.length > 1 && (
             <div className="relative" ref={syncMenuRef}>
               <PendingButton
                 className="rounded bg-zinc-800 px-2 py-1 text-zinc-300 disabled:opacity-50"
@@ -286,18 +313,15 @@ export function SessionPane({
               />
               {syncMenuOpen && (
                 <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
-                  <button
-                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
-                    onClick={() => syncMut.mutate("rebase")}
-                  >
-                    rebase from <span className="font-mono">{baseBranch}</span>
-                  </button>
-                  <button
-                    className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
-                    onClick={() => syncMut.mutate("merge")}
-                  >
-                    merge from <span className="font-mono">{baseBranch}</span>
-                  </button>
+                  {syncStrategies.map((s) => (
+                    <button
+                      key={s}
+                      className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
+                      onClick={() => syncMut.mutate(s)}
+                    >
+                      {SYNC_STRATEGY_LABELS[s]} <span className="font-mono">{baseBranch}</span>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
