@@ -1,9 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, Session } from "../api/client";
+import { api, ApiError, Session } from "../api/client";
+import { useToast } from "../toast";
+import { PendingButton } from "./PendingButton";
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
 
 export function TasksPanel({ session }: { session: Session; boardId: number }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const tasksQ = useQuery({ queryKey: ["tasks", session.id], queryFn: () => api.discoverTasks(session.id) });
   const runsQ = useQuery({
     queryKey: ["runs", session.id],
@@ -25,10 +34,12 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
       qc.invalidateQueries({ queryKey: ["runs", session.id] });
       qc.invalidateQueries({ queryKey: ["ports", session.id] });
     },
+    onError: (err) => toast.push("error", errorMessage(err)),
   });
   const stopMut = useMutation({
     mutationFn: (id: number) => api.stopTaskRun(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["runs", session.id] }),
+    onError: (err) => toast.push("error", errorMessage(err)),
   });
 
   if (session.status === "stopped") {
@@ -65,9 +76,13 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
                       )}
                     </span>
                   )}
-                  <button className="rounded bg-red-700 px-2 py-0.5 text-xs" onClick={() => startMut.mutate(t.label)}>
-                    run
-                  </button>
+                  <PendingButton
+                    className="rounded bg-red-700 px-2 py-0.5 text-xs disabled:opacity-60"
+                    onClick={() => startMut.mutate(t.label)}
+                    pending={startMut.isPending && startMut.variables === t.label}
+                    idleLabel="run"
+                    pendingLabel="starting…"
+                  />
                 </div>
               </li>
             );
@@ -89,9 +104,13 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
                     {openOutputId === r.id ? "hide output" : "output"}
                   </button>
                   {r.status === "running" && (
-                    <button className="rounded bg-zinc-800 px-2 py-0.5 text-xs" onClick={() => stopMut.mutate(r.id)}>
-                      stop
-                    </button>
+                    <PendingButton
+                      className="rounded bg-zinc-800 px-2 py-0.5 text-xs disabled:opacity-60"
+                      onClick={() => stopMut.mutate(r.id)}
+                      pending={stopMut.isPending && stopMut.variables === r.id}
+                      idleLabel="stop"
+                      pendingLabel="stopping…"
+                    />
                   )}
                 </div>
               </div>

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { api, Ticket } from "../api/client";
+import { api, ApiError, Ticket } from "../api/client";
 import { useToast } from "../toast";
+import { PendingButton } from "./PendingButton";
 
 export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose: () => void }) {
   const qc = useQueryClient();
@@ -17,6 +18,10 @@ export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose:
       qc.invalidateQueries({ queryKey: ["archived", boardId] });
       qc.invalidateQueries({ queryKey: ["board", boardId] });
       push("success", "Ticket and its resources deleted.");
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
+      push("error", msg);
     },
   });
 
@@ -102,20 +107,22 @@ function ArchivedRow({
           {archivedAt && <div className="text-xs text-zinc-500">archived {archivedAt}</div>}
         </div>
         <div className="flex shrink-0 gap-1">
-          <button
+          <PendingButton
             className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
             onClick={onUnarchive}
             disabled={busy}
-          >
-            {unarchivePending ? "unarchiving…" : "unarchive"}
-          </button>
-          <button
+            pending={unarchivePending}
+            idleLabel="unarchive"
+            pendingLabel="unarchiving…"
+          />
+          <PendingButton
             className="rounded bg-red-900/60 px-2 py-1 text-xs text-red-100 hover:bg-red-800 disabled:opacity-50"
             onClick={onDelete}
             disabled={busy}
-          >
-            {deletePending ? "deleting…" : "delete"}
-          </button>
+            pending={deletePending}
+            idleLabel="delete"
+            pendingLabel="deleting…"
+          />
         </div>
       </div>
     </li>

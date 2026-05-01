@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, ApiError, Board } from "../api/client";
 import { useToast } from "../toast";
+import { PendingButton } from "./PendingButton";
 
 export function BoardSettings({
   board,
@@ -131,13 +132,14 @@ export function BoardSettings({
             >
               cancel
             </button>
-            <button
+            <PendingButton
               type="submit"
               disabled={!dirty || !valid || busy}
               className="rounded bg-red-700 px-3 py-1 text-white disabled:opacity-50"
-            >
-              {updateMut.isPending ? "saving…" : "save"}
-            </button>
+              pending={updateMut.isPending}
+              idleLabel="save"
+              pendingLabel="saving…"
+            />
           </div>
         </form>
         <div className="border-t border-zinc-800 p-4">
@@ -146,7 +148,7 @@ export function BoardSettings({
             Deletes this board, all its tickets, and stops/destroys every running session
             (containers, worktrees, and branches).
           </p>
-          <button
+          <PendingButton
             type="button"
             className="mt-2 rounded bg-red-900/60 px-3 py-1 text-xs text-red-100 hover:bg-red-800 disabled:opacity-50"
             disabled={busy}
@@ -159,9 +161,10 @@ export function BoardSettings({
                 deleteMut.mutate();
               }
             }}
-          >
-            {deleteMut.isPending ? "deleting…" : "delete board"}
-          </button>
+            pending={deleteMut.isPending}
+            idleLabel="delete board"
+            pendingLabel="deleting…"
+          />
         </div>
       </div>
     </div>

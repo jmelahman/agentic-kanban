@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { useState } from "react";
-import { api, Column as ColumnType, Session, Ticket as TicketType } from "../api/client";
+import { api, ApiError, Column as ColumnType, Session, Ticket as TicketType } from "../api/client";
+import { useToast } from "../toast";
+import { PendingButton } from "./PendingButton";
 import { Ticket } from "./Ticket";
 
 export function Column(props: {
@@ -13,6 +15,7 @@ export function Column(props: {
   onSelect: (id: number) => void;
 }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const { setNodeRef, isOver } = useDroppable({ id: `col-${props.column.id}` });
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
@@ -23,6 +26,10 @@ export function Column(props: {
       setTitle("");
       setAdding(false);
       qc.invalidateQueries({ queryKey: ["board", props.boardId] });
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
+      toast.push("error", msg);
     },
   });
 
@@ -52,7 +59,7 @@ export function Column(props: {
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (title.trim()) createMut.mutate();
+            if (title.trim() && !createMut.isPending) createMut.mutate();
           }}
           className="flex flex-col gap-1"
         >
@@ -62,12 +69,22 @@ export function Column(props: {
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="ticket title"
+            disabled={createMut.isPending}
           />
           <div className="flex gap-2 text-xs">
-            <button className="rounded bg-red-700 px-2 py-1" type="submit">
-              add
-            </button>
-            <button className="text-zinc-400" type="button" onClick={() => setAdding(false)}>
+            <PendingButton
+              className="rounded bg-red-700 px-2 py-1 disabled:opacity-60"
+              type="submit"
+              pending={createMut.isPending}
+              idleLabel="add"
+              pendingLabel="adding…"
+            />
+            <button
+              className="text-zinc-400 disabled:opacity-50"
+              type="button"
+              onClick={() => setAdding(false)}
+              disabled={createMut.isPending}
+            >
               cancel
             </button>
           </div>

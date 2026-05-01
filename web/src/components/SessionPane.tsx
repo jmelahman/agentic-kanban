@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, Session } from "../api/client";
+import { api, ApiError, BoardState, Session } from "../api/client";
 import { useToast } from "../toast";
+import { PendingButton } from "./PendingButton";
 import { TasksPanel } from "./TasksPanel";
 
 const MIN_WIDTH = 320;
@@ -14,6 +15,12 @@ function loadInitialWidth(): number {
   const n = raw ? Number(raw) : NaN;
   if (!Number.isFinite(n)) return DEFAULT_WIDTH;
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, n));
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  if (err instanceof Error) return err.message;
+  return String(err);
 }
 
 export function SessionPane({
@@ -73,37 +80,66 @@ export function SessionPane({
     return () => window.removeEventListener("mousedown", handler);
   }, [syncMenuOpen]);
 
+  const boardKey = ["board", boardId] as const;
+
+  const optimisticStatus = (sessionId: number, status: string) => {
+    const prev = qc.getQueryData<BoardState>(boardKey);
+    if (!prev) return { prev };
+    qc.setQueryData<BoardState>(boardKey, {
+      ...prev,
+      sessions: prev.sessions.map((s) => (s.id === sessionId ? { ...s, status } : s)),
+    });
+    return { prev };
+  };
+
   const ensureMut = useMutation({
     mutationFn: () => api.ensureSession(ticketId!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+    onError: (err) => toast.push("error", errorMessage(err)),
   });
   const startMut = useMutation({
     mutationFn: () => api.startSession(session!.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+    onMutate: () => (session ? optimisticStatus(session.id, "starting") : { prev: undefined }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+    onError: (err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
+      toast.push("error", errorMessage(err));
+    },
   });
   const stopMut = useMutation({
     mutationFn: () => api.stopSession(session!.id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+    onMutate: () => (session ? optimisticStatus(session.id, "stopping") : { prev: undefined }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+    onError: (err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
+      toast.push("error", errorMessage(err));
+    },
   });
   const archiveMut = useMutation({
     mutationFn: () => api.archiveTicket(ticketId!),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["board", boardId] });
+      qc.invalidateQueries({ queryKey: boardKey });
       onClose();
     },
+    onError: (err) => toast.push("error", errorMessage(err)),
   });
   const syncMut = useMutation({
     mutationFn: (strategy: "rebase" | "merge") => api.syncTicket(ticketId!, strategy),
     onSuccess: (_data, strategy) => {
       setSyncMenuOpen(false);
       toast.push("success", `${strategy} from ${baseBranch} succeeded`);
-      qc.invalidateQueries({ queryKey: ["board", boardId] });
+      qc.invalidateQueries({ queryKey: boardKey });
+    },
+    onError: (err) => {
+      setSyncMenuOpen(false);
+      toast.push("error", errorMessage(err));
     },
   });
 
   if (ticketId == null) return null;
-  const isRunning = session?.status && !["stopped", "error"].includes(session.status);
-  const canStart = session && !isRunning;
+  const status = session?.status;
+  const isRunning = status && !["stopped", "error", "stopping"].includes(status);
+  const canStart = session && !isRunning && status !== "starting";
 
   return (
     <aside
@@ -127,30 +163,42 @@ export function SessionPane({
         <span className="text-zinc-400">{session?.branch_name}</span>
         <div className="ml-auto flex gap-2">
           {!session && (
-            <button className="rounded bg-red-700 px-2 py-1" onClick={() => ensureMut.mutate()} disabled={ensureMut.isPending}>
-              create session
-            </button>
+            <PendingButton
+              className="rounded bg-red-700 px-2 py-1 disabled:opacity-60"
+              onClick={() => ensureMut.mutate()}
+              pending={ensureMut.isPending}
+              idleLabel="create session"
+              pendingLabel="creating session…"
+            />
           )}
           {canStart && (
-            <button className="rounded bg-red-700 px-2 py-1" onClick={() => startMut.mutate()} disabled={startMut.isPending}>
-              start
-            </button>
+            <PendingButton
+              className="rounded bg-red-700 px-2 py-1 disabled:opacity-60"
+              onClick={() => startMut.mutate()}
+              pending={startMut.isPending || status === "starting"}
+              idleLabel="start"
+              pendingLabel="starting…"
+            />
           )}
           {session && isRunning && (
-            <button className="rounded bg-zinc-700 px-2 py-1" onClick={() => stopMut.mutate()} disabled={stopMut.isPending}>
-              stop
-            </button>
+            <PendingButton
+              className="rounded bg-zinc-700 px-2 py-1 disabled:opacity-60"
+              onClick={() => stopMut.mutate()}
+              pending={stopMut.isPending || status === "stopping"}
+              idleLabel="stop"
+              pendingLabel="stopping…"
+            />
           )}
           {session && (
             <div className="relative" ref={syncMenuRef}>
-              <button
+              <PendingButton
                 className="rounded bg-zinc-800 px-2 py-1 text-zinc-300 disabled:opacity-50"
                 onClick={() => setSyncMenuOpen((v) => !v)}
-                disabled={syncMut.isPending}
+                pending={syncMut.isPending}
+                idleLabel="sync ▾"
+                pendingLabel="syncing…"
                 title={`update from ${baseBranch}`}
-              >
-                {syncMut.isPending ? "syncing…" : "sync ▾"}
-              </button>
+              />
               {syncMenuOpen && (
                 <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
                   <button
@@ -169,9 +217,13 @@ export function SessionPane({
               )}
             </div>
           )}
-          <button className="rounded bg-zinc-800 px-2 py-1 text-zinc-300" onClick={() => archiveMut.mutate()}>
-            archive
-          </button>
+          <PendingButton
+            className="rounded bg-zinc-800 px-2 py-1 text-zinc-300 disabled:opacity-60"
+            onClick={() => archiveMut.mutate()}
+            pending={archiveMut.isPending}
+            idleLabel="archive"
+            pendingLabel="archiving…"
+          />
           <button className="text-zinc-400" onClick={onClose}>
             ✕
           </button>

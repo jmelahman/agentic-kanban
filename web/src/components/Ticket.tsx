@@ -4,6 +4,7 @@ import { Session, Ticket as TicketType } from "../api/client";
 const STATUS_COLOR: Record<string, string> = {
   stopped: "text-zinc-500",
   starting: "text-amber-400",
+  stopping: "text-amber-400",
   idle: "text-emerald-400",
   working: "text-sky-400",
   awaiting_perm: "text-yellow-400",
