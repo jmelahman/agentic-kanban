@@ -4,21 +4,11 @@ set -euo pipefail
 
 echo "Setting up firewall..."
 
-# Preserve docker dns resolution
-DOCKER_DNS_RULES=$(iptables-save | grep -E "^-A.*-d 127.0.0.11/32" || true)
-
-# Flush all rules
-iptables -t nat -F
-iptables -t nat -X
-iptables -t mangle -F
-iptables -t mangle -X
+# Only flush the filter table. The nat table holds Docker's redirect for the
+# embedded DNS resolver at 127.0.0.11; flushing it breaks DNS for the rest of
+# this script and the container.
 iptables -F
 iptables -X
-
-# Restore docker dns rules
-if [ -n "$DOCKER_DNS_RULES" ]; then
-    echo "$DOCKER_DNS_RULES" | iptables-restore -n
-fi
 
 # Create ipset for allowed destinations
 ipset create allowed-domains hash:net || true

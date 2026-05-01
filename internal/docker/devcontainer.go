@@ -577,6 +577,7 @@ func (c *Client) Exec(ctx context.Context, containerID string, cmd []string, wor
 }
 
 // ExecRun runs a command synchronously, returning the combined output.
+// Returns an error if the exec exits with a non-zero status.
 func (c *Client) ExecRun(ctx context.Context, containerID string, cmd []string) (string, error) {
 	resp, err := c.cli.ContainerExecCreate(ctx, containerID, container.ExecOptions{
 		Cmd:          cmd,
@@ -593,7 +594,15 @@ func (c *Client) ExecRun(ctx context.Context, containerID string, cmd []string) 
 	defer att.Close()
 	var buf bytes.Buffer
 	_, _ = io.Copy(&buf, att.Reader)
-	return buf.String(), nil
+	out := buf.String()
+	inspect, err := c.cli.ContainerExecInspect(ctx, resp.ID)
+	if err != nil {
+		return out, err
+	}
+	if inspect.ExitCode != 0 {
+		return out, fmt.Errorf("exec exited %d: %s", inspect.ExitCode, strings.TrimSpace(out))
+	}
+	return out, nil
 }
 
 // ExecAttachTTY creates a TTY exec and attaches stdio; the caller pipes IO.

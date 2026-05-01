@@ -316,8 +316,9 @@ func (r *Runner) Stop(ctx context.Context, sess *db.Session, tr *db.TaskRun) err
 	if inspect.Pid == 0 {
 		return nil
 	}
-	_, err = r.docker.ExecRun(ctx, *sess.ContainerID, []string{"sh", "-c", fmt.Sprintf("kill -TERM -%d 2>/dev/null || kill -TERM %d 2>/dev/null", inspect.Pid, inspect.Pid)})
-	return err
+	// Both kills exiting non-zero just means the process is already gone, which is fine.
+	_, _ = r.docker.ExecRun(ctx, *sess.ContainerID, []string{"sh", "-c", fmt.Sprintf("kill -TERM -%d 2>/dev/null || kill -TERM %d 2>/dev/null", inspect.Pid, inspect.Pid)})
+	return nil
 }
 
 // Subscribe returns a channel of output lines and a cancel func.
