@@ -131,19 +131,22 @@ export function SessionPane({
     return { prev };
   };
 
-  const ensureMut = useMutation({
-    mutationFn: () => api.ensureSession(ticketId!),
-    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
-    onError: (err) => toast.push("error", errorMessage(err)),
-  });
   const startMut = useMutation({
-    mutationFn: () => api.startSession(session!.id),
-    onMutate: () => (session ? optimisticStatus(session.id, "starting") : { prev: undefined }),
+    mutationFn: (id: number) => api.startSession(id),
+    onMutate: (id) => optimisticStatus(id, "starting"),
     onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
     onError: (err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
       toast.push("error", errorMessage(err));
     },
+  });
+  const ensureMut = useMutation({
+    mutationFn: () => api.ensureSession(ticketId!),
+    onSuccess: (created) => {
+      qc.invalidateQueries({ queryKey: boardKey });
+      startMut.mutate(created.id);
+    },
+    onError: (err) => toast.push("error", errorMessage(err)),
   });
   const stopMut = useMutation({
     mutationFn: () => api.stopSession(session!.id),
@@ -244,7 +247,7 @@ export function SessionPane({
           {canStart && (
             <PendingButton
               className="rounded bg-red-700 px-2 py-1 disabled:opacity-60"
-              onClick={() => startMut.mutate()}
+              onClick={() => startMut.mutate(session.id)}
               pending={startMut.isPending || status === "starting"}
               idleLabel="start"
               pendingLabel="starting…"
