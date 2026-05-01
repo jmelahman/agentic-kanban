@@ -17,6 +17,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/pkg/jsonmessage"
@@ -404,6 +405,17 @@ func parseMountString(s string) (mount.Mount, error) {
 
 func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, worktreePath string) (string, error) {
 	if cfg.Image != "" {
+		if _, _, err := c.cli.ImageInspectWithRaw(ctx, cfg.Image); err == nil {
+			return cfg.Image, nil
+		}
+		rc, err := c.cli.ImagePull(ctx, cfg.Image, image.PullOptions{})
+		if err != nil {
+			return "", fmt.Errorf("pull image %q: %w", cfg.Image, err)
+		}
+		defer rc.Close()
+		if err := jsonmessage.DisplayJSONMessagesStream(rc, io.Discard, 0, false, nil); err != nil {
+			return "", fmt.Errorf("pull image %q: %w", cfg.Image, err)
+		}
 		return cfg.Image, nil
 	}
 	dockerfileRel := cfg.Build.Dockerfile
