@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { api, ApiError, Ticket } from "../api/client";
 import { useToast } from "../toast";
-import { PendingButton } from "./PendingButton";
+import { Button } from "./Button";
 
 export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose: () => void }) {
   const qc = useQueryClient();
@@ -48,9 +48,9 @@ export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose:
       <aside className="flex w-[480px] flex-col border-l border-zinc-800 bg-zinc-950">
         <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
           <h2 className="text-sm font-semibold">Archived tickets</h2>
-          <button className="text-zinc-400 hover:text-zinc-100" onClick={onClose} aria-label="Close">
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
             ✕
-          </button>
+          </Button>
         </header>
         <div className="flex-1 overflow-y-auto p-3">
           {archivedQ.isLoading && <p className="text-sm text-zinc-400">Loading…</p>}
@@ -107,16 +107,18 @@ function ArchivedRow({
           {archivedAt && <div className="text-xs text-zinc-500">archived {archivedAt}</div>}
         </div>
         <div className="flex shrink-0 gap-1">
-          <PendingButton
-            className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+          <Button
+            variant="neutral"
+            size="sm"
             onClick={onUnarchive}
             disabled={busy}
             pending={unarchivePending}
             idleLabel="unarchive"
             pendingLabel="unarchiving…"
           />
-          <PendingButton
-            className="rounded bg-red-900/60 px-2 py-1 text-xs text-red-100 hover:bg-red-800 disabled:opacity-50"
+          <Button
+            variant="danger"
+            size="sm"
             onClick={onDelete}
             disabled={busy}
             pending={deletePending}

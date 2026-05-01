@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, Session } from "../api/client";
 import { useToast } from "../toast";
-import { PendingButton } from "./PendingButton";
+import { Button } from "./Button";
 
 function errorMessage(err: unknown): string {
   if (err instanceof ApiError) return err.message;
@@ -76,8 +76,9 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
                       )}
                     </span>
                   )}
-                  <PendingButton
-                    className="rounded bg-red-700 px-2 py-0.5 text-xs disabled:opacity-60"
+                  <Button
+                    variant="primary"
+                    size="sm"
                     onClick={() => startMut.mutate(t.label)}
                     pending={startMut.isPending && startMut.variables === t.label}
                     idleLabel="run"
@@ -100,12 +101,13 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
                   <div className="text-xs text-zinc-500">{r.status}{r.exit_code != null ? ` (exit ${r.exit_code})` : ""}</div>
                 </div>
                 <div className="flex gap-2">
-                  <button className="text-xs text-zinc-300" onClick={() => setOpenOutputId(openOutputId === r.id ? null : r.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => setOpenOutputId(openOutputId === r.id ? null : r.id)}>
                     {openOutputId === r.id ? "hide output" : "output"}
-                  </button>
+                  </Button>
                   {r.status === "running" && (
-                    <PendingButton
-                      className="rounded bg-zinc-800 px-2 py-0.5 text-xs disabled:opacity-60"
+                    <Button
+                      variant="neutral"
+                      size="sm"
                       onClick={() => stopMut.mutate(r.id)}
                       pending={stopMut.isPending && stopMut.variables === r.id}
                       idleLabel="stop"
@@ -148,9 +150,9 @@ function TaskOutput({ runId }: { runId: number }) {
   return (
     <div className="mt-2">
       <div className="mb-1 flex justify-end">
-        <button className="text-xs text-zinc-300" onClick={onCopy}>
+        <Button variant="ghost" size="sm" onClick={onCopy}>
           {copied ? "copied" : "copy"}
-        </button>
+        </Button>
       </div>
       <pre ref={ref} className="max-h-64 overflow-y-auto rounded bg-black p-2 text-xs leading-tight text-zinc-200">
         {lines.join("\n")}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, ApiError, Board } from "../api/client";
-import { PendingButton } from "./PendingButton";
+import { Button } from "./Button";
 
 export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }) {
   const [open, setOpen] = useState(false);
@@ -12,9 +12,9 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
 
   if (!open) {
     return (
-      <button className="rounded bg-zinc-800 px-3 py-1 text-sm hover:bg-zinc-700" onClick={() => setOpen(true)}>
+      <Button variant="neutral" size="lg" className="text-sm" onClick={() => setOpen(true)}>
         + new board
-      </button>
+      </Button>
     );
   }
 
@@ -42,21 +42,22 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
         <input className="rounded bg-zinc-900 px-2 py-1" placeholder="name" value={name} onChange={(e) => setName(e.target.value)} required />
         <input className="rounded bg-zinc-900 px-2 py-1 w-72" placeholder="/host/path/to/repo" value={repo} onChange={(e) => setRepo(e.target.value)} required />
         <input className="rounded bg-zinc-900 px-2 py-1 w-28" placeholder="base branch" value={base} onChange={(e) => setBase(e.target.value)} />
-        <PendingButton
+        <Button
           type="submit"
-          className="rounded bg-red-700 px-3 py-1 text-white disabled:opacity-50"
+          variant="primary"
+          size="lg"
           pending={busy}
           idleLabel="create"
           pendingLabel="creating…"
         />
-        <button
+        <Button
           type="button"
-          className="text-zinc-400 disabled:opacity-50"
+          variant="ghost"
           disabled={busy}
           onClick={() => { setOpen(false); setError(null); }}
         >
           cancel
-        </button>
+        </Button>
       </div>
       {error && <div className="text-red-400 text-xs">{error}</div>}
     </form>

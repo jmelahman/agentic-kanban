@@ -3,7 +3,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { useState } from "react";
 import { api, ApiError, Column as ColumnType, Session, Ticket as TicketType } from "../api/client";
 import { useToast } from "../toast";
-import { PendingButton } from "./PendingButton";
+import { Button } from "./Button";
 import { Ticket } from "./Ticket";
 
 export function Column(props: {
@@ -72,27 +72,27 @@ export function Column(props: {
             disabled={createMut.isPending}
           />
           <div className="flex gap-2 text-xs">
-            <PendingButton
-              className="rounded bg-red-700 px-2 py-1 disabled:opacity-60"
+            <Button
+              variant="primary"
               type="submit"
               pending={createMut.isPending}
               idleLabel="add"
               pendingLabel="adding…"
             />
-            <button
-              className="text-zinc-400 disabled:opacity-50"
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => setAdding(false)}
               disabled={createMut.isPending}
             >
               cancel
-            </button>
+            </Button>
           </div>
         </form>
       ) : (
-        <button className="rounded border border-dashed border-zinc-700 py-1 text-xs text-zinc-400 hover:bg-zinc-800" onClick={() => setAdding(true)}>
+        <Button variant="dashed" className="text-xs" onClick={() => setAdding(true)}>
           + add ticket
-        </button>
+        </Button>
       )}
     </div>
   );

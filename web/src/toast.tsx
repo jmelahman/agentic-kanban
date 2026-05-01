@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { Button } from "./components/Button";
 
 export type ToastKind = "error" | "info" | "success";
 
@@ -76,14 +77,15 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       } ${entered ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
     >
       <div className="flex-1 break-words whitespace-pre-wrap font-mono text-xs leading-snug">{toast.message}</div>
-      <button
+      <Button
         type="button"
+        variant="ghost"
+        size="icon"
         onClick={onDismiss}
         aria-label="Dismiss"
-        className="text-zinc-400 hover:text-zinc-100"
       >
         ×
-      </button>
+      </Button>
     </div>
   );
 }

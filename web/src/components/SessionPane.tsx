@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, BoardState, MergeConfig, Session, SyncConfig } from "../api/client";
 import { useToast } from "../toast";
-import { PendingButton } from "./PendingButton";
+import { Button } from "./Button";
 import { TasksPanel } from "./TasksPanel";
 
 const MIN_WIDTH = 320;
@@ -268,8 +268,8 @@ export function SessionPane({
         <span className="text-zinc-400">{session?.branch_name}</span>
         <div className="ml-auto flex gap-2">
           {!session && (
-            <PendingButton
-              className="rounded bg-red-700 px-2 py-1 disabled:opacity-60"
+            <Button
+              variant="primary"
               onClick={() => ensureMut.mutate()}
               pending={ensureMut.isPending}
               idleLabel="create session"
@@ -277,8 +277,8 @@ export function SessionPane({
             />
           )}
           {canStart && (
-            <PendingButton
-              className="rounded bg-red-700 px-2 py-1 disabled:opacity-60"
+            <Button
+              variant="primary"
               onClick={() => startMut.mutate(session.id)}
               pending={startMut.isPending || status === "starting"}
               idleLabel="start"
@@ -286,8 +286,8 @@ export function SessionPane({
             />
           )}
           {session && isRunning && (
-            <PendingButton
-              className="rounded bg-zinc-700 px-2 py-1 disabled:opacity-60"
+            <Button
+              variant="secondary"
               onClick={() => stopMut.mutate()}
               pending={stopMut.isPending || status === "stopping"}
               idleLabel="stop"
@@ -295,8 +295,8 @@ export function SessionPane({
             />
           )}
           {session && syncStrategies.length === 1 && (
-            <PendingButton
-              className="rounded bg-zinc-800 px-2 py-1 text-zinc-300 disabled:opacity-50"
+            <Button
+              variant="neutral"
               onClick={() => syncMut.mutate(syncStrategies[0])}
               pending={syncMut.isPending}
               idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
@@ -306,8 +306,8 @@ export function SessionPane({
           )}
           {session && syncStrategies.length > 1 && (
             <div className="relative" ref={syncMenuRef}>
-              <PendingButton
-                className="rounded bg-zinc-800 px-2 py-1 text-zinc-300 disabled:opacity-50"
+              <Button
+                variant="neutral"
                 onClick={() => setSyncMenuOpen((v) => !v)}
                 pending={syncMut.isPending}
                 idleLabel="sync ▾"
@@ -317,21 +317,22 @@ export function SessionPane({
               {syncMenuOpen && (
                 <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
                   {syncStrategies.map((s) => (
-                    <button
+                    <Button
                       key={s}
-                      className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
+                      variant="ghost"
+                      className="block w-full text-left"
                       onClick={() => syncMut.mutate(s)}
                     >
                       {SYNC_STRATEGY_LABELS[s]} <span className="font-mono">{baseBranch}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
             </div>
           )}
           {session && mergeStrategies.length === 1 && (
-            <PendingButton
-              className="rounded bg-red-700 px-2 py-1 disabled:opacity-50"
+            <Button
+              variant="primary"
               onClick={() => mergeMut.mutate(mergeStrategies[0])}
               pending={mergeMut.isPending}
               idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
@@ -341,8 +342,8 @@ export function SessionPane({
           )}
           {session && mergeStrategies.length > 1 && (
             <div className="relative" ref={mergeMenuRef}>
-              <PendingButton
-                className="rounded bg-red-700 px-2 py-1 disabled:opacity-50"
+              <Button
+                variant="primary"
                 onClick={() => setMergeMenuOpen((v) => !v)}
                 pending={mergeMut.isPending}
                 idleLabel="merge ▾"
@@ -352,27 +353,30 @@ export function SessionPane({
               {mergeMenuOpen && (
                 <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
                   {mergeStrategies.map((s) => (
-                    <button
+                    <Button
                       key={s}
-                      className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-800"
+                      variant="ghost"
+                      className="block w-full text-left"
                       onClick={() => mergeMut.mutate(s)}
                     >
                       {MERGE_STRATEGY_LABELS[s]}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
             </div>
           )}
-          <PendingButton
-            className="rounded bg-zinc-800 px-2 py-1 text-zinc-300 disabled:opacity-60"
+          <Button
+            variant="neutral"
             onClick={() => archiveMut.mutate()}
             pending={archiveMut.isPending}
             idleLabel="archive"
             pendingLabel="archiving…"
           />
-          <button
-            className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hover:bg-zinc-800 hover:text-zinc-200"
             onClick={() => setFullscreen((v) => !v)}
             aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
             title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
@@ -412,10 +416,10 @@ export function SessionPane({
                 <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
               </svg>
             )}
-          </button>
-          <button className="text-zinc-400" onClick={onClose}>
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onClose}>
             ✕
-          </button>
+          </Button>
         </div>
       </div>
       <div className="flex border-b border-zinc-800 text-sm">
@@ -442,7 +446,7 @@ function Tab({ active, onClick, label }: { active: boolean; onClick: () => void;
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-2 ${active ? "border-b-2 border-red-500 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
+      className={`px-3 py-2 transition-colors duration-150 ${active ? "border-b-2 border-red-500 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
     >
       {label}
     </button>

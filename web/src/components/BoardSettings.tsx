@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, ApiError, Board } from "../api/client";
 import { useToast } from "../toast";
-import { PendingButton } from "./PendingButton";
+import { Button } from "./Button";
 
 export function BoardSettings({
   board,
@@ -75,14 +75,15 @@ export function BoardSettings({
       <div className="relative w-[520px] max-w-[calc(100vw-2rem)] rounded border border-zinc-800 bg-zinc-950 shadow-lg">
         <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
           <h2 className="text-sm font-semibold">Board settings</h2>
-          <button
-            className="text-zinc-400 hover:text-zinc-100 disabled:opacity-50"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={onClose}
             disabled={busy}
             aria-label="Close"
           >
             ✕
-          </button>
+          </Button>
         </header>
         <form
           className="flex flex-col gap-3 p-4 text-sm"
@@ -124,18 +125,19 @@ export function BoardSettings({
             <span>worktree root: <span className="font-mono">{board.worktree_root}</span></span>
           </div>
           <div className="mt-2 flex items-center justify-end gap-2">
-            <button
+            <Button
               type="button"
-              className="text-zinc-400 hover:text-zinc-100 disabled:opacity-50"
+              variant="ghost"
               onClick={onClose}
               disabled={busy}
             >
               cancel
-            </button>
-            <PendingButton
+            </Button>
+            <Button
               type="submit"
+              variant="primary"
+              size="lg"
               disabled={!dirty || !valid || busy}
-              className="rounded bg-red-700 px-3 py-1 text-white disabled:opacity-50"
               pending={updateMut.isPending}
               idleLabel="save"
               pendingLabel="saving…"
@@ -148,9 +150,11 @@ export function BoardSettings({
             Deletes this board, all its tickets, and stops/destroys every running session
             (containers, worktrees, and branches).
           </p>
-          <PendingButton
+          <Button
             type="button"
-            className="mt-2 rounded bg-red-900/60 px-3 py-1 text-xs text-red-100 hover:bg-red-800 disabled:opacity-50"
+            variant="danger"
+            size="lg"
+            className="mt-2 text-xs"
             disabled={busy}
             onClick={() => {
               if (
