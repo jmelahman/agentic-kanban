@@ -89,11 +89,55 @@ printf '[%s]   curl exit=%s %s\n' "$ts" "$rc" "$result" >>"$log" 2>/dev/null
 exit 0
 `
 
+// legacyClaudeSettings is the previous template that called curl inline and
+// silenced all errors. Worktrees created before the helper-script refactor
+// still carry this file, and because writeClaudeSettings preserves existing
+// settings, the new logging helper never replaces it. We hash-match against
+// this exact content so we can safely overwrite kanban-authored legacy files
+// without clobbering anything a user customized.
+const legacyClaudeSettings = `{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -fsS -m 2 -X PATCH -H 'Content-Type: application/json' -d '{\"status\":\"working\"}' \"$KANBAN_API_URL/api/sessions/$KANBAN_SESSION_ID/status\" >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -fsS -m 2 -X PATCH -H 'Content-Type: application/json' -d '{\"status\":\"idle\"}' \"$KANBAN_API_URL/api/sessions/$KANBAN_SESSION_ID/status\" >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -fsS -m 2 -X PATCH -H 'Content-Type: application/json' -d '{\"status\":\"awaiting_perm\"}' \"$KANBAN_API_URL/api/sessions/$KANBAN_SESSION_ID/status\" >/dev/null 2>&1 || true"
+          }
+        ]
+      }
+    ]
+  }
+}
+`
+
 // writeClaudeSettings writes .claude/settings.local.json into the worktree if
 // it does not already exist, plus the helper kanban-status.sh script the
 // hooks invoke. Existing settings.local.json is left alone so user-authored
-// hook configuration is preserved; the helper script is overwritten on every
-// call so bug fixes in the script roll out without manual cleanup.
+// hook configuration is preserved -- except when its contents exactly match
+// a known legacy kanban template, in which case it is upgraded in place. The
+// helper script is overwritten on every call so bug fixes in the script roll
+// out without manual cleanup.
 func writeClaudeSettings(worktreePath string) error {
 	dir := filepath.Join(worktreePath, ".claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -104,8 +148,10 @@ func writeClaudeSettings(worktreePath string) error {
 		return err
 	}
 	settingsPath := filepath.Join(dir, "settings.local.json")
-	if _, err := os.Stat(settingsPath); err == nil {
-		return nil
+	if existing, err := os.ReadFile(settingsPath); err == nil {
+		if string(existing) != legacyClaudeSettings {
+			return nil
+		}
 	}
 	return os.WriteFile(settingsPath, []byte(claudeSettings), 0o644)
 }

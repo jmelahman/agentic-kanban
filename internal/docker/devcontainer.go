@@ -303,6 +303,10 @@ func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef s
 		Mounts:        mounts,
 		AutoRemove:    false,
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyDisabled},
+		// Resolve host.docker.internal to the host on Linux so status hooks can
+		// reach a host-mode kanban server. Docker Desktop adds this mapping
+		// automatically; bare-metal Linux does not.
+		ExtraHosts: []string{"host.docker.internal:host-gateway"},
 	}
 
 	// Note: we deliberately do not publish session container ports to the host.
