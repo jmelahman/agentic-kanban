@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
-import { Terminal } from "@xterm/xterm";
-import { FitAddon } from "@xterm/addon-fit";
+import { init, Terminal, FitAddon } from "ghostty-web";
+
+const ghosttyReady = init();
 
 type Props = {
   sessionId: number;
@@ -12,58 +13,69 @@ export function PtyTerminal({ sessionId, mountTarget }: Props) {
   const fitRef = useRef<FitAddon | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    let cleanup: (() => void) | null = null;
+
     const host = document.createElement("div");
     host.style.height = "100%";
     host.style.width = "100%";
     hostRef.current = host;
     getOffscreenContainer().appendChild(host);
 
-    const term = new Terminal({
-      convertEol: true,
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-      fontSize: 13,
-      theme: { background: "#09090b" },
+    ghosttyReady.then(() => {
+      if (cancelled) return;
+
+      const term = new Terminal({
+        fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+        fontSize: 13,
+        theme: { background: "#09090b" },
+      });
+      const fit = new FitAddon();
+      fitRef.current = fit;
+      term.loadAddon(fit);
+      term.open(host);
+      fit.fit();
+
+      const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const ws = new WebSocket(`${proto}//${window.location.host}/ws/sessions/${sessionId}/pty`);
+      ws.binaryType = "arraybuffer";
+
+      const sendResize = () => {
+        ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
+      };
+
+      ws.onopen = () => sendResize();
+      ws.onmessage = (e) => {
+        if (typeof e.data === "string") {
+          term.write(e.data);
+        } else {
+          term.write(new Uint8Array(e.data));
+        }
+      };
+      ws.onclose = () => term.write("\r\n[disconnected]\r\n");
+
+      const dataDisp = term.onData((data) => {
+        if (ws.readyState === WebSocket.OPEN) ws.send(data);
+      });
+      const resizeDisp = term.onResize(() => {
+        if (ws.readyState === WebSocket.OPEN) sendResize();
+      });
+
+      const observer = new ResizeObserver(() => fit.fit());
+      observer.observe(host);
+
+      cleanup = () => {
+        observer.disconnect();
+        dataDisp.dispose();
+        resizeDisp.dispose();
+        ws.close();
+        term.dispose();
+      };
     });
-    const fit = new FitAddon();
-    fitRef.current = fit;
-    term.loadAddon(fit);
-    term.open(host);
-    fit.fit();
-
-    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${proto}//${window.location.host}/ws/sessions/${sessionId}/pty`);
-    ws.binaryType = "arraybuffer";
-
-    const sendResize = () => {
-      ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
-    };
-
-    ws.onopen = () => sendResize();
-    ws.onmessage = (e) => {
-      if (typeof e.data === "string") {
-        term.write(e.data);
-      } else {
-        term.write(new Uint8Array(e.data));
-      }
-    };
-    ws.onclose = () => term.write("\r\n[disconnected]\r\n");
-
-    const dataDisp = term.onData((data) => {
-      if (ws.readyState === WebSocket.OPEN) ws.send(data);
-    });
-    const resizeDisp = term.onResize(() => {
-      if (ws.readyState === WebSocket.OPEN) sendResize();
-    });
-
-    const observer = new ResizeObserver(() => fit.fit());
-    observer.observe(host);
 
     return () => {
-      observer.disconnect();
-      dataDisp.dispose();
-      resizeDisp.dispose();
-      ws.close();
-      term.dispose();
+      cancelled = true;
+      cleanup?.();
       host.remove();
       hostRef.current = null;
       fitRef.current = null;
