@@ -27,7 +27,7 @@ export default function App() {
     return subscribeBoard(activeId, {
       onEvent: (type) => {
         qc.invalidateQueries({ queryKey: ["board", activeId] });
-        if (type === "ticket_archived" || type === "ticket_deleted") {
+        if (type === "ticket_archived" || type === "ticket_unarchived" || type === "ticket_deleted") {
           qc.invalidateQueries({ queryKey: ["archived", activeId] });
         }
       },

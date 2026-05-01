@@ -299,6 +299,28 @@ func (h *handlers) archiveTicket(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+func (h *handlers) unarchiveTicket(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	t, err := h.store.GetTicket(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 404)
+		return
+	}
+	if t.ArchivedAt == nil {
+		httpError(w, fmt.Errorf("ticket is not archived"), 400)
+		return
+	}
+	if err := h.store.UnarchiveTicket(r.Context(), id); err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	updated, _ := h.store.GetTicket(r.Context(), id)
+	if updated != nil {
+		h.bus.publish(updated.BoardID, "ticket_unarchived", updated)
+	}
+	w.WriteHeader(204)
+}
+
 func (h *handlers) listArchivedTickets(w http.ResponseWriter, r *http.Request) {
 	boardID := pathID(r, "id")
 	tickets, err := h.store.ListArchivedTickets(r.Context(), boardID)

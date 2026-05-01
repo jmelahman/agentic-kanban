@@ -116,6 +116,7 @@ export const api = {
   moveTicket: (id: number, input: { column_id: number; position: number }) =>
     request<void>(`/api/tickets/${id}/move`, { method: "PATCH", body: JSON.stringify(input) }),
   archiveTicket: (id: number) => request<void>(`/api/tickets/${id}/archive`, { method: "POST" }),
+  unarchiveTicket: (id: number) => request<void>(`/api/tickets/${id}/unarchive`, { method: "POST" }),
   listArchivedTickets: (boardId: number) => request<Ticket[]>(`/api/boards/${boardId}/archived`),
   deleteTicket: (id: number) => request<void>(`/api/tickets/${id}`, { method: "DELETE" }),
   syncTicket: (id: number, strategy: "rebase" | "merge") =>
@@ -151,7 +152,7 @@ export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => v
       opts.onEvent(e.type, null);
     }
   };
-  for (const t of ["ticket_created", "ticket_moved", "ticket_archived", "ticket_deleted", "session_updated", "ready"]) {
+  for (const t of ["ticket_created", "ticket_moved", "ticket_archived", "ticket_unarchived", "ticket_deleted", "session_updated", "ready"]) {
     es.addEventListener(t, handler as EventListener);
   }
   es.onopen = () => opts.onStatus?.("open");

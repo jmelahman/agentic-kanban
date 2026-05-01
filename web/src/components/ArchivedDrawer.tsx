@@ -20,6 +20,15 @@ export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose:
     },
   });
 
+  const unarchiveMut = useMutation({
+    mutationFn: (id: number) => api.unarchiveTicket(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["archived", boardId] });
+      qc.invalidateQueries({ queryKey: ["board", boardId] });
+      push("success", "Ticket unarchived.");
+    },
+  });
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -48,7 +57,9 @@ export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose:
               <ArchivedRow
                 key={t.id}
                 ticket={t}
-                pending={deleteMut.isPending && deleteMut.variables === t.id}
+                deletePending={deleteMut.isPending && deleteMut.variables === t.id}
+                unarchivePending={unarchiveMut.isPending && unarchiveMut.variables === t.id}
+                onUnarchive={() => unarchiveMut.mutate(t.id)}
                 onDelete={() => {
                   if (
                     window.confirm(
@@ -69,14 +80,19 @@ export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose:
 
 function ArchivedRow({
   ticket,
-  pending,
+  deletePending,
+  unarchivePending,
   onDelete,
+  onUnarchive,
 }: {
   ticket: Ticket;
-  pending: boolean;
+  deletePending: boolean;
+  unarchivePending: boolean;
   onDelete: () => void;
+  onUnarchive: () => void;
 }) {
   const archivedAt = ticket.archived_at ? new Date(ticket.archived_at * 1000).toLocaleString() : "";
+  const busy = deletePending || unarchivePending;
   return (
     <li className="rounded border border-zinc-800 bg-zinc-900 p-2 text-sm">
       <div className="flex items-start justify-between gap-2">
@@ -85,13 +101,22 @@ function ArchivedRow({
           <div className="truncate font-mono text-xs text-zinc-500">{ticket.slug}</div>
           {archivedAt && <div className="text-xs text-zinc-500">archived {archivedAt}</div>}
         </div>
-        <button
-          className="rounded bg-red-900/60 px-2 py-1 text-xs text-red-100 hover:bg-red-800 disabled:opacity-50"
-          onClick={onDelete}
-          disabled={pending}
-        >
-          {pending ? "deleting…" : "delete"}
-        </button>
+        <div className="flex shrink-0 gap-1">
+          <button
+            className="rounded bg-zinc-800 px-2 py-1 text-xs text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+            onClick={onUnarchive}
+            disabled={busy}
+          >
+            {unarchivePending ? "unarchiving…" : "unarchive"}
+          </button>
+          <button
+            className="rounded bg-red-900/60 px-2 py-1 text-xs text-red-100 hover:bg-red-800 disabled:opacity-50"
+            onClick={onDelete}
+            disabled={busy}
+          >
+            {deletePending ? "deleting…" : "delete"}
+          </button>
+        </div>
       </div>
     </li>
   );

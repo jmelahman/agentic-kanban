@@ -206,6 +206,25 @@ func (s *Store) ArchiveTicket(ctx context.Context, id int64) error {
 	return err
 }
 
+func (s *Store) UnarchiveTicket(ctx context.Context, id int64) error {
+	var columnID int64
+	if err := s.db.QueryRowContext(ctx, `SELECT column_id FROM tickets WHERE id=?`, id).Scan(&columnID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+	var maxPos sql.NullInt64
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT MAX(position) FROM tickets WHERE column_id=? AND archived_at IS NULL`, columnID,
+	).Scan(&maxPos); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE tickets SET archived_at=NULL, position=? WHERE id=?`, int(maxPos.Int64)+1, id)
+	return err
+}
+
 func (s *Store) ListArchivedTickets(ctx context.Context, boardID int64) ([]Ticket, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at
