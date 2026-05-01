@@ -168,6 +168,185 @@ func TestBuildContainerConfig_NoGitMountWhenSourceMissing(t *testing.T) {
 	}
 }
 
+func TestLoadDevcontainer_FallbackOrder(t *testing.T) {
+	write := func(t *testing.T, path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("prefers .devcontainer/devcontainer.json", func(t *testing.T) {
+		repo := t.TempDir()
+		xdg := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", xdg)
+		write(t, filepath.Join(repo, ".devcontainer", "devcontainer.json"), `{"name":"primary"}`)
+		write(t, filepath.Join(repo, ".devcontainer.json"), `{"name":"alt"}`)
+		write(t, filepath.Join(xdg, "kanban", "devcontainer.json"), `{"name":"user"}`)
+
+		cfg, err := LoadDevcontainer(repo)
+		if err != nil {
+			t.Fatalf("LoadDevcontainer: %v", err)
+		}
+		if cfg.Name != "primary" {
+			t.Errorf("Name = %q; want %q", cfg.Name, "primary")
+		}
+	})
+
+	t.Run("falls back to .devcontainer.json", func(t *testing.T) {
+		repo := t.TempDir()
+		xdg := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", xdg)
+		write(t, filepath.Join(repo, ".devcontainer.json"), `{"name":"alt"}`)
+		write(t, filepath.Join(xdg, "kanban", "devcontainer.json"), `{"name":"user"}`)
+
+		cfg, err := LoadDevcontainer(repo)
+		if err != nil {
+			t.Fatalf("LoadDevcontainer: %v", err)
+		}
+		if cfg.Name != "alt" {
+			t.Errorf("Name = %q; want %q", cfg.Name, "alt")
+		}
+	})
+
+	t.Run("falls back to user single-file config when repo has none", func(t *testing.T) {
+		repo := t.TempDir()
+		xdg := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", xdg)
+		write(t, filepath.Join(xdg, "kanban", "devcontainer.json"), `{"name":"user"}`)
+
+		cfg, err := LoadDevcontainer(repo)
+		if err != nil {
+			t.Fatalf("LoadDevcontainer: %v", err)
+		}
+		if cfg.Name != "user" {
+			t.Errorf("Name = %q; want %q", cfg.Name, "user")
+		}
+		wantDir := filepath.Join(xdg, "kanban")
+		if cfg.ConfigDir != wantDir {
+			t.Errorf("ConfigDir = %q; want %q", cfg.ConfigDir, wantDir)
+		}
+	})
+
+	t.Run("prefers user .devcontainer/ dir over single-file", func(t *testing.T) {
+		repo := t.TempDir()
+		xdg := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", xdg)
+		write(t, filepath.Join(xdg, "kanban", ".devcontainer", "devcontainer.json"), `{"name":"user-dir"}`)
+		write(t, filepath.Join(xdg, "kanban", "devcontainer.json"), `{"name":"user-file"}`)
+
+		cfg, err := LoadDevcontainer(repo)
+		if err != nil {
+			t.Fatalf("LoadDevcontainer: %v", err)
+		}
+		if cfg.Name != "user-dir" {
+			t.Errorf("Name = %q; want %q", cfg.Name, "user-dir")
+		}
+		wantDir := filepath.Join(xdg, "kanban", ".devcontainer")
+		if cfg.ConfigDir != wantDir {
+			t.Errorf("ConfigDir = %q; want %q", cfg.ConfigDir, wantDir)
+		}
+	})
+
+	t.Run("errors when neither repo nor user config has one", func(t *testing.T) {
+		repo := t.TempDir()
+		xdg := t.TempDir()
+		t.Setenv("XDG_CONFIG_HOME", xdg)
+
+		if _, err := LoadDevcontainer(repo); err == nil {
+			t.Fatal("expected error when no devcontainer.json exists, got nil")
+		}
+	})
+}
+
+func TestResolveBuildPaths(t *testing.T) {
+	write := func(t *testing.T, path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("FROM scratch\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("repo .devcontainer/ Dockerfile", func(t *testing.T) {
+		repo := t.TempDir()
+		write(t, filepath.Join(repo, ".devcontainer", "Dockerfile"))
+		cfg := &DevcontainerConfig{ConfigDir: filepath.Join(repo, ".devcontainer")}
+
+		ctxDir, dfPath := resolveBuildPaths(cfg, repo)
+		if ctxDir != filepath.Join(repo, ".devcontainer") {
+			t.Errorf("contextDir = %q; want %q", ctxDir, filepath.Join(repo, ".devcontainer"))
+		}
+		if dfPath != filepath.Join(repo, ".devcontainer", "Dockerfile") {
+			t.Errorf("dockerfilePath = %q; want %q", dfPath, filepath.Join(repo, ".devcontainer", "Dockerfile"))
+		}
+	})
+
+	t.Run("repo .devcontainer/ json with repo-root Dockerfile", func(t *testing.T) {
+		repo := t.TempDir()
+		write(t, filepath.Join(repo, "Dockerfile"))
+		cfg := &DevcontainerConfig{ConfigDir: filepath.Join(repo, ".devcontainer")}
+
+		_, dfPath := resolveBuildPaths(cfg, repo)
+		if dfPath != filepath.Join(repo, "Dockerfile") {
+			t.Errorf("dockerfilePath = %q; want fallback to %q", dfPath, filepath.Join(repo, "Dockerfile"))
+		}
+	})
+
+	t.Run("user .devcontainer/ Dockerfile resolves under user dir", func(t *testing.T) {
+		repo := t.TempDir()
+		userDir := t.TempDir()
+		userDevcontainer := filepath.Join(userDir, ".devcontainer")
+		write(t, filepath.Join(userDevcontainer, "Dockerfile"))
+		cfg := &DevcontainerConfig{ConfigDir: userDevcontainer}
+
+		ctxDir, dfPath := resolveBuildPaths(cfg, repo)
+		if ctxDir != userDevcontainer {
+			t.Errorf("contextDir = %q; want %q", ctxDir, userDevcontainer)
+		}
+		if dfPath != filepath.Join(userDevcontainer, "Dockerfile") {
+			t.Errorf("dockerfilePath = %q; want %q", dfPath, filepath.Join(userDevcontainer, "Dockerfile"))
+		}
+	})
+
+	t.Run("user single-file json with sibling Dockerfile", func(t *testing.T) {
+		repo := t.TempDir()
+		userDir := t.TempDir()
+		write(t, filepath.Join(userDir, "Dockerfile"))
+		cfg := &DevcontainerConfig{ConfigDir: userDir}
+
+		ctxDir, dfPath := resolveBuildPaths(cfg, repo)
+		if ctxDir != userDir {
+			t.Errorf("contextDir = %q; want %q", ctxDir, userDir)
+		}
+		if dfPath != filepath.Join(userDir, "Dockerfile") {
+			t.Errorf("dockerfilePath = %q; want %q", dfPath, filepath.Join(userDir, "Dockerfile"))
+		}
+	})
+
+	t.Run("custom dockerfile name and context", func(t *testing.T) {
+		userDir := t.TempDir()
+		write(t, filepath.Join(userDir, "build", "Dockerfile.dev"))
+		cfg := &DevcontainerConfig{
+			ConfigDir: userDir,
+			Build:     BuildConfig{Dockerfile: "build/Dockerfile.dev", Context: "build"},
+		}
+
+		ctxDir, dfPath := resolveBuildPaths(cfg, "/unused/repo")
+		if ctxDir != filepath.Join(userDir, "build") {
+			t.Errorf("contextDir = %q; want %q", ctxDir, filepath.Join(userDir, "build"))
+		}
+		if dfPath != filepath.Join(userDir, "build", "Dockerfile.dev") {
+			t.Errorf("dockerfilePath = %q; want %q", dfPath, filepath.Join(userDir, "build", "Dockerfile.dev"))
+		}
+	})
+}
+
 func TestBuildContainerConfig_HostDockerInternalAlias(t *testing.T) {
 	cfg := &DevcontainerConfig{WorkspaceFolder: "/workspace"}
 	opts := SpawnOptions{WorktreePath: "/host/worktree", ContainerName: "test"}

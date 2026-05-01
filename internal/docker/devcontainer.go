@@ -7,8 +7,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -38,6 +40,11 @@ type DevcontainerConfig struct {
 	ContainerEnv     map[string]string `json:"containerEnv"`
 	PostStartCommand string            `json:"postStartCommand"`
 	WaitFor          string            `json:"waitFor"`
+
+	// ConfigDir is the directory containing the loaded devcontainer.json. Build
+	// context and Dockerfile paths resolve relative to it so user-level fallback
+	// configs can ship their own Dockerfile alongside the json.
+	ConfigDir string `json:"-"`
 }
 
 type BuildConfig struct {
@@ -166,24 +173,80 @@ func (c *DevcontainerConfig) Substitute(ctx SubstitutionContext) {
 	c.WaitFor = Substitute(c.WaitFor, ctx)
 }
 
-// LoadDevcontainer parses .devcontainer/devcontainer.json from a worktree.
+// LoadDevcontainer parses devcontainer.json for a worktree. It probes, in
+// order:
+//  1. <worktree>/.devcontainer/devcontainer.json
+//  2. <worktree>/.devcontainer.json
+//  3. <userConfigDir>/kanban/.devcontainer/devcontainer.json
+//  4. <userConfigDir>/kanban/devcontainer.json
+//
+// The user-level fallbacks let users without a repo-defined devcontainer still
+// get a session container; the .devcontainer/ directory form lets them ship a
+// sibling Dockerfile.
 func LoadDevcontainer(worktreePath string) (*DevcontainerConfig, error) {
-	path := filepath.Join(worktreePath, ".devcontainer", "devcontainer.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		// Fall back to .devcontainer.json at repo root.
-		alt := filepath.Join(worktreePath, ".devcontainer.json")
-		data, err = os.ReadFile(alt)
-		if err != nil {
-			return nil, fmt.Errorf("read devcontainer.json: %w", err)
+	candidates := []string{
+		filepath.Join(worktreePath, ".devcontainer", "devcontainer.json"),
+		filepath.Join(worktreePath, ".devcontainer.json"),
+	}
+	if userDir, err := userKanbanConfigDir(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(userDir, ".devcontainer", "devcontainer.json"),
+			filepath.Join(userDir, "devcontainer.json"),
+		)
+	}
+
+	var data []byte
+	var loaded string
+	for _, path := range candidates {
+		b, err := os.ReadFile(path)
+		if err == nil {
+			data = b
+			loaded = path
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read %s: %w", path, err)
 		}
 	}
+	if data == nil {
+		return nil, fmt.Errorf("read devcontainer.json: not found in %s or user config", worktreePath)
+	}
+	if !strings.HasPrefix(loaded, worktreePath) {
+		log.Printf("devcontainer: %s has no devcontainer.json; using user fallback at %s", worktreePath, loaded)
+	}
+
 	stripped := stripJSONComments(data)
 	var cfg DevcontainerConfig
 	if err := json.Unmarshal(stripped, &cfg); err != nil {
-		return nil, fmt.Errorf("parse devcontainer.json: %w", err)
+		return nil, fmt.Errorf("parse %s: %w", loaded, err)
 	}
+	cfg.ConfigDir = filepath.Dir(loaded)
 	return &cfg, nil
+}
+
+// userKanbanConfigDir returns the user-level kanban config directory,
+// $XDG_CONFIG_HOME/kanban or ~/.config/kanban.
+func userKanbanConfigDir() (string, error) {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "kanban"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".config", "kanban"), nil
+}
+
+// UserDevcontainerPath returns the single-file user-level fallback path,
+// $XDG_CONFIG_HOME/kanban/devcontainer.json or ~/.config/kanban/devcontainer.json.
+// The .devcontainer/ directory form (sibling Dockerfile supported) takes
+// precedence over this single-file form when both exist.
+func UserDevcontainerPath() (string, error) {
+	dir, err := userKanbanConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "devcontainer.json"), nil
 }
 
 // stripJSONComments removes // line comments and /* */ block comments.
@@ -458,22 +521,7 @@ func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, workt
 		}
 		return cfg.Image, nil
 	}
-	dockerfileRel := cfg.Build.Dockerfile
-	if dockerfileRel == "" {
-		dockerfileRel = "Dockerfile"
-	}
-	contextRel := cfg.Build.Context
-	if contextRel == "" {
-		contextRel = "."
-	}
-	contextDir := filepath.Join(worktreePath, ".devcontainer", contextRel)
-	if _, err := os.Stat(contextDir); err != nil {
-		contextDir = filepath.Join(worktreePath, contextRel)
-	}
-	dockerfilePath := filepath.Join(worktreePath, ".devcontainer", dockerfileRel)
-	if _, err := os.Stat(dockerfilePath); err != nil {
-		dockerfilePath = filepath.Join(worktreePath, dockerfileRel)
-	}
+	contextDir, dockerfilePath := resolveBuildPaths(cfg, worktreePath)
 
 	tag, err := imageTag(worktreePath, dockerfilePath, cfg.Build.Args)
 	if err != nil {
@@ -508,6 +556,35 @@ func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, workt
 		return "", fmt.Errorf("image build: %w", err)
 	}
 	return tag, nil
+}
+
+// resolveBuildPaths picks the build context dir and Dockerfile path for cfg.
+// It prefers the directory the loaded devcontainer.json lives in (handling
+// repo .devcontainer/, repo-root .devcontainer.json, and user-level fallback
+// uniformly), then falls back to the worktree root so an in-.devcontainer/
+// json can reference a Dockerfile at the repo root without a `..` prefix.
+func resolveBuildPaths(cfg *DevcontainerConfig, worktreePath string) (contextDir, dockerfilePath string) {
+	dockerfileRel := cfg.Build.Dockerfile
+	if dockerfileRel == "" {
+		dockerfileRel = "Dockerfile"
+	}
+	contextRel := cfg.Build.Context
+	if contextRel == "" {
+		contextRel = "."
+	}
+	configDir := cfg.ConfigDir
+	if configDir == "" {
+		configDir = filepath.Join(worktreePath, ".devcontainer")
+	}
+	contextDir = filepath.Join(configDir, contextRel)
+	if _, err := os.Stat(contextDir); err != nil {
+		contextDir = filepath.Join(worktreePath, contextRel)
+	}
+	dockerfilePath = filepath.Join(configDir, dockerfileRel)
+	if _, err := os.Stat(dockerfilePath); err != nil {
+		dockerfilePath = filepath.Join(worktreePath, dockerfileRel)
+	}
+	return contextDir, dockerfilePath
 }
 
 func imageTag(worktreePath, dockerfilePath string, args map[string]string) (string, error) {
