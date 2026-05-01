@@ -48,9 +48,13 @@ RUN mkdir -p /workspace && \
 
 WORKDIR /workspace
 
-# Install Claude Code
+# Install agent CLIs (Claude Code, pi)
 ARG CLAUDE_CODE_VERSION=latest
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} vite typescript @typescript/native-preview
+ARG PI_CODING_AGENT_VERSION=latest
+RUN npm install -g \
+    @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
+    @mariozechner/pi-coding-agent@${PI_CODING_AGENT_VERSION} \
+    vite typescript @typescript/native-preview
 
 # Pre-seed GitHub's SSH host keys so git-over-SSH never prompts.  Keys are
 # pinned in-repo (verified against the fingerprints GitHub publishes at
