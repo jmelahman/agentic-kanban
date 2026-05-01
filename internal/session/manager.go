@@ -130,6 +130,11 @@ func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, erro
 		sourceRepoPath = board.SourceRepoPath
 	}
 
+	if m.apiBase == "" {
+		log.Printf("session %d: KANBAN_API_URL is empty; status hooks from inside the container will be no-ops", sess.ID)
+	} else {
+		log.Printf("session %d: spawning with KANBAN_API_URL=%s", sess.ID, m.apiBase)
+	}
 	res, err := m.docker.Spawn(ctx, cfg, docker.SpawnOptions{
 		WorktreePath:   sess.WorktreePath,
 		SourceRepoPath: sourceRepoPath,

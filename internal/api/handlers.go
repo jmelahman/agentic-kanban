@@ -547,9 +547,11 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	var req updateSessionStatusReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Printf("session %d status: decode body: %v (remote=%s)", id, err, r.RemoteAddr)
 		httpError(w, err, 400)
 		return
 	}
+	log.Printf("session %d status: received %q (remote=%s)", id, req.Status, r.RemoteAddr)
 	var hookEvent string
 	switch req.Status {
 	case db.SessionStatusWorking:

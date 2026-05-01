@@ -100,7 +100,13 @@ func run(addr, dataDirOverride string, portStart, portEnd int) error {
 
 	hookRunner := hooks.NewRunner(store)
 	sessionMgr := session.NewManager(store, dockerClient, hookRunner)
-	sessionMgr.SetAPIBase(buildAPIBase(selfName, addr))
+	apiBase := buildAPIBase(selfName, addr)
+	// Log the resolved callback URL so host-mode runs (selfName == "") are easy
+	// to spot: "host.docker.internal" only resolves under Docker Desktop or
+	// when the session container has --add-host=host-gateway, which is why
+	// status hooks tend to silently fail on bare-metal Linux setups.
+	log.Printf("session callback api base: %s (self container=%q)", apiBase, selfName)
+	sessionMgr.SetAPIBase(apiBase)
 
 	bus := api.NewEventBus()
 
