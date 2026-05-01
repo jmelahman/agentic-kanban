@@ -39,3 +39,11 @@ web/node_modules/
 
 # Local planning artifacts
 plans/
+
+# python packaging
+dist/
+*.egg-info/
+__pycache__/
+
+# release artifacts
+/kanban

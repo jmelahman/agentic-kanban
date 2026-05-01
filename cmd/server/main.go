@@ -24,6 +24,11 @@ import (
 	"github.com/jmelahman/kanban/internal/session"
 )
 
+var (
+	version = "dev"
+	commit  = "none"
+)
+
 func Root() *cobra.Command {
 	var addr string
 	var dataDir string
@@ -31,8 +36,9 @@ func Root() *cobra.Command {
 	var portRangeEnd int
 
 	cmd := &cobra.Command{
-		Use:   "kanban",
-		Short: "Kanban board for managing Claude Code sessions",
+		Use:     "kanban",
+		Short:   "Kanban board for managing Claude Code sessions",
+		Version: fmt.Sprintf("%s\ncommit %s", version, commit),
 	}
 
 	serve := &cobra.Command{
