@@ -17,6 +17,7 @@ services:
       KANBAN_DATA_DIR: ${HOME}/.local/share/kanban
       GH_TOKEN: ${GH_TOKEN:-}
       DEVCONTAINER_REMOTE_USER: ${DEVCONTAINER_REMOTE_USER:-}
+      SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:-}
     volumes:
       - ${XDG_RUNTIME_DIR}/docker.sock:/var/run/docker.sock
       - ${HOME}/.claude:${HOME}/.claude

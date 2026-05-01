@@ -12,3 +12,17 @@ target "default" {
     BUILDKIT_INLINE_CACHE = 1
   }
 }
+
+target "devcontainer" {
+  context = ".devcontainer"
+  dockerfile = "Dockerfile"
+  cache_from = [
+    "docker.io/lahmanja/devcontainer:latest",
+  ]
+  tags = [
+    "lahmanja/devcontainer:latest",
+  ]
+  args = {
+    BUILDKIT_INLINE_CACHE = 1
+  }
+}

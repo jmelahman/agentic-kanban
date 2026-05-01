@@ -396,6 +396,9 @@ func parseMountString(s string) (mount.Mount, error) {
 	if m.Target == "" {
 		return m, fmt.Errorf("mount missing target")
 	}
+	if m.Type == mount.TypeBind && m.Source == "" {
+		return m, fmt.Errorf("bind mount has empty source (an unset ${localEnv:VAR} likely substituted to empty)")
+	}
 	return m, nil
 }
 
