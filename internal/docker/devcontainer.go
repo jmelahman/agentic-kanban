@@ -342,11 +342,15 @@ func applyRunArgs(args []string, hostCfg *container.HostConfig) {
 		case a == "--cap-drop" && i+1 < len(args):
 			hostCfg.CapDrop = append(hostCfg.CapDrop, args[i+1])
 			i++
+		case strings.HasPrefix(a, "--cap-drop="):
+			hostCfg.CapDrop = append(hostCfg.CapDrop, strings.TrimPrefix(a, "--cap-drop="))
 		case a == "--privileged":
 			hostCfg.Privileged = true
 		case a == "--network" && i+1 < len(args):
 			hostCfg.NetworkMode = container.NetworkMode(args[i+1])
 			i++
+		case strings.HasPrefix(a, "--network="):
+			hostCfg.NetworkMode = container.NetworkMode(strings.TrimPrefix(a, "--network="))
 		case a == "--init":
 			t := true
 			hostCfg.Init = &t
