@@ -4,6 +4,18 @@ import { api, Session } from "../api/client";
 import { useToast } from "../toast";
 import { TasksPanel } from "./TasksPanel";
 
+const MIN_WIDTH = 320;
+const MAX_WIDTH = 1600;
+const DEFAULT_WIDTH = 640;
+const WIDTH_STORAGE_KEY = "sessionPane.width";
+
+function loadInitialWidth(): number {
+  const raw = typeof localStorage !== "undefined" ? localStorage.getItem(WIDTH_STORAGE_KEY) : null;
+  const n = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(n)) return DEFAULT_WIDTH;
+  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, n));
+}
+
 export function SessionPane({
   boardId,
   baseBranch,
@@ -24,6 +36,33 @@ export function SessionPane({
   const [tab, setTab] = useState<"terminal" | "tasks">("terminal");
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState<number>(() => loadInitialWidth());
+  const [resizing, setResizing] = useState(false);
+
+  useEffect(() => {
+    if (!resizing) return;
+    const onMove = (e: MouseEvent) => {
+      const next = window.innerWidth - e.clientX;
+      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)));
+    };
+    const onUp = () => setResizing(false);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [resizing]);
+
+  useEffect(() => {
+    localStorage.setItem(WIDTH_STORAGE_KEY, String(width));
+  }, [width]);
 
   useEffect(() => {
     if (!syncMenuOpen) return;
@@ -67,7 +106,22 @@ export function SessionPane({
   const canStart = session && !isRunning;
 
   return (
-    <aside className="flex w-[640px] flex-col border-l border-zinc-800 bg-zinc-950">
+    <aside
+      className="relative flex flex-col border-l border-zinc-800 bg-zinc-950"
+      style={{ width: `${width}px`, flex: `0 0 ${width}px` }}
+    >
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        onMouseDown={(e) => {
+          e.preventDefault();
+          setResizing(true);
+        }}
+        onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
+        className={`absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-red-500/40 ${
+          resizing ? "bg-red-500/60" : ""
+        }`}
+      />
       <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2 text-sm">
         <span className="font-medium">Ticket #{ticketId}</span>
         <span className="text-zinc-400">{session?.branch_name}</span>
