@@ -138,11 +138,22 @@ export function SessionPane({
   });
   const archiveMut = useMutation({
     mutationFn: () => api.archiveTicket(ticketId!),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: boardKey });
+    onMutate: () => {
+      const prev = qc.getQueryData<BoardState>(boardKey);
+      if (prev) {
+        qc.setQueryData<BoardState>(boardKey, {
+          ...prev,
+          tickets: prev.tickets.filter((t) => t.id !== ticketId),
+        });
+      }
       onClose();
+      return { prev };
     },
-    onError: (err) => toast.push("error", errorMessage(err)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+    onError: (err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
+      toast.push("error", errorMessage(err));
+    },
   });
   const syncMut = useMutation({
     mutationFn: (strategy: "rebase" | "merge") => api.syncTicket(ticketId!, strategy),
