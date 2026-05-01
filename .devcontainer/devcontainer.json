@@ -23,6 +23,6 @@
   "remoteUser": "root",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postStartCommand": "sudo bash /workspace/.devcontainer/init-firewall.sh",
+  "postStartCommand": "mkdir -p /root/.ssh && ssh-add -L > /root/.ssh/id_rsa.pub && sudo bash /workspace/.devcontainer/init-firewall.sh",
   "waitFor": "postStartCommand"
 }
