@@ -83,6 +83,7 @@ export function SessionPane({
   const [width, setWidth] = useState<number>(() => loadInitialWidth());
   const [resizing, setResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const autoStartedRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (ticketId == null) return;
@@ -184,8 +185,17 @@ export function SessionPane({
       qc.invalidateQueries({ queryKey: boardKey });
       startMut.mutate(created.id);
     },
-    onError: (err) => toast.push("error", errorMessage(err)),
+    onError: (err) => {
+      autoStartedRef.current = null;
+      toast.push("error", errorMessage(err));
+    },
   });
+  useEffect(() => {
+    if (ticketId == null || session) return;
+    if (autoStartedRef.current === ticketId) return;
+    autoStartedRef.current = ticketId;
+    ensureMut.mutate();
+  }, [ticketId, session, ensureMut]);
   const stopMut = useMutation({
     mutationFn: () => api.stopSession(session!.id),
     onMutate: () => (session ? optimisticStatus(session.id, "stopping") : { prev: undefined }),
