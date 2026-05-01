@@ -261,9 +261,6 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 		"ticket_id": fmt.Sprintf("%d", t.ID),
 		"board":    board.Name,
 	})
-	if sess, err := h.sessions.Ensure(r.Context(), board, t); err == nil {
-		h.bus.Publish(boardID, "session_updated", sess)
-	}
 	writeJSON(w, 201, t)
 }
 
