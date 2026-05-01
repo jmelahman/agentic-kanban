@@ -514,6 +514,58 @@ func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+type updateSessionStatusReq struct {
+	Status string `json:"status"`
+}
+
+// updateSessionStatus is called by Claude Code hooks running inside the session
+// container to report the active state of the agent (working/idle/awaiting_perm).
+// Other statuses (stopped/starting/error) are owned by the session manager and
+// rejected here.
+func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	var req updateSessionStatusReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpError(w, err, 400)
+		return
+	}
+	var hookEvent string
+	switch req.Status {
+	case db.SessionStatusWorking:
+		hookEvent = hooks.EventSessionWorking
+	case db.SessionStatusIdle:
+		hookEvent = hooks.EventSessionIdle
+	case db.SessionStatusAwaitingPerm:
+		hookEvent = hooks.EventSessionAwaitingPerm
+	default:
+		httpError(w, fmt.Errorf("status must be working, idle, or awaiting_perm"), 400)
+		return
+	}
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 404)
+		return
+	}
+	if err := h.store.UpdateSessionStatus(r.Context(), id, req.Status); err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	sess.Status = req.Status
+	t, _ := h.store.GetTicket(r.Context(), sess.TicketID)
+	if t != nil {
+		h.bus.publish(t.BoardID, "session_updated", sess)
+		var boardID *int64
+		if board, _ := h.store.GetBoard(r.Context(), t.BoardID); board != nil {
+			boardID = &board.ID
+		}
+		h.hooks.Fire(boardID, hookEvent, map[string]string{
+			"session_id": fmt.Sprintf("%d", sess.ID),
+			"ticket_id":  fmt.Sprintf("%d", sess.TicketID),
+		})
+	}
+	w.WriteHeader(204)
+}
+
 // Tasks
 
 type taskInfo struct {

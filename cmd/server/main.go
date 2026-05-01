@@ -68,8 +68,24 @@ func run(addr, dataDirOverride string, portStart, portEnd int) error {
 	}
 	defer dockerClient.Close()
 
+	// Ensure a shared docker network so session containers can resolve and
+	// reach the kanban API by container name. Failures here are non-fatal:
+	// session→kanban callbacks (status updates) just won't work.
+	netCtx, netCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer netCancel()
+	if err := dockerClient.EnsureNetwork(netCtx, docker.KanbanNetworkName); err != nil {
+		log.Printf("ensure network %s: %v", docker.KanbanNetworkName, err)
+	}
+	selfName := dockerClient.SelfContainerName(netCtx)
+	if selfName != "" {
+		if err := dockerClient.ConnectContainer(netCtx, docker.KanbanNetworkName, selfName); err != nil {
+			log.Printf("connect kanban to %s network: %v", docker.KanbanNetworkName, err)
+		}
+	}
+
 	hookRunner := hooks.NewRunner(store)
 	sessionMgr := session.NewManager(store, dockerClient, hookRunner)
+	sessionMgr.SetAPIBase(buildAPIBase(selfName, addr))
 
 	mux := api.NewMux(api.Deps{
 		Store:    store,
@@ -124,6 +140,22 @@ func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return nil, nil, fmt.Errorf("hijack not supported")
 	}
 	return hj.Hijack()
+}
+
+// buildAPIBase returns the base URL session containers should use to call the
+// kanban API. When kanban runs in a container, sessions resolve it by name on
+// the shared docker network. Outside a container we fall back to
+// host.docker.internal so Docker Desktop / host-gateway setups still work.
+func buildAPIBase(selfName, addr string) string {
+	port := "7474"
+	if _, p, err := net.SplitHostPort(addr); err == nil && p != "" {
+		port = p
+	}
+	host := selfName
+	if host == "" {
+		host = "host.docker.internal"
+	}
+	return fmt.Sprintf("http://%s:%s", host, port)
 }
 
 func logRequests(h http.Handler) http.Handler {

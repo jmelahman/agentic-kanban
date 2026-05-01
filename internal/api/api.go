@@ -60,6 +60,7 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/tickets/{id}/session", h.ensureSession)
 	mux.HandleFunc("POST /api/sessions/{id}/start", h.startSession)
 	mux.HandleFunc("POST /api/sessions/{id}/stop", h.stopSession)
+	mux.HandleFunc("PATCH /api/sessions/{id}/status", h.updateSessionStatus)
 
 	mux.HandleFunc("GET /api/sessions/{id}/discover-tasks", h.discoverTasks)
 	mux.HandleFunc("GET /api/sessions/{id}/task-runs", h.listTaskRuns)

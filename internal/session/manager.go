@@ -22,6 +22,7 @@ type Manager struct {
 
 	proxies *docker.ProxyManager
 	brokers *brokerSet
+	apiBase string
 }
 
 func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
@@ -34,9 +35,16 @@ func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
 	}
 }
 
+// SetAPIBase configures the URL session containers should use to call back
+// into the kanban API (e.g. http://kanban:7474).
+func (m *Manager) SetAPIBase(base string) { m.apiBase = base }
+
 // Ensure creates a session row for a ticket if missing, allocating a worktree.
 func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket) (*db.Session, error) {
 	if sess, err := m.store.GetSessionByTicket(ctx, ticket.ID); err == nil {
+		if err := writeClaudeSettings(sess.WorktreePath); err != nil {
+			log.Printf("write claude settings for ticket %d: %v", ticket.ID, err)
+		}
 		return sess, nil
 	}
 
@@ -62,6 +70,9 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 	}
 	if err := m.store.UpsertSession(ctx, sess); err != nil {
 		return nil, err
+	}
+	if err := writeClaudeSettings(worktreePath); err != nil {
+		log.Printf("write claude settings for ticket %d: %v", ticket.ID, err)
 	}
 	return sess, nil
 }
@@ -123,6 +134,11 @@ func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, erro
 		SourceRepoPath: sourceRepoPath,
 		ContainerName:  containerName,
 		Ports:          mappings,
+		ExtraEnv: map[string]string{
+			"KANBAN_SESSION_ID": fmt.Sprintf("%d", sess.ID),
+			"KANBAN_API_URL":    m.apiBase,
+		},
+		AttachNetwork: docker.KanbanNetworkName,
 	})
 	if err != nil {
 		_ = m.store.UpdateSessionStatus(ctx, sess.ID, db.SessionStatusError)

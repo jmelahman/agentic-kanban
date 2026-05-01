@@ -61,6 +61,12 @@ type SpawnOptions struct {
 	SourceRepoPath string
 	ContainerName  string
 	Ports          []PortMapping
+	// ExtraEnv is appended to the container's environment after devcontainer
+	// containerEnv values, so callers can override.
+	ExtraEnv map[string]string
+	// AttachNetwork, if non-empty, names a docker network the container is
+	// attached to after start so it can reach kanban (or other peers) by name.
+	AttachNetwork string
 }
 
 // SpawnResult is what we return after starting a devcontainer.
@@ -252,6 +258,11 @@ func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnO
 	if err != nil {
 		return nil, fmt.Errorf("create container: %w", err)
 	}
+	if opts.AttachNetwork != "" {
+		if err := c.ConnectContainer(ctx, opts.AttachNetwork, created.ID); err != nil {
+			return nil, fmt.Errorf("attach network %s: %w", opts.AttachNetwork, err)
+		}
+	}
 	if err := c.cli.ContainerStart(ctx, created.ID, container.StartOptions{}); err != nil {
 		return nil, fmt.Errorf("start container: %w", err)
 	}
@@ -318,9 +329,12 @@ func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef s
 		User:         cfg.RemoteUser,
 		Cmd:          []string{"sh", "-c", "tail -f /dev/null"},
 	}
-	if len(cfg.ContainerEnv) > 0 {
-		env := make([]string, 0, len(cfg.ContainerEnv))
+	if len(cfg.ContainerEnv) > 0 || len(opts.ExtraEnv) > 0 {
+		env := make([]string, 0, len(cfg.ContainerEnv)+len(opts.ExtraEnv))
 		for k, v := range cfg.ContainerEnv {
+			env = append(env, fmt.Sprintf("%s=%s", k, v))
+		}
+		for k, v := range opts.ExtraEnv {
 			env = append(env, fmt.Sprintf("%s=%s", k, v))
 		}
 		containerCfg.Env = env
