@@ -6,6 +6,20 @@ import { Board } from "./components/Board";
 import { BoardSettings } from "./components/BoardSettings";
 import { CreateBoardForm } from "./components/CreateBoardForm";
 
+const BOARD_COOKIE = "current_board_id";
+
+function readBoardCookie(): number | null {
+  const match = document.cookie.match(/(?:^|;\s*)current_board_id=([^;]+)/);
+  if (!match) return null;
+  const id = Number(decodeURIComponent(match[1]));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function writeBoardCookie(id: number) {
+  const oneYear = 60 * 60 * 24 * 365;
+  document.cookie = `${BOARD_COOKIE}=${id}; path=/; max-age=${oneYear}; SameSite=Lax`;
+}
+
 export default function App() {
   const qc = useQueryClient();
   const boardsQ = useQuery({ queryKey: ["boards"], queryFn: api.listBoards });
@@ -18,9 +32,15 @@ export default function App() {
 
   useEffect(() => {
     if (activeId == null && boardsQ.data && boardsQ.data.length > 0) {
-      setActiveId(boardsQ.data[0].id);
+      const remembered = readBoardCookie();
+      const fallback = boardsQ.data[0].id;
+      setActiveId(remembered != null && boardsQ.data.some((b) => b.id === remembered) ? remembered : fallback);
     }
   }, [boardsQ.data, activeId]);
+
+  useEffect(() => {
+    if (activeId != null) writeBoardCookie(activeId);
+  }, [activeId]);
 
   useEffect(() => {
     if (activeId == null) return;
