@@ -116,11 +116,6 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
   );
 }
 
-function formatVersion(v: { version: string; commit: string; dirty: boolean }): string {
-  const sha = v.commit && v.commit !== "none" ? v.commit.slice(0, 7) : "";
-  const parts = [v.version || "dev"];
-  if (sha) parts.push(sha);
-  let s = parts.join(" · ");
-  if (v.dirty) s += "-dirty";
-  return s;
+function formatVersion(v: { version: string; dirty: boolean }): string {
+  return (v.version || "dev") + (v.dirty ? "-dirty" : "");
 }
