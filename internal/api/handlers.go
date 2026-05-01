@@ -848,7 +848,7 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 	if board, err := h.boardForSession(r.Context(), sess); err == nil && board != nil {
 		repoPath = board.SourceRepoPath
 	}
-	resolved, _ := harness.Resolve(repoPath)
+	resolved := harness.Resolve(repoPath)
 	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, resolved.PTYCommand, "/workspace")
 }
 

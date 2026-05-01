@@ -14,11 +14,11 @@ import (
 	"sync"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/pelletier/go-toml/v2"
 
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/kanbantoml"
 )
 
 // substituteVSCodeVars replaces a small set of VS Code task variables with
@@ -89,14 +89,6 @@ type vsLaunchConfig struct {
 	Env     map[string]string `json:"env"`
 }
 
-// kanbanTOML maps task labels → ports in <worktree>/.kanban.toml.
-type kanbanTOML struct {
-	Task []struct {
-		Label         string `toml:"label"`
-		ContainerPort int    `toml:"container_port"`
-	} `toml:"task"`
-}
-
 // Discover walks the worktree looking for VS Code tasks/launch entries.
 func Discover(worktreePath string) ([]VSCodeTask, error) {
 	var out []VSCodeTask
@@ -141,22 +133,10 @@ func Discover(worktreePath string) ([]VSCodeTask, error) {
 	return out, nil
 }
 
-// PortFor reads .kanban.toml from the worktree to find a container port for a label.
+// PortFor returns the container port for a task label, sourced from the
+// merged kanban config (user file layered over <worktree>/.kanban.toml).
 func PortFor(worktreePath, label string) (int, bool) {
-	data, err := os.ReadFile(filepath.Join(worktreePath, ".kanban.toml"))
-	if err != nil {
-		return 0, false
-	}
-	var cfg kanbanTOML
-	if err := toml.Unmarshal(data, &cfg); err != nil {
-		return 0, false
-	}
-	for _, t := range cfg.Task {
-		if t.Label == label && t.ContainerPort > 0 {
-			return t.ContainerPort, true
-		}
-	}
-	return 0, false
+	return kanbantoml.Load(worktreePath).PortFor(label)
 }
 
 func stripComments(data []byte) []byte {

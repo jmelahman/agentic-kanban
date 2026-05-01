@@ -9,14 +9,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"time"
 
-	"github.com/pelletier/go-toml/v2"
-
 	"github.com/jmelahman/kanban/internal/db"
+	"github.com/jmelahman/kanban/internal/kanbantoml"
 )
 
 const (
@@ -26,7 +23,8 @@ const (
 	PRStateClosed = "closed"
 )
 
-// Config captures the [github] section of a board's .kanban.toml.
+// Config captures the [github] section of the merged kanban config (user
+// file layered over the project's .kanban.toml).
 type Config struct {
 	AutoMove     bool
 	DraftColumn  string
@@ -45,48 +43,29 @@ func defaultConfig() Config {
 	}
 }
 
-type tomlFile struct {
-	GitHub *struct {
-		AutoMove     *bool   `toml:"auto_move"`
-		DraftColumn  *string `toml:"draft_column"`
-		ReviewColumn *string `toml:"review_column"`
-		DoneColumn   *string `toml:"done_column"`
-		ClosedColumn *string `toml:"closed_column"`
-	} `toml:"github"`
-}
-
-// LoadConfig reads <repoPath>/.kanban.toml and merges its [github] section
-// onto defaults. Missing or unparseable file yields disabled defaults.
+// LoadConfig returns the [github] section from the merged kanban config
+// (user file layered over <repoPath>/.kanban.toml). Missing keys keep their
+// disabled defaults.
 func LoadConfig(repoPath string) Config {
 	cfg := defaultConfig()
-	if repoPath == "" {
+	g := kanbantoml.Load(repoPath).GitHub
+	if g == nil {
 		return cfg
 	}
-	data, err := os.ReadFile(filepath.Join(repoPath, ".kanban.toml"))
-	if err != nil {
-		return cfg
+	if g.AutoMove != nil {
+		cfg.AutoMove = *g.AutoMove
 	}
-	var f tomlFile
-	if err := toml.Unmarshal(data, &f); err != nil {
-		return cfg
+	if g.DraftColumn != nil {
+		cfg.DraftColumn = *g.DraftColumn
 	}
-	if f.GitHub == nil {
-		return cfg
+	if g.ReviewColumn != nil {
+		cfg.ReviewColumn = *g.ReviewColumn
 	}
-	if f.GitHub.AutoMove != nil {
-		cfg.AutoMove = *f.GitHub.AutoMove
+	if g.DoneColumn != nil {
+		cfg.DoneColumn = *g.DoneColumn
 	}
-	if f.GitHub.DraftColumn != nil {
-		cfg.DraftColumn = *f.GitHub.DraftColumn
-	}
-	if f.GitHub.ReviewColumn != nil {
-		cfg.ReviewColumn = *f.GitHub.ReviewColumn
-	}
-	if f.GitHub.DoneColumn != nil {
-		cfg.DoneColumn = *f.GitHub.DoneColumn
-	}
-	if f.GitHub.ClosedColumn != nil {
-		cfg.ClosedColumn = *f.GitHub.ClosedColumn
+	if g.ClosedColumn != nil {
+		cfg.ClosedColumn = *g.ClosedColumn
 	}
 	return cfg
 }

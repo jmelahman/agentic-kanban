@@ -299,7 +299,7 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			return fmt.Errorf("stage pending changes: %w", err)
 		}
 		msg := ticket.Title
-		h, _ := harness.Resolve(board.SourceRepoPath)
+		h := harness.Resolve(board.SourceRepoPath)
 		if generated, err := m.generateCommitMessage(ctx, sess, h, ticket.Title); err == nil {
 			msg = generated
 		} else {
