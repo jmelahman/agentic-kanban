@@ -125,6 +125,7 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
 
 function TaskOutput({ runId }: { runId: number }) {
   const [lines, setLines] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
@@ -138,9 +139,22 @@ function TaskOutput({ runId }: { runId: number }) {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
   }, [lines]);
 
+  const onCopy = () => {
+    navigator.clipboard.writeText(lines.join("\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
-    <pre ref={ref} className="mt-2 max-h-64 overflow-y-auto rounded bg-black p-2 text-xs leading-tight text-zinc-200">
-      {lines.join("\n")}
-    </pre>
+    <div className="mt-2">
+      <div className="mb-1 flex justify-end">
+        <button className="text-xs text-zinc-300" onClick={onCopy}>
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+      <pre ref={ref} className="max-h-64 overflow-y-auto rounded bg-black p-2 text-xs leading-tight text-zinc-200">
+        {lines.join("\n")}
+      </pre>
+    </div>
   );
 }
