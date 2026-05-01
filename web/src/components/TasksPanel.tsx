@@ -90,7 +90,7 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
           })}
         </ul>
       </section>
-      <section className="min-h-0 flex-1 overflow-y-auto">
+      <section className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
         <h3 className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Runs</h3>
         <ul className="flex flex-col gap-1">
           {runs.map((r) => (
@@ -154,7 +154,7 @@ function TaskOutput({ runId }: { runId: number }) {
           {copied ? "copied" : "copy"}
         </Button>
       </div>
-      <pre ref={ref} className="max-h-64 overflow-y-auto rounded bg-black p-2 text-xs leading-tight text-zinc-200">
+      <pre ref={ref} className="max-h-64 overflow-y-auto rounded bg-black p-2 text-xs leading-tight text-zinc-200 [scrollbar-gutter:stable]">
         {lines.join("\n")}
       </pre>
     </div>

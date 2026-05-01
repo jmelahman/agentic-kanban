@@ -108,9 +108,15 @@ export function SessionPane({
 
   useEffect(() => {
     if (!resizing) return;
+    let pending: number | null = null;
+    let nextWidth = width;
+    const apply = () => {
+      pending = null;
+      setWidth(nextWidth);
+    };
     const onMove = (e: MouseEvent) => {
-      const next = window.innerWidth - e.clientX;
-      setWidth(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, next)));
+      nextWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - e.clientX));
+      if (pending == null) pending = requestAnimationFrame(apply);
     };
     const onUp = () => setResizing(false);
     window.addEventListener("mousemove", onMove);
@@ -120,6 +126,7 @@ export function SessionPane({
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
     return () => {
+      if (pending != null) cancelAnimationFrame(pending);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       document.body.style.cursor = prevCursor;
@@ -128,8 +135,9 @@ export function SessionPane({
   }, [resizing]);
 
   useEffect(() => {
+    if (resizing) return;
     localStorage.setItem(WIDTH_STORAGE_KEY, String(width));
-  }, [width]);
+  }, [width, resizing]);
 
   useEffect(() => {
     if (!syncMenuOpen) return;
