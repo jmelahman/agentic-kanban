@@ -61,10 +61,19 @@ export function PtyTerminal({ sessionId, mountTarget }: Props) {
         if (ws.readyState === WebSocket.OPEN) sendResize();
       });
 
-      const observer = new ResizeObserver(() => fit.fit());
+      let fitTimer: number | null = null;
+      const scheduleFit = () => {
+        if (fitTimer != null) clearTimeout(fitTimer);
+        fitTimer = window.setTimeout(() => {
+          fitTimer = null;
+          fit.fit();
+        }, 80);
+      };
+      const observer = new ResizeObserver(scheduleFit);
       observer.observe(host);
 
       cleanup = () => {
+        if (fitTimer != null) clearTimeout(fitTimer);
         observer.disconnect();
         dataDisp.dispose();
         resizeDisp.dispose();
