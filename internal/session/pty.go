@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"log"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -24,8 +22,9 @@ type ptyControl struct {
 	Data string `json:"data,omitempty"`
 }
 
-// AttachClaude opens a PTY exec for the `claude` CLI inside the session container,
-// and pipes IO to/from a websocket.
+// AttachClaude upgrades the request to a WebSocket and routes it through the
+// per-session PTY broker, which holds the docker exec connection across
+// client reconnects (e.g. page refresh).
 func (m *Manager) AttachClaude(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, command []string, workDir string) error {
 	if sess.ContainerID == nil || *sess.ContainerID == "" {
 		http.Error(w, "session not running", http.StatusBadRequest)
@@ -42,34 +41,17 @@ func (m *Manager) AttachClaude(ctx context.Context, sess *db.Session, w http.Res
 		command = []string{"claude"}
 	}
 
-	att, err := m.docker.ExecAttachTTY(ctx, *sess.ContainerID, command, workDir, nil)
+	broker, err := m.brokers.attach(ctx, sess, command, workDir)
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte("error: "+err.Error()))
 		return err
 	}
-	defer att.Conn.Close()
+	if err := broker.register(conn); err != nil {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("error: "+err.Error()))
+		return err
+	}
+	defer broker.unregister(conn)
 
-	// Container → websocket.
-	go func() {
-		buf := make([]byte, 4096)
-		for {
-			n, err := att.Conn.Reader.Read(buf)
-			if n > 0 {
-				if werr := conn.WriteMessage(websocket.BinaryMessage, buf[:n]); werr != nil {
-					return
-				}
-			}
-			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					log.Printf("pty read: %v", err)
-				}
-				_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\n[session ended]\r\n"))
-				return
-			}
-		}
-	}()
-
-	// Websocket → container (handles control frames for resize).
 	for {
 		msgType, data, err := conn.ReadMessage()
 		if err != nil {
@@ -79,14 +61,14 @@ func (m *Manager) AttachClaude(ctx context.Context, sess *db.Session, w http.Res
 		case websocket.TextMessage:
 			var ctl ptyControl
 			if err := json.Unmarshal(data, &ctl); err == nil && ctl.Type == "resize" {
-				_ = m.docker.ResizeExec(ctx, att.ID, uint(ctl.Cols), uint(ctl.Rows))
+				_ = broker.resize(ctx, conn, uint(ctl.Cols), uint(ctl.Rows))
 				continue
 			}
-			if _, err := att.Conn.Conn.Write(data); err != nil {
+			if err := broker.write(conn, data); err != nil {
 				return nil
 			}
 		case websocket.BinaryMessage:
-			if _, err := att.Conn.Conn.Write(data); err != nil {
+			if err := broker.write(conn, data); err != nil {
 				return nil
 			}
 		}

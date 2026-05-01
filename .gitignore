@@ -36,3 +36,6 @@ tsconfig.tsbuildinfo
 # Frontend build artifacts and deps
 web/dist/
 web/node_modules/
+
+# Local planning artifacts
+plans/

@@ -21,6 +21,7 @@ type Manager struct {
 	hooks  *hooks.Runner
 
 	proxies *docker.ProxyManager
+	brokers *brokerSet
 }
 
 func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
@@ -29,6 +30,7 @@ func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
 		docker:  dc,
 		hooks:   h,
 		proxies: docker.NewProxyManager(context.Background(), dc),
+		brokers: newBrokerSet(dc),
 	}
 }
 
@@ -154,6 +156,9 @@ func (m *Manager) Stop(ctx context.Context, sessionID int64) error {
 	if err != nil {
 		return err
 	}
+	// Tear down any persistent PTY broker so its hijacked exec connection is
+	// closed before we kill the container underneath it.
+	m.brokers.closeFor(sessionID)
 	if sess.ContainerID != nil && *sess.ContainerID != "" {
 		_ = m.docker.StopContainer(ctx, *sess.ContainerID, 10*time.Second)
 		_ = m.docker.RemoveContainer(ctx, *sess.ContainerID)
