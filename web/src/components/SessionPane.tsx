@@ -45,6 +45,16 @@ export function SessionPane({
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [width, setWidth] = useState<number>(() => loadInitialWidth());
   const [resizing, setResizing] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
 
   useEffect(() => {
     if (!resizing) return;
@@ -143,21 +153,27 @@ export function SessionPane({
 
   return (
     <aside
-      className="relative flex flex-col border-l border-zinc-800 bg-zinc-950"
-      style={{ width: `${width}px`, flex: `0 0 ${width}px` }}
+      className={
+        fullscreen
+          ? "fixed inset-0 z-40 flex flex-col bg-zinc-950"
+          : "relative flex flex-col border-l border-zinc-800 bg-zinc-950"
+      }
+      style={fullscreen ? undefined : { width: `${width}px`, flex: `0 0 ${width}px` }}
     >
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setResizing(true);
-        }}
-        onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
-        className={`absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-red-500/40 ${
-          resizing ? "bg-red-500/60" : ""
-        }`}
-      />
+      {!fullscreen && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setResizing(true);
+          }}
+          onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
+          className={`absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-red-500/40 ${
+            resizing ? "bg-red-500/60" : ""
+          }`}
+        />
+      )}
       <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2 text-sm">
         <span className="font-medium">Ticket #{ticketId}</span>
         <span className="text-zinc-400">{session?.branch_name}</span>
@@ -224,6 +240,48 @@ export function SessionPane({
             idleLabel="archive"
             pendingLabel="archiving…"
           />
+          <button
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
+            onClick={() => setFullscreen((v) => !v)}
+            aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+            title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+          >
+            {fullscreen ? (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+                <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+                <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+                <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+              </svg>
+            ) : (
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 8V5a2 2 0 0 1 2-2h3" />
+                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
+              </svg>
+            )}
+          </button>
           <button className="text-zinc-400" onClick={onClose}>
             ✕
           </button>
