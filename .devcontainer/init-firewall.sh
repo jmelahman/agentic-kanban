@@ -57,6 +57,12 @@ if [[ "${DOCKER_HOST:-}" == "unix://"* ]]; then
     ipset add allowed-domains "$DOCKER_GATEWAY/32" 2>/dev/null || true
 fi
 
+# Allow attached docker network subnets (e.g. kanban-net) so we can reach
+# sibling containers by service name.
+for SUBNET in $(ip -4 route show | awk '/proto kernel/ {print $1}'); do
+    ipset add allowed-domains "$SUBNET" 2>/dev/null || true
+done
+
 # Set default policies to DROP
 iptables -P FORWARD DROP
 iptables -P INPUT DROP
