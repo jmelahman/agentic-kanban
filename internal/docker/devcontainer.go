@@ -250,7 +250,17 @@ func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnO
 		return nil, fmt.Errorf("ensure image: %w", err)
 	}
 
-	hostCfg, netCfg, containerCfg, err := buildContainerConfig(cfg, opts, imageRef)
+	// Resolve host.docker.internal to the gateway of the network the container
+	// will actually be attached to, rather than the daemon-wide host-gateway
+	// (docker0). The session is not on docker0, so that IP is unreachable
+	// cross-bridge and typically rejected by devcontainer egress firewalls;
+	// the attached network's gateway is on a subnet such firewalls allow.
+	hostGatewayIP := ""
+	if opts.AttachNetwork != "" {
+		hostGatewayIP = c.NetworkGatewayIPv4(ctx, opts.AttachNetwork)
+	}
+
+	hostCfg, netCfg, containerCfg, err := buildContainerConfig(cfg, opts, imageRef, hostGatewayIP)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +287,7 @@ func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnO
 	return &SpawnResult{ContainerID: created.ID, ContainerName: opts.ContainerName}, nil
 }
 
-func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef string) (*container.HostConfig, *network.NetworkingConfig, *container.Config, error) {
+func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef string, hostGatewayIP string) (*container.HostConfig, *network.NetworkingConfig, *container.Config, error) {
 	wsFolder := cfg.WorkspaceFolder
 
 	mounts := []mount.Mount{
@@ -299,14 +309,21 @@ func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef s
 		mounts = append(mounts, m)
 	}
 
+	// Resolve host.docker.internal so status hooks can reach a host-mode kanban
+	// server on bare-metal Linux (Docker Desktop adds this mapping automatically).
+	// Prefer the explicit IP of the network the container is attached to, since
+	// docker's "host-gateway" magic resolves to docker0 — a network the session
+	// isn't on, and one whose subnet the devcontainer egress firewall doesn't
+	// allow-list.
+	hostAlias := "host.docker.internal:host-gateway"
+	if hostGatewayIP != "" {
+		hostAlias = "host.docker.internal:" + hostGatewayIP
+	}
 	hostCfg := &container.HostConfig{
 		Mounts:        mounts,
 		AutoRemove:    false,
 		RestartPolicy: container.RestartPolicy{Name: container.RestartPolicyDisabled},
-		// Resolve host.docker.internal to the host on Linux so status hooks can
-		// reach a host-mode kanban server. Docker Desktop adds this mapping
-		// automatically; bare-metal Linux does not.
-		ExtraHosts: []string{"host.docker.internal:host-gateway"},
+		ExtraHosts:    []string{hostAlias},
 	}
 
 	// Note: we deliberately do not publish session container ports to the host.

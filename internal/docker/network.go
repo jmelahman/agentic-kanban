@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"net"
 	"os"
 	"strings"
 
@@ -43,6 +44,29 @@ func (c *Client) SelfContainerName(ctx context.Context) string {
 		return ""
 	}
 	return strings.TrimPrefix(insp.Name, "/")
+}
+
+// NetworkGatewayIPv4 returns the IPv4 gateway of the named network, or "" if
+// the network does not exist or has no IPv4 gateway configured. Used to point
+// host.docker.internal at the host as seen from a specific bridge, instead of
+// the daemon-wide host-gateway (docker0). Session containers are not attached
+// to docker0, so its IP is both routed cross-bridge and typically blocked by
+// devcontainer egress firewalls; the attached network's own gateway is on a
+// subnet the firewall already allow-lists.
+func (c *Client) NetworkGatewayIPv4(ctx context.Context, name string) string {
+	insp, err := c.cli.NetworkInspect(ctx, name, network.InspectOptions{})
+	if err != nil {
+		return ""
+	}
+	for _, cfg := range insp.IPAM.Config {
+		if cfg.Gateway == "" {
+			continue
+		}
+		if ip := net.ParseIP(cfg.Gateway); ip != nil && ip.To4() != nil {
+			return ip.To4().String()
+		}
+	}
+	return ""
 }
 
 // ConnectContainer attaches a container to the given network. A no-op if the

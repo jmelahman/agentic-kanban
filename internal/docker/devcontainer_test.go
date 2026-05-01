@@ -137,7 +137,7 @@ func TestBuildContainerConfig_SourceRepoGitMount(t *testing.T) {
 		ContainerName:  "test",
 	}
 
-	hostCfg, _, _, err := buildContainerConfig(cfg, opts, "img")
+	hostCfg, _, _, err := buildContainerConfig(cfg, opts, "img", "")
 	if err != nil {
 		t.Fatalf("buildContainerConfig: %v", err)
 	}
@@ -158,12 +158,37 @@ func TestBuildContainerConfig_NoGitMountWhenSourceMissing(t *testing.T) {
 	cfg := &DevcontainerConfig{WorkspaceFolder: "/workspace"}
 	opts := SpawnOptions{WorktreePath: "/host/worktree", ContainerName: "test"}
 
-	hostCfg, _, _, err := buildContainerConfig(cfg, opts, "img")
+	hostCfg, _, _, err := buildContainerConfig(cfg, opts, "img", "")
 	if err != nil {
 		t.Fatalf("buildContainerConfig: %v", err)
 	}
 
 	if len(hostCfg.Mounts) != 1 {
 		t.Errorf("expected only the workspace mount; got %#v", hostCfg.Mounts)
+	}
+}
+
+func TestBuildContainerConfig_HostDockerInternalAlias(t *testing.T) {
+	cfg := &DevcontainerConfig{WorkspaceFolder: "/workspace"}
+	opts := SpawnOptions{WorktreePath: "/host/worktree", ContainerName: "test"}
+
+	cases := []struct {
+		name      string
+		gatewayIP string
+		want      string
+	}{
+		{"falls back to host-gateway", "", "host.docker.internal:host-gateway"},
+		{"uses explicit gateway IP", "172.19.0.1", "host.docker.internal:172.19.0.1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			hostCfg, _, _, err := buildContainerConfig(cfg, opts, "img", tc.gatewayIP)
+			if err != nil {
+				t.Fatalf("buildContainerConfig: %v", err)
+			}
+			if !reflect.DeepEqual(hostCfg.ExtraHosts, []string{tc.want}) {
+				t.Errorf("ExtraHosts = %v; want [%q]", hostCfg.ExtraHosts, tc.want)
+			}
+		})
 	}
 }
