@@ -50,7 +50,7 @@ WORKDIR /workspace
 
 # Install Claude Code
 ARG CLAUDE_CODE_VERSION=latest
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} vite
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} vite typescript @typescript/native-preview
 
 # Pre-seed GitHub's SSH host keys so git-over-SSH never prompts.  Keys are
 # pinned in-repo (verified against the fingerprints GitHub publishes at
