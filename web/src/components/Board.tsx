@@ -56,6 +56,7 @@ export function Board({ boardId }: { boardId: number }) {
         </div>
       </DndContext>
       <SessionPane
+        key={activeTicket ?? "none"}
         boardId={boardId}
         baseBranch={board.base_branch}
         mergeConfig={merge_config}
