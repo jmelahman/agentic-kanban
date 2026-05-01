@@ -1,3 +1,9 @@
+// VERSION is populated from a host env var (see compose.yaml comment for the
+// recommended `git describe --tags --always --dirty` invocation). Resolved on
+// the host because .git is dockerignored and worktrees only store a gitdir
+// pointer.
+variable "VERSION" { default = "dev" }
+
 target "default" {
   context = "."
   dockerfile = "Dockerfile"
@@ -8,8 +14,8 @@ target "default" {
     "lahmanja/kanban:latest",
   ]
   args = {
-    BUILDKIT_CONTEXT_KEEP_GIT_DIR = 1
     BUILDKIT_INLINE_CACHE = 1
+    VERSION = "${VERSION}"
   }
 }
 

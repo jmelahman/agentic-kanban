@@ -25,54 +25,47 @@ import (
 	"github.com/jmelahman/kanban/internal/session"
 )
 
-// Build metadata. Populated at build time via -ldflags -X (see Dockerfile /
-// docker-bake.hcl). When unset (e.g. `go run`, `go build` without ldflags) we
-// fall back to runtime/debug.ReadBuildInfo, which Go auto-populates from the
-// local VCS state — so dev builds still self-describe without any wrapper.
-var (
-	version = ""
-	commit  = ""
-	dirty   = ""
-)
+// version is populated at build time via -ldflags -X (see Dockerfile /
+// compose.yaml). Use `git describe --tags --always --dirty` so a single
+// string carries tag, distance, short sha, and dirty marker. Falls back to
+// runtime/debug VCS info for dev builds without ldflags.
+var version = ""
 
-// BuildInfo describes the running binary. Dirty is true when the source tree
-// had uncommitted changes at build time.
+// BuildInfo describes the running binary.
 type BuildInfo struct {
 	Version string `json:"version"`
-	Commit  string `json:"commit"`
-	Dirty   bool   `json:"dirty"`
 }
 
 // Build returns the build metadata for the running binary, falling back to
 // runtime/debug VCS info when ldflags weren't set.
 func Build() BuildInfo {
-	v, c, d := version, commit, asBool(dirty)
-	if v == "" || c == "" || dirty == "" {
-		if info, ok := debug.ReadBuildInfo(); ok {
-			for _, s := range info.Settings {
-				switch s.Key {
-				case "vcs.revision":
-					if c == "" {
-						c = s.Value
-					}
-				case "vcs.modified":
-					if dirty == "" {
-						d = asBool(s.Value)
-					}
-				}
+	if version != "" {
+		return BuildInfo{Version: version}
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		var rev string
+		var modified bool
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				rev = s.Value
+			case "vcs.modified":
+				modified = s.Value == "true"
 			}
 		}
+		if rev != "" {
+			short := rev
+			if len(short) > 7 {
+				short = short[:7]
+			}
+			if modified {
+				short += "-dirty"
+			}
+			return BuildInfo{Version: short}
+		}
 	}
-	if v == "" {
-		v = "dev"
-	}
-	if c == "" {
-		c = "none"
-	}
-	return BuildInfo{Version: v, Commit: c, Dirty: d}
+	return BuildInfo{Version: "dev"}
 }
-
-func asBool(s string) bool { return s == "true" || s == "1" }
 
 func Root() *cobra.Command {
 	var addr string
@@ -80,15 +73,10 @@ func Root() *cobra.Command {
 	var portRangeStart int
 	var portRangeEnd int
 
-	bi := Build()
-	commitLabel := bi.Commit
-	if bi.Dirty {
-		commitLabel += "-dirty"
-	}
 	cmd := &cobra.Command{
 		Use:     "kanban",
 		Short:   "Kanban board for managing AI agent sessions",
-		Version: fmt.Sprintf("%s\ncommit %s", bi.Version, commitLabel),
+		Version: Build().Version,
 	}
 
 	serve := &cobra.Command{

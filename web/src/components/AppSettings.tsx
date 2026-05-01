@@ -109,13 +109,9 @@ export function AppSettings({ onClose }: { onClose: () => void }) {
           </div>
         </form>
         <footer className="border-t border-zinc-800 px-4 py-2 font-mono text-[11px] text-zinc-500">
-          {versionQ.data ? formatVersion(versionQ.data) : "…"}
+          {versionQ.data?.version ?? "…"}
         </footer>
       </div>
     </div>
   );
-}
-
-function formatVersion(v: { version: string; dirty: boolean }): string {
-  return (v.version || "dev") + (v.dirty ? "-dirty" : "");
 }

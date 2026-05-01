@@ -88,7 +88,7 @@ export type AppSettings = { harness: string };
 
 export type Harness = { id: string; label: string; pty_command: string[] };
 
-export type Version = { version: string; commit: string; dirty: boolean };
+export type Version = { version: string };
 
 export class ApiError extends Error {
   status: number;

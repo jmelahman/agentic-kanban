@@ -15,8 +15,6 @@ import (
 // BuildInfo is the build metadata surfaced via /api/version.
 type BuildInfo struct {
 	Version string `json:"version"`
-	Commit  string `json:"commit"`
-	Dirty   bool   `json:"dirty"`
 }
 
 // Deps wires together the dependencies for the HTTP layer.
