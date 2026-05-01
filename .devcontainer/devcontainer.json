@@ -3,8 +3,7 @@
   "image": "lahmanja/devcontainer:latest",
   "runArgs": [
     "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW",
-    "--network=kanban-net"
+    "--cap-add=NET_RAW"
   ],
   "mounts": [
     "source=${localEnv:XDG_RUNTIME_DIR}/docker.sock,target=/var/run/docker.sock,type=bind",
@@ -23,6 +22,6 @@
   "remoteUser": "root",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postStartCommand": "mkdir -p /root/.ssh && ssh-add -L > /root/.ssh/id_rsa.pub && sudo bash /workspace/.devcontainer/init-firewall.sh",
+  "postStartCommand": "docker network connect kanban-net $(hostname) 2>/dev/null || true; mkdir -p /root/.ssh && ssh-add -L > /root/.ssh/id_rsa.pub && sudo bash /workspace/.devcontainer/init-firewall.sh",
   "waitFor": "postStartCommand"
 }
