@@ -84,6 +84,10 @@ export type PortAllocation = {
   proxy_active: boolean;
 };
 
+export type AppSettings = { harness: string };
+
+export type Harness = { id: string; label: string; pty_command: string[] };
+
 export class ApiError extends Error {
   status: number;
   body: string;
@@ -151,6 +155,11 @@ export const api = {
   createPort: (sessionId: number, input: { label: string; container_port: number }) =>
     request<PortAllocation[]>(`/api/sessions/${sessionId}/ports`, { method: "POST", body: JSON.stringify(input) }),
   deletePort: (id: number) => request<void>(`/api/ports/${id}`, { method: "DELETE" }),
+
+  getSettings: () => request<AppSettings>("/api/settings"),
+  updateSettings: (input: { harness?: string }) =>
+    request<AppSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(input) }),
+  listHarnesses: () => request<Harness[]>("/api/harnesses"),
 };
 
 export type SubscribeOptions = {

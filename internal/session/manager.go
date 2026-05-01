@@ -12,6 +12,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/git"
+	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
 )
 
@@ -298,7 +299,12 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			return fmt.Errorf("stage pending changes: %w", err)
 		}
 		msg := ticket.Title
-		if generated, err := m.generateCommitMessage(ctx, sess, ticket.Title); err == nil {
+		settings, sErr := m.store.GetAppSettings(ctx)
+		hID := harness.Default().ID
+		if sErr == nil {
+			hID = settings.Harness
+		}
+		if generated, err := m.generateCommitMessage(ctx, sess, harness.Get(hID), ticket.Title); err == nil {
 			msg = generated
 		} else {
 			log.Printf("merge: ai commit message unavailable, using ticket title: %v", err)
@@ -351,10 +357,12 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 	return nil
 }
 
-// generateCommitMessage runs `claude -p` inside the session's container,
-// piping the staged diff in via stdin, and returns its trimmed first line.
-// Returns an error when the container is not running or claude fails.
-func (m *Manager) generateCommitMessage(ctx context.Context, sess *db.Session, ticketTitle string) (string, error) {
+// generateCommitMessage renders the harness's commit-message script, runs it
+// inside the session's container with the staged diff piped via stdin, and
+// returns the trimmed first line of stdout. Returns an error (so the caller
+// can fall back to the ticket title) when the container is not running, the
+// harness has no template, or the script fails.
+func (m *Manager) generateCommitMessage(ctx context.Context, sess *db.Session, h harness.Harness, ticketTitle string) (string, error) {
 	if sess.ContainerID == nil || *sess.ContainerID == "" {
 		return "", fmt.Errorf("container not running")
 	}
@@ -362,7 +370,13 @@ func (m *Manager) generateCommitMessage(ctx context.Context, sess *db.Session, t
 		"Write a one-line git commit message in imperative mood for the staged diff piped via stdin. The change is for the ticket %q. Output only the commit message text - no preamble, no quotes, no markdown, no code fences.",
 		ticketTitle,
 	)
-	script := "cd /workspace && git diff --staged --no-color | claude --model haiku -p " + shellQuote(prompt)
+	script, err := h.RenderCommitScript(prompt)
+	if err != nil {
+		return "", err
+	}
+	if script == "" {
+		return "", fmt.Errorf("harness %q has no commit-message template", h.ID)
+	}
 	cctx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 	out, err := m.docker.ExecRun(cctx, *sess.ContainerID, []string{"sh", "-lc", script})
@@ -378,10 +392,6 @@ func (m *Manager) generateCommitMessage(ctx context.Context, sess *db.Session, t
 		return "", fmt.Errorf("empty message")
 	}
 	return msg, nil
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func (m *Manager) Proxies() *docker.ProxyManager { return m.proxies }

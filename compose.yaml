@@ -20,6 +20,8 @@ services:
       SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:-}
     volumes:
       - ${XDG_RUNTIME_DIR}/docker.sock:/var/run/docker.sock
+      # Agent config dir. Claude Code reads ~/.claude; for other
+      # harnesses (e.g. pi/Ollama) substitute or add the relevant path.
       - ${HOME}/.claude:${HOME}/.claude
       - ${HOME}/code:${HOME}/code
       - ${HOME}/.local/share/kanban:${HOME}/.local/share/kanban

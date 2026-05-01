@@ -13,6 +13,7 @@ import (
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
+	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/session"
 	"github.com/jmelahman/kanban/internal/tasks"
@@ -843,11 +844,55 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 404)
 		return
 	}
-	cmd := []string{"claude"}
-	if c := r.URL.Query().Get("cmd"); c != "" {
-		cmd = strings.Fields(c)
+	settings, err := h.store.GetAppSettings(r.Context())
+	if err != nil {
+		httpError(w, err, 500)
+		return
 	}
-	_ = h.sessions.AttachClaude(r.Context(), sess, w, r, cmd, "/workspace")
+	cmd := harness.Get(settings.Harness).PTYCommand
+	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, cmd, "/workspace")
+}
+
+// Settings
+
+func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
+	s, err := h.store.GetAppSettings(r.Context())
+	if err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, s)
+}
+
+func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Harness *string `json:"harness"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpError(w, err, 400)
+		return
+	}
+	cur, err := h.store.GetAppSettings(r.Context())
+	if err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	if req.Harness != nil {
+		if !harness.IsKnown(*req.Harness) {
+			httpError(w, fmt.Errorf("unknown harness %q", *req.Harness), 400)
+			return
+		}
+		cur.Harness = *req.Harness
+	}
+	if err := h.store.UpdateAppSettings(r.Context(), cur); err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, cur)
+}
+
+func (h *handlers) listHarnesses(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, harness.Registry)
 }
 
 // helpers

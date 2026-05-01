@@ -527,3 +527,22 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
+
+// App settings (singleton row, id=1)
+
+func (s *Store) GetAppSettings(ctx context.Context) (*AppSettings, error) {
+	var a AppSettings
+	err := s.db.QueryRowContext(ctx, `SELECT harness FROM app_settings WHERE id=1`).Scan(&a.Harness)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &a, nil
+}
+
+func (s *Store) UpdateAppSettings(ctx context.Context, a *AppSettings) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE app_settings SET harness=? WHERE id=1`, a.Harness)
+	return err
+}

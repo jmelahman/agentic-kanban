@@ -78,6 +78,10 @@ func NewMux(d Deps) http.Handler {
 
 	mux.HandleFunc("/ws/sessions/{id}/pty", h.wsPTY)
 
+	mux.HandleFunc("GET /api/settings", h.getSettings)
+	mux.HandleFunc("PATCH /api/settings", h.updateSettings)
+	mux.HandleFunc("GET /api/harnesses", h.listHarnesses)
+
 	mux.Handle("/", web.Handler())
 	return mux
 }

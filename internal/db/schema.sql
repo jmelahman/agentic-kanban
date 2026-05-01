@@ -70,3 +70,9 @@ CREATE TABLE IF NOT EXISTS hook_configs (
   command TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS app_settings (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  harness TEXT NOT NULL DEFAULT 'claude'
+);
+INSERT OR IGNORE INTO app_settings (id, harness) VALUES (1, 'claude');

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, subscribeBoard } from "./api/client";
+import { AppSettings } from "./components/AppSettings";
 import { ArchivedDrawer } from "./components/ArchivedDrawer";
 import { Board } from "./components/Board";
 import { BoardSettings } from "./components/BoardSettings";
@@ -27,6 +28,7 @@ export default function App() {
   const [streamStatus, setStreamStatus] = useState<"open" | "error" | "closed">("closed");
   const [showArchived, setShowArchived] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
 
   const activeBoard = activeId != null ? boardsQ.data?.find((b) => b.id === activeId) ?? null : null;
 
@@ -72,6 +74,31 @@ export default function App() {
           ))}
         </select>
         <div className="ml-auto flex items-center gap-2">
+          <button
+            className="rounded bg-zinc-800 p-1 text-zinc-300 hover:bg-zinc-700"
+            onClick={() => setShowAppSettings(true)}
+            aria-label="App settings"
+            title="App settings"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+              <circle cx="9" cy="6" r="2" fill="currentColor" />
+              <circle cx="15" cy="12" r="2" fill="currentColor" />
+              <circle cx="7" cy="18" r="2" fill="currentColor" />
+            </svg>
+          </button>
           {activeBoard && (
             <button
               className="rounded bg-zinc-800 p-1 text-zinc-300 hover:bg-zinc-700"
@@ -132,6 +159,7 @@ export default function App() {
           }}
         />
       )}
+      {showAppSettings && <AppSettings onClose={() => setShowAppSettings(false)} />}
     </div>
   );
 }

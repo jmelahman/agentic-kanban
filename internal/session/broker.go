@@ -74,7 +74,7 @@ func (r *ringBuffer) Snapshot() []byte {
 // sessionPTY brokers a single docker exec PTY for a session. It owns the
 // hijacked exec connection and survives WebSocket attach/detach so that
 // clients can reconnect (e.g. after a page refresh) without killing the
-// underlying claude process.
+// underlying agent process.
 //
 // The single reader goroutine is the only writer of binary frames to the
 // active client. WS handlers call register/unregister/write/resize.

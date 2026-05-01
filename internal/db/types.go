@@ -71,6 +71,10 @@ type HookConfig struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type AppSettings struct {
+	Harness string `json:"harness"`
+}
+
 const (
 	SessionStatusStopped       = "stopped"
 	SessionStatusStarting      = "starting"

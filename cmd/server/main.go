@@ -37,7 +37,7 @@ func Root() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "kanban",
-		Short:   "Kanban board for managing Claude Code sessions",
+		Short:   "Kanban board for managing AI agent sessions",
 		Version: fmt.Sprintf("%s\ncommit %s", version, commit),
 	}
 

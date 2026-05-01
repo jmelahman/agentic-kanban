@@ -1,6 +1,6 @@
 # kanban
 
-A kanban board for managing Claude Code sessions. Each ticket is bound to a Claude Code session running inside its own git worktree, executed in the target repository's existing devcontainer.
+A kanban board for managing AI agent sessions. Each ticket is bound to an agent session (Claude Code, pi/Ollama, …) running inside its own git worktree, executed in the target repository's existing devcontainer. The active harness is selected globally in the app's settings.
 
 ## Run
 
@@ -12,6 +12,8 @@ docker run -d --name kanban \
   -p 13000-13099:13000-13099 \
   -v $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock \
   -v $HOME/.claude:$HOME/.claude \
+  # Agent config dir. Claude Code reads ~/.claude; for other harnesses
+  # (e.g. pi/Ollama) substitute or add the relevant path.
   -v $SOURCE:$SOURCE \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
   -e HOME=$HOME \
