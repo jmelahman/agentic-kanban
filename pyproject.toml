@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentic-kanban"
-description = "Kanban board for managing Claude Code sessions"
+description = "Kanban board for managing AI agent sessions"
 license = {file = "LICENSE"}
 authors = [{ name = "Jamison Lahman", email = "jamison@lahman.dev" }]
 readme = "README.md"
