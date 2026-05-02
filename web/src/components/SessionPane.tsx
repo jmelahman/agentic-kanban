@@ -12,7 +12,7 @@ const MAX_WIDTH = 1600;
 const DEFAULT_WIDTH = 640;
 const WIDTH_STORAGE_KEY = "sessionPane.width";
 // Below this pane width, sync/merge buttons collapse to icon-only.
-const COMPACT_WIDTH = 520;
+const COMPACT_WIDTH = 680;
 
 function loadInitialWidth(): number {
   const raw = typeof localStorage !== "undefined" ? localStorage.getItem(WIDTH_STORAGE_KEY) : null;
