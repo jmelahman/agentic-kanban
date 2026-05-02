@@ -36,7 +36,7 @@ export function Column(props: {
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-72 shrink-0 flex-col gap-2 rounded border border-zinc-800 bg-zinc-900 p-2 ${isOver ? "ring-2 ring-red-600" : ""}`}
+      className={`flex min-w-72 flex-1 flex-col gap-2 rounded border border-zinc-800 bg-zinc-900 p-2 ${isOver ? "ring-2 ring-red-600" : ""}`}
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">{props.column.name}</h2>
