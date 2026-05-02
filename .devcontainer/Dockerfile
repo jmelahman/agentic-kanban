@@ -54,7 +54,15 @@ ARG PI_CODING_AGENT_VERSION=latest
 RUN npm install -g \
     @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
     @mariozechner/pi-coding-agent@${PI_CODING_AGENT_VERSION} \
-    vite typescript @typescript/native-preview
+    vite typescript @typescript/native-preview \
+    playwright @playwright/mcp
+
+# Headless Chromium for Playwright (downloaded at build time so the runtime
+# firewall doesn't need to allow the Playwright CDN). Shared path so both the
+# root and dev users can launch it.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install --with-deps chromium \
+ && chmod -R a+rX /ms-playwright
 
 # Pre-seed GitHub's SSH host keys so git-over-SSH never prompts.  Keys are
 # pinned in-repo (verified against the fingerprints GitHub publishes at

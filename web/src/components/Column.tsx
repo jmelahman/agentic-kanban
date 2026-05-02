@@ -31,13 +31,13 @@ export function Column(props: {
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-w-72 flex-1 flex-col gap-2 rounded border border-zinc-800 bg-zinc-900 p-2 ${isOver ? "ring-2 ring-red-600" : ""}`}
+      className={`flex h-full min-w-72 flex-1 flex-col gap-2 overflow-hidden rounded border border-zinc-800 bg-zinc-900 p-2 ${isOver ? "ring-2 ring-red-600" : ""}`}
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">{props.column.name}</h2>
         <span className="text-xs text-zinc-500">{props.tickets.length}</span>
       </div>
-      <div className="flex flex-col gap-2">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {props.tickets
           .sort((a, b) => a.position - b.position)
           .map((t) => (

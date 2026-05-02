@@ -9,6 +9,7 @@ A containerized development environment.
 - Go 1.25 (with `wgo` for live reload)
 - Docker CLI + Compose plugin (talks to the host daemon via mounted socket)
 - Claude Code
+- Playwright + headless Chromium (shared at `/ms-playwright`) for browser-based UI testing
 - Shell tools: zsh, fzf, ripgrep, fd, neovim, less, jq
 - `socat`, `openssh-client`, `gh` CLI
 - Network firewall (default-deny, whitelists only npm, GitHub, Anthropic, Sentry, Go module proxy, and VS Code update servers)
