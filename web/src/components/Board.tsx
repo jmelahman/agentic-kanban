@@ -7,7 +7,11 @@ import { Column } from "./Column";
 import { PtyTerminal } from "./PtyTerminal";
 import { SessionPane } from "./SessionPane";
 
-const NON_RUNNING = new Set(["stopped", "error"]);
+// Statuses where the container is up and the PTY broker can attach. We avoid
+// mounting PtyTerminal during "starting" (set optimistically by the create/start
+// flow) because the websocket would race the container spawn and the failed
+// handshake leaves a stray "[disconnected]" line in the terminal.
+const ATTACHABLE = new Set(["idle", "working", "awaiting_perm"]);
 
 export function Board({ boardId }: { boardId: number }) {
   const qc = useQueryClient();
@@ -68,7 +72,7 @@ export function Board({ boardId }: { boardId: number }) {
         onTerminalSlot={onTerminalSlot}
       />
       {sessions
-        .filter((s) => !NON_RUNNING.has(s.status))
+        .filter((s) => ATTACHABLE.has(s.status))
         .map((s) => (
           <PtyTerminal
             key={`${s.id}:${s.started_at ?? 0}`}
