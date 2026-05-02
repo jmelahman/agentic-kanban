@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { Button } from "./components/Button";
+import { Button } from "@/components/Button";
 
 export type ToastKind = "error" | "info" | "success";
 
@@ -49,7 +49,10 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 function ToastViewport({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: number) => void }) {
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2">
+    <div
+      data-toast-viewport="true"
+      className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-96 max-w-[calc(100vw-2rem)] flex-col gap-2"
+    >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
       ))}
@@ -72,6 +75,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   return (
     <div
       role={toast.kind === "error" ? "alert" : "status"}
+      data-toast="true"
       className={`pointer-events-auto flex items-start gap-2 rounded border px-3 py-2 text-sm shadow-lg transition-all duration-150 ${
         kindStyles[toast.kind]
       } ${entered ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}

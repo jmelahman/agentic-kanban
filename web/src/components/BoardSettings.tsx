@@ -1,14 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, ApiError, Board } from "../api/client";
-import { useToast } from "../toast";
+import { api, Board } from "@/api/client";
+import { queryKeys } from "@/api/keys";
+import { useToast } from "@/toast";
 import { Button } from "./Button";
+import { Modal } from "./Modal";
 
 export function BoardSettings({
+  open,
   board,
   onClose,
   onDeleted,
 }: {
+  open: boolean;
   board: Board;
   onClose: () => void;
   onDeleted: () => void;
@@ -25,14 +29,6 @@ export function BoardSettings({
     setBase(board.base_branch);
   }, [board.id, board.name, board.source_repo_path, board.base_branch]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const updateMut = useMutation({
     mutationFn: () =>
       api.updateBoard(board.id, {
@@ -41,27 +37,19 @@ export function BoardSettings({
         base_branch: base.trim(),
       }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["boards"] });
-      qc.invalidateQueries({ queryKey: ["board", board.id] });
+      qc.invalidateQueries({ queryKey: queryKeys.boards });
+      qc.invalidateQueries({ queryKey: queryKeys.board(board.id) });
       push("success", "Board updated.");
       onClose();
-    },
-    onError: (err) => {
-      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
-      push("error", msg);
     },
   });
 
   const deleteMut = useMutation({
     mutationFn: () => api.deleteBoard(board.id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["boards"] });
+      qc.invalidateQueries({ queryKey: queryKeys.boards });
       push("success", `Deleted board "${board.name}".`);
       onDeleted();
-    },
-    onError: (err) => {
-      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
-      push("error", msg);
     },
   });
 
@@ -70,107 +58,92 @@ export function BoardSettings({
   const busy = updateMut.isPending || deleteMut.isPending;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/50" onClick={busy ? undefined : onClose} />
-      <div className="relative w-[520px] max-w-[calc(100vw-2rem)] rounded border border-zinc-800 bg-zinc-950 shadow-lg">
-        <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-          <h2 className="text-sm font-semibold">Board settings</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            disabled={busy}
-            aria-label="Close"
-          >
-            ✕
-          </Button>
-        </header>
-        <form
-          className="flex flex-col gap-3 p-4 text-sm"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!dirty || !valid) return;
-            updateMut.mutate();
-          }}
-        >
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Name</span>
-            <input
-              className="rounded bg-zinc-900 px-2 py-1"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Source repo path</span>
-            <input
-              className="rounded bg-zinc-900 px-2 py-1 font-mono"
-              value={repo}
-              onChange={(e) => setRepo(e.target.value)}
-              required
-            />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Base branch</span>
-            <input
-              className="rounded bg-zinc-900 px-2 py-1"
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
-              required
-            />
-          </label>
-          <div className="flex flex-col gap-1 text-xs text-zinc-500">
-            <span>slug: <span className="font-mono">{board.slug}</span></span>
-            <span>worktree root: <span className="font-mono">{board.worktree_root}</span></span>
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-              disabled={busy}
-            >
-              cancel
-            </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              disabled={!dirty || !valid || busy}
-              pending={updateMut.isPending}
-              idleLabel="save"
-              pendingLabel="saving…"
-            />
-          </div>
-        </form>
-        <div className="border-t border-zinc-800 p-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-red-400">Danger zone</h3>
-          <p className="mt-1 text-xs text-zinc-400">
-            Deletes this board, all its tickets, and stops/destroys every running session
-            (containers, worktrees, and branches).
-          </p>
+    <Modal open={open} onClose={onClose} title="Board settings" busy={busy}>
+      <form
+        className="flex flex-col gap-3 p-4 text-sm"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!dirty || !valid) return;
+          updateMut.mutate();
+        }}
+      >
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-400">Name</span>
+          <input
+            className="rounded bg-zinc-900 px-2 py-1"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-400">Source repo path</span>
+          <input
+            className="rounded bg-zinc-900 px-2 py-1 font-mono"
+            value={repo}
+            onChange={(e) => setRepo(e.target.value)}
+            required
+          />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-zinc-400">Base branch</span>
+          <input
+            className="rounded bg-zinc-900 px-2 py-1"
+            value={base}
+            onChange={(e) => setBase(e.target.value)}
+            required
+          />
+        </label>
+        <div className="flex flex-col gap-1 text-xs text-zinc-500">
+          <span>slug: <span className="font-mono">{board.slug}</span></span>
+          <span>worktree root: <span className="font-mono">{board.worktree_root}</span></span>
+        </div>
+        <div className="mt-2 flex items-center justify-end gap-2">
           <Button
             type="button"
-            variant="danger"
-            size="lg"
-            className="mt-2 text-xs"
+            variant="ghost"
+            onClick={onClose}
             disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Permanently delete board "${board.name}"?\n\nThis stops all containers, removes worktrees, deletes branches, and removes every ticket.`,
-                )
-              ) {
-                deleteMut.mutate();
-              }
-            }}
-            pending={deleteMut.isPending}
-            idleLabel="delete board"
-            pendingLabel="deleting…"
+          >
+            cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            disabled={!dirty || !valid || busy}
+            pending={updateMut.isPending}
+            idleLabel="save"
+            pendingLabel="saving…"
           />
         </div>
+      </form>
+      <div className="border-t border-zinc-800 p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-red-400">Danger zone</h3>
+        <p className="mt-1 text-xs text-zinc-400">
+          Deletes this board, all its tickets, and stops/destroys every running session
+          (containers, worktrees, and branches).
+        </p>
+        <Button
+          type="button"
+          variant="danger"
+          size="lg"
+          className="mt-2 text-xs"
+          disabled={busy}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Permanently delete board "${board.name}"?\n\nThis stops all containers, removes worktrees, deletes branches, and removes every ticket.`,
+              )
+            ) {
+              deleteMut.mutate();
+            }
+          }}
+          pending={deleteMut.isPending}
+          idleLabel="delete board"
+          pendingLabel="deleting…"
+        />
       </div>
-    </div>
+    </Modal>
   );
 }

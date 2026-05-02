@@ -1,26 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, Session } from "../api/client";
-import { useToast } from "../toast";
+import { api, Session } from "@/api/client";
+import { queryKeys } from "@/api/keys";
+import { useToast } from "@/toast";
 import { Button } from "./Button";
-
-function errorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error) return err.message;
-  return String(err);
-}
 
 export function TasksPanel({ session }: { session: Session; boardId: number }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const tasksQ = useQuery({ queryKey: ["tasks", session.id], queryFn: () => api.discoverTasks(session.id) });
+  const tasksQ = useQuery({ queryKey: queryKeys.tasks(session.id), queryFn: () => api.discoverTasks(session.id) });
   const runsQ = useQuery({
-    queryKey: ["runs", session.id],
+    queryKey: queryKeys.runs(session.id),
     queryFn: () => api.listTaskRuns(session.id),
     refetchInterval: 2000,
   });
   const portsQ = useQuery({
-    queryKey: ["ports", session.id],
+    queryKey: queryKeys.ports(session.id),
     queryFn: () => api.listPorts(session.id),
     refetchInterval: 2000,
   });
@@ -31,15 +26,13 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
     mutationFn: (label: string) => api.startTaskRun(session.id, label),
     onSuccess: (run) => {
       setOpenOutputId(run.id);
-      qc.invalidateQueries({ queryKey: ["runs", session.id] });
-      qc.invalidateQueries({ queryKey: ["ports", session.id] });
+      qc.invalidateQueries({ queryKey: queryKeys.runs(session.id) });
+      qc.invalidateQueries({ queryKey: queryKeys.ports(session.id) });
     },
-    onError: (err) => toast.push("error", errorMessage(err)),
   });
   const stopMut = useMutation({
     mutationFn: (id: number) => api.stopTaskRun(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["runs", session.id] }),
-    onError: (err) => toast.push("error", errorMessage(err)),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.runs(session.id) }),
   });
 
   const warnings = tasksQ.data?.warnings ?? [];

@@ -1,85 +1,74 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { api, ApiError, Ticket } from "../api/client";
-import { useToast } from "../toast";
+import { api, Ticket } from "@/api/client";
+import { queryKeys } from "@/api/keys";
+import { useToast } from "@/toast";
 import { Button } from "./Button";
+import { Drawer } from "./Modal";
 
-export function ArchivedDrawer({ boardId, onClose }: { boardId: number; onClose: () => void }) {
+export function ArchivedDrawer({
+  open,
+  boardId,
+  onClose,
+}: {
+  open: boolean;
+  boardId: number;
+  onClose: () => void;
+}) {
   const qc = useQueryClient();
   const { push } = useToast();
   const archivedQ = useQuery({
-    queryKey: ["archived", boardId],
+    queryKey: queryKeys.archived(boardId),
     queryFn: () => api.listArchivedTickets(boardId),
+    enabled: open,
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: number) => api.deleteTicket(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["archived", boardId] });
-      qc.invalidateQueries({ queryKey: ["board", boardId] });
+      qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
+      qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
       push("success", "Ticket and its resources deleted.");
-    },
-    onError: (err) => {
-      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
-      push("error", msg);
     },
   });
 
   const unarchiveMut = useMutation({
     mutationFn: (id: number) => api.unarchiveTicket(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["archived", boardId] });
-      qc.invalidateQueries({ queryKey: ["board", boardId] });
+      qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
+      qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
       push("success", "Ticket unarchived.");
     },
   });
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div className="fixed inset-0 z-40 flex" role="dialog" aria-modal="true">
-      <div className="flex-1 bg-black/50" onClick={onClose} />
-      <aside className="flex w-[480px] flex-col border-l border-zinc-800 bg-zinc-950">
-        <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
-          <h2 className="text-sm font-semibold">Archived tickets</h2>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
-            ✕
-          </Button>
-        </header>
-        <div className="flex-1 overflow-y-auto p-3">
-          {archivedQ.isLoading && <p className="text-sm text-zinc-400">Loading…</p>}
-          {archivedQ.data && archivedQ.data.length === 0 && (
-            <p className="text-sm text-zinc-400">No archived tickets.</p>
-          )}
-          <ul className="flex flex-col gap-2">
-            {(archivedQ.data ?? []).map((t) => (
-              <ArchivedRow
-                key={t.id}
-                ticket={t}
-                deletePending={deleteMut.isPending && deleteMut.variables === t.id}
-                unarchivePending={unarchiveMut.isPending && unarchiveMut.variables === t.id}
-                onUnarchive={() => unarchiveMut.mutate(t.id)}
-                onDelete={() => {
-                  if (
-                    window.confirm(
-                      `Permanently delete "${t.title}"?\n\nThis stops the container, removes the worktree, and deletes the branch.`,
-                    )
-                  ) {
-                    deleteMut.mutate(t.id);
-                  }
-                }}
-              />
-            ))}
-          </ul>
-        </div>
-      </aside>
-    </div>
+    <Drawer open={open} onClose={onClose} title="Archived tickets">
+      <div className="flex-1 overflow-y-auto p-3">
+        {archivedQ.isLoading && <p className="text-sm text-zinc-400">Loading…</p>}
+        {archivedQ.data && archivedQ.data.length === 0 && (
+          <p className="text-sm text-zinc-400">No archived tickets.</p>
+        )}
+        <ul className="flex flex-col gap-2">
+          {(archivedQ.data ?? []).map((t) => (
+            <ArchivedRow
+              key={t.id}
+              ticket={t}
+              deletePending={deleteMut.isPending && deleteMut.variables === t.id}
+              unarchivePending={unarchiveMut.isPending && unarchiveMut.variables === t.id}
+              onUnarchive={() => unarchiveMut.mutate(t.id)}
+              onDelete={() => {
+                if (
+                  window.confirm(
+                    `Permanently delete "${t.title}"?\n\nThis stops the container, removes the worktree, and deletes the branch.`,
+                  )
+                ) {
+                  deleteMut.mutate(t.id);
+                }
+              }}
+            />
+          ))}
+        </ul>
+      </div>
+    </Drawer>
   );
 }
 

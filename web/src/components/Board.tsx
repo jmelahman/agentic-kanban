@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useCallback, useState } from "react";
-import { api } from "../api/client";
+import { api } from "@/api/client";
+import { queryKeys } from "@/api/keys";
 import { Column } from "./Column";
 import { PtyTerminal } from "./PtyTerminal";
 import { SessionPane } from "./SessionPane";
@@ -10,7 +11,7 @@ const NON_RUNNING = new Set(["stopped", "error"]);
 
 export function Board({ boardId }: { boardId: number }) {
   const qc = useQueryClient();
-  const stateQ = useQuery({ queryKey: ["board", boardId], queryFn: () => api.boardState(boardId) });
+  const stateQ = useQuery({ queryKey: queryKeys.board(boardId), queryFn: () => api.boardState(boardId) });
   const [activeTicket, setActiveTicket] = useState<number | null>(null);
   const [terminalSlot, setTerminalSlot] = useState<HTMLDivElement | null>(null);
   const onTerminalSlot = useCallback((el: HTMLDivElement | null) => setTerminalSlot(el), []);
@@ -19,7 +20,7 @@ export function Board({ boardId }: { boardId: number }) {
   const moveMut = useMutation({
     mutationFn: (input: { id: number; column_id: number; position: number }) =>
       api.moveTicket(input.id, { column_id: input.column_id, position: input.position }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["board", boardId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.board(boardId) }),
   });
 
   if (stateQ.isLoading) return <p className="p-4 text-sm text-zinc-400">Loading…</p>;

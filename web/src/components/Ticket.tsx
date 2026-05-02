@@ -1,5 +1,5 @@
 import { useDraggable } from "@dnd-kit/core";
-import { Session, Ticket as TicketType } from "../api/client";
+import { Session, Ticket as TicketType } from "@/api/client";
 
 const STATUS_COLOR: Record<string, string> = {
   stopped: "text-zinc-500",

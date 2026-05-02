@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { useState } from "react";
-import { api, ApiError, Column as ColumnType, Session, Ticket as TicketType } from "../api/client";
-import { useToast } from "../toast";
+import { api, Column as ColumnType, Session, Ticket as TicketType } from "@/api/client";
+import { queryKeys } from "@/api/keys";
 import { Button } from "./Button";
 import { Ticket } from "./Ticket";
 
@@ -15,7 +15,6 @@ export function Column(props: {
   onSelect: (id: number) => void;
 }) {
   const qc = useQueryClient();
-  const toast = useToast();
   const { setNodeRef, isOver } = useDroppable({ id: `col-${props.column.id}` });
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
@@ -25,11 +24,7 @@ export function Column(props: {
     onSuccess: () => {
       setTitle("");
       setAdding(false);
-      qc.invalidateQueries({ queryKey: ["board", props.boardId] });
-    },
-    onError: (err) => {
-      const msg = err instanceof ApiError ? err.message : err instanceof Error ? err.message : String(err);
-      toast.push("error", msg);
+      qc.invalidateQueries({ queryKey: queryKeys.board(props.boardId) });
     },
   });
 

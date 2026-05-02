@@ -106,6 +106,17 @@ export class ApiError extends Error {
   }
 }
 
+// Error-handling convention: mutations should not call toast.push("error", ...)
+// for the default case. The QueryClient in main.tsx is configured with a global
+// onError handler that toasts every mutation/query failure via this helper.
+// Per-mutation onError is reserved for behaviors beyond toasting (closing a
+// menu, rolling back optimistic state, resetting a ref, etc.).
+export function formatApiError(err: unknown): string {
+  if (err instanceof ApiError) return `${err.status}: ${err.message}`;
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },

@@ -1,7 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError, BoardState, MergeConfig, Session, SyncConfig } from "../api/client";
-import { useToast } from "../toast";
+import { api, BoardState, MergeConfig, Session, SyncConfig } from "@/api/client";
+import { queryKeys } from "@/api/keys";
+import { useToast } from "@/toast";
+import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
 import { Button, Spinner } from "./Button";
 import { TasksPanel } from "./TasksPanel";
 
@@ -17,12 +19,6 @@ function loadInitialWidth(): number {
   const n = raw ? Number(raw) : NaN;
   if (!Number.isFinite(n)) return DEFAULT_WIDTH;
   return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, n));
-}
-
-function errorMessage(err: unknown): string {
-  if (err instanceof ApiError) return err.message;
-  if (err instanceof Error) return err.message;
-  return String(err);
 }
 
 type MergeStrategy = "merge-commit" | "squash" | "rebase";
@@ -94,6 +90,8 @@ export function SessionPane({
       if (paneRef.current?.contains(target as Node)) return;
       // Ticket clicks switch the active ticket themselves; skip close to avoid a flicker.
       if (target?.closest("[data-ticket-card]")) return;
+      // Toasts overlay everything; clicking one (e.g. to dismiss) shouldn't close the pane.
+      if (target?.closest("[data-toast]")) return;
       onClose();
     };
     window.addEventListener("mousedown", handler);
@@ -160,7 +158,7 @@ export function SessionPane({
     return () => window.removeEventListener("mousedown", handler);
   }, [mergeMenuOpen]);
 
-  const boardKey = ["board", boardId] as const;
+  const boardKey = queryKeys.board(boardId);
 
   const optimisticStatus = (sessionId: number, status: string) => {
     const prev = qc.getQueryData<BoardState>(boardKey);
@@ -176,9 +174,8 @@ export function SessionPane({
     mutationFn: (id: number) => api.startSession(id),
     onMutate: (id) => optimisticStatus(id, "starting"),
     onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
-    onError: (err, _vars, ctx) => {
+    onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
-      toast.push("error", errorMessage(err));
     },
   });
   const ensureMut = useMutation({
@@ -187,9 +184,8 @@ export function SessionPane({
       qc.invalidateQueries({ queryKey: boardKey });
       startMut.mutate(created.id);
     },
-    onError: (err) => {
+    onError: () => {
       autoStartedRef.current = null;
-      toast.push("error", errorMessage(err));
     },
   });
   useEffect(() => {
@@ -202,9 +198,8 @@ export function SessionPane({
     mutationFn: () => api.stopSession(session!.id),
     onMutate: () => (session ? optimisticStatus(session.id, "stopping") : { prev: undefined }),
     onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
-    onError: (err, _vars, ctx) => {
+    onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
-      toast.push("error", errorMessage(err));
     },
   });
   const archiveMut = useMutation({
@@ -221,9 +216,8 @@ export function SessionPane({
       return { prev };
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
-    onError: (err, _vars, ctx) => {
+    onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
-      toast.push("error", errorMessage(err));
     },
   });
   const syncMut = useMutation({
@@ -233,9 +227,8 @@ export function SessionPane({
       toast.push("success", `${strategy} from ${baseBranch} succeeded`);
       qc.invalidateQueries({ queryKey: boardKey });
     },
-    onError: (err) => {
+    onError: () => {
       setSyncMenuOpen(false);
-      toast.push("error", errorMessage(err));
     },
   });
   const mergeMut = useMutation({
@@ -246,9 +239,8 @@ export function SessionPane({
       qc.invalidateQueries({ queryKey: boardKey });
       onClose();
     },
-    onError: (err) => {
+    onError: () => {
       setMergeMenuOpen(false);
-      toast.push("error", errorMessage(err));
     },
   });
 
@@ -454,41 +446,7 @@ export function SessionPane({
             aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
             title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
           >
-            {fullscreen ? (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M8 3v3a2 2 0 0 1-2 2H3" />
-                <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
-                <path d="M3 16h3a2 2 0 0 1 2 2v3" />
-                <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
-              </svg>
-            ) : (
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3 8V5a2 2 0 0 1 2-2h3" />
-                <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
-                <path d="M3 16v3a2 2 0 0 0 2 2h3" />
-                <path d="M21 16v3a2 2 0 0 1-2 2h-3" />
-              </svg>
-            )}
+            {fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
           </Button>
           <Button variant="ghost" size="icon" onClick={onClose}>
             ✕
