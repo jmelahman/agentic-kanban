@@ -2,13 +2,15 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError, BoardState, MergeConfig, Session, SyncConfig } from "../api/client";
 import { useToast } from "../toast";
-import { Button } from "./Button";
+import { Button, Spinner } from "./Button";
 import { TasksPanel } from "./TasksPanel";
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 1600;
 const DEFAULT_WIDTH = 640;
 const WIDTH_STORAGE_KEY = "sessionPane.width";
+// Below this pane width, sync/merge buttons collapse to icon-only.
+const COMPACT_WIDTH = 520;
 
 function loadInitialWidth(): number {
   const raw = typeof localStorage !== "undefined" ? localStorage.getItem(WIDTH_STORAGE_KEY) : null;
@@ -256,6 +258,7 @@ export function SessionPane({
   const status = session?.status;
   const isRunning = status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
+  const compact = !fullscreen && width < COMPACT_WIDTH;
 
   return (
     <aside
@@ -313,25 +316,51 @@ export function SessionPane({
             />
           )}
           {session && syncStrategies.length === 1 && (
-            <Button
-              variant="neutral"
-              onClick={() => syncMut.mutate(syncStrategies[0])}
-              pending={syncMut.isPending}
-              idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
-              pendingLabel="syncing…"
-              title={`update from ${baseBranch}`}
-            />
-          )}
-          {session && syncStrategies.length > 1 && (
-            <div className="relative" ref={syncMenuRef}>
+            compact ? (
               <Button
                 variant="neutral"
-                onClick={() => setSyncMenuOpen((v) => !v)}
+                size="icon"
+                onClick={() => syncMut.mutate(syncStrategies[0])}
+                disabled={syncMut.isPending}
+                aria-label={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+                title={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+              >
+                {syncMut.isPending ? <Spinner /> : <SyncIcon />}
+              </Button>
+            ) : (
+              <Button
+                variant="neutral"
+                onClick={() => syncMut.mutate(syncStrategies[0])}
                 pending={syncMut.isPending}
-                idleLabel="sync ▾"
+                idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
                 pendingLabel="syncing…"
                 title={`update from ${baseBranch}`}
               />
+            )
+          )}
+          {session && syncStrategies.length > 1 && (
+            <div className="relative" ref={syncMenuRef}>
+              {compact ? (
+                <Button
+                  variant="neutral"
+                  size="icon"
+                  onClick={() => setSyncMenuOpen((v) => !v)}
+                  disabled={syncMut.isPending}
+                  aria-label="sync"
+                  title={`update from ${baseBranch}`}
+                >
+                  {syncMut.isPending ? <Spinner /> : <SyncIcon />}
+                </Button>
+              ) : (
+                <Button
+                  variant="neutral"
+                  onClick={() => setSyncMenuOpen((v) => !v)}
+                  pending={syncMut.isPending}
+                  idleLabel="sync ▾"
+                  pendingLabel="syncing…"
+                  title={`update from ${baseBranch}`}
+                />
+              )}
               {syncMenuOpen && (
                 <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
                   {syncStrategies.map((s) => (
@@ -349,25 +378,51 @@ export function SessionPane({
             </div>
           )}
           {session && mergeStrategies.length === 1 && (
-            <Button
-              variant="primary"
-              onClick={() => mergeMut.mutate(mergeStrategies[0])}
-              pending={mergeMut.isPending}
-              idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
-              pendingLabel="merging…"
-              title={`integrate into ${baseBranch}`}
-            />
-          )}
-          {session && mergeStrategies.length > 1 && (
-            <div className="relative" ref={mergeMenuRef}>
+            compact ? (
               <Button
                 variant="primary"
-                onClick={() => setMergeMenuOpen((v) => !v)}
+                size="icon"
+                onClick={() => mergeMut.mutate(mergeStrategies[0])}
+                disabled={mergeMut.isPending}
+                aria-label={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+                title={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+              >
+                {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
+              </Button>
+            ) : (
+              <Button
+                variant="primary"
+                onClick={() => mergeMut.mutate(mergeStrategies[0])}
                 pending={mergeMut.isPending}
-                idleLabel="merge ▾"
+                idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
                 pendingLabel="merging…"
                 title={`integrate into ${baseBranch}`}
               />
+            )
+          )}
+          {session && mergeStrategies.length > 1 && (
+            <div className="relative" ref={mergeMenuRef}>
+              {compact ? (
+                <Button
+                  variant="primary"
+                  size="icon"
+                  onClick={() => setMergeMenuOpen((v) => !v)}
+                  disabled={mergeMut.isPending}
+                  aria-label="merge"
+                  title={`integrate into ${baseBranch}`}
+                >
+                  {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
+                </Button>
+              ) : (
+                <Button
+                  variant="primary"
+                  onClick={() => setMergeMenuOpen((v) => !v)}
+                  pending={mergeMut.isPending}
+                  idleLabel="merge ▾"
+                  pendingLabel="merging…"
+                  title={`integrate into ${baseBranch}`}
+                />
+              )}
               {mergeMenuOpen && (
                 <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
                   {mergeStrategies.map((s) => (
@@ -457,6 +512,49 @@ export function SessionPane({
         {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
       </div>
     </aside>
+  );
+}
+
+function SyncIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
+}
+
+function MergeIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="9" r="3" />
+      <path d="M6 9v6" />
+      <path d="M6 15a9 9 0 0 0 9-6" />
+    </svg>
   );
 }
 
