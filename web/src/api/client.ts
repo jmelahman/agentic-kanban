@@ -90,7 +90,12 @@ export type PortAllocation = {
   proxy_active: boolean;
 };
 
-export type AppSettings = { harness: string };
+export type AppSettings = {
+  harness: string;
+  worktrees_root: string;
+  worktrees_root_resolved: string;
+  worktrees_root_locked: boolean;
+};
 
 export type Harness = { id: string; label: string; pty_command: string[] };
 
@@ -179,7 +184,7 @@ export const api = {
   deletePort: (id: number) => request<void>(`/api/ports/${id}`, { method: "DELETE" }),
 
   getSettings: () => request<AppSettings>("/api/settings"),
-  updateSettings: (input: { harness?: string }) =>
+  updateSettings: (input: { harness?: string; worktrees_root?: string }) =>
     request<AppSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(input) }),
   listHarnesses: () => request<Harness[]>("/api/harnesses"),
 

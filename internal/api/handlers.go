@@ -15,6 +15,7 @@ import (
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/kanbantoml"
 	"github.com/jmelahman/kanban/internal/session"
 	"github.com/jmelahman/kanban/internal/tasks"
 )
@@ -979,50 +980,73 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 }
 
 // Settings — backed by the user-level config file at
-// $XDG_CONFIG_HOME/kanban/config.toml. Empty harness == "no user override".
+// $XDG_CONFIG_HOME/kanban/config.toml. Empty values mean "no user override".
 
 type settingsResp struct {
-	Harness string `json:"harness"`
+	Harness               string `json:"harness"`
+	WorktreesRoot         string `json:"worktrees_root"`
+	WorktreesRootResolved string `json:"worktrees_root_resolved"`
+	WorktreesRootLocked   bool   `json:"worktrees_root_locked"`
+}
+
+func (h *handlers) settingsResponse() settingsResp {
+	id, _ := harness.ReadUserHarness()
+	return settingsResp{
+		Harness:               id,
+		WorktreesRoot:         readUserWorktreesRoot(),
+		WorktreesRootResolved: h.config.WorktreesDir(),
+		WorktreesRootLocked:   h.config.HasWorktreesDirOverride(),
+	}
 }
 
 func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
-	id, _ := harness.ReadUserHarness()
-	writeJSON(w, 200, settingsResp{Harness: id})
+	writeJSON(w, 200, h.settingsResponse())
 }
 
 func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Harness *string `json:"harness"`
+		Harness       *string `json:"harness"`
+		WorktreesRoot *string `json:"worktrees_root"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		httpError(w, err, 400)
 		return
 	}
-	if req.Harness == nil {
-		writeJSON(w, 200, settingsResp{Harness: firstNonEmpty(harness.ReadUserHarness)})
-		return
+	if req.Harness != nil {
+		id := *req.Harness
+		if id != "" && !harness.IsKnown(id) {
+			httpError(w, fmt.Errorf("unknown harness %q", id), 400)
+			return
+		}
+		if err := harness.WriteUserHarness(id); err != nil {
+			httpError(w, err, 500)
+			return
+		}
 	}
-	id := *req.Harness
-	if id != "" && !harness.IsKnown(id) {
-		httpError(w, fmt.Errorf("unknown harness %q", id), 400)
-		return
+	if req.WorktreesRoot != nil {
+		if h.config.HasWorktreesDirOverride() {
+			httpError(w, fmt.Errorf("worktrees root is locked by --worktrees-dir or $KANBAN_WORKTREES_DIR"), http.StatusConflict)
+			return
+		}
+		root := strings.TrimSpace(*req.WorktreesRoot)
+		if err := kanbantoml.WriteUserWorktreesRoot(root); err != nil {
+			httpError(w, err, 500)
+			return
+		}
 	}
-	if err := harness.WriteUserHarness(id); err != nil {
-		httpError(w, err, 500)
-		return
+	writeJSON(w, 200, h.settingsResponse())
+}
+
+func readUserWorktreesRoot() string {
+	f := kanbantoml.Load("")
+	if f.Worktrees == nil || f.Worktrees.Root == nil {
+		return ""
 	}
-	writeJSON(w, 200, settingsResp{Harness: id})
+	return *f.Worktrees.Root
 }
 
 func (h *handlers) listHarnesses(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, harness.Registry)
-}
-
-func firstNonEmpty(read func() (string, bool)) string {
-	if v, ok := read(); ok {
-		return v
-	}
-	return ""
 }
 
 // helpers

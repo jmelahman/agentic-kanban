@@ -19,15 +19,20 @@ import (
 )
 
 type File struct {
-	Harness *HarnessSection `toml:"harness"`
-	Sync    *SyncSection    `toml:"sync"`
-	Merge   *MergeSection   `toml:"merge"`
-	GitHub  *GitHubSection  `toml:"github"`
-	Tasks   []TaskEntry     `toml:"task"`
+	Harness   *HarnessSection   `toml:"harness"`
+	Sync      *SyncSection      `toml:"sync"`
+	Merge     *MergeSection     `toml:"merge"`
+	GitHub    *GitHubSection    `toml:"github"`
+	Worktrees *WorktreesSection `toml:"worktrees"`
+	Tasks     []TaskEntry       `toml:"task"`
 }
 
 type HarnessSection struct {
 	ID *string `toml:"id"`
+}
+
+type WorktreesSection struct {
+	Root *string `toml:"root"`
 }
 
 type SyncSection struct {
@@ -111,9 +116,24 @@ func merge(project, user File) File {
 	out.Sync = mergeSync(project.Sync, user.Sync)
 	out.Merge = mergeMerge(project.Merge, user.Merge)
 	out.GitHub = mergeGitHub(project.GitHub, user.GitHub)
+	out.Worktrees = mergeWorktrees(project.Worktrees, user.Worktrees)
 	out.Tasks = mergeTasks(project.Tasks, user.Tasks)
 
 	return out
+}
+
+func mergeWorktrees(p, u *WorktreesSection) *WorktreesSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := WorktreesSection{}
+	if p != nil {
+		out.Root = p.Root
+	}
+	if u != nil && u.Root != nil {
+		out.Root = u.Root
+	}
+	return &out
 }
 
 func mergeHarness(p, u *HarnessSection) *HarnessSection {
@@ -238,6 +258,25 @@ func (f File) PortFor(label string) (int, bool) {
 // Creates the file (and parent directories) when needed; deletes the file
 // when clearing leaves it empty.
 func WriteUserHarness(id string) error {
+	if id == "" {
+		return writeUserSection("harness", nil)
+	}
+	return writeUserSection("harness", map[string]any{"id": id})
+}
+
+// WriteUserWorktreesRoot sets (or clears, when root == "") the
+// [worktrees].root key in the user config.
+func WriteUserWorktreesRoot(root string) error {
+	if root == "" {
+		return writeUserSection("worktrees", nil)
+	}
+	return writeUserSection("worktrees", map[string]any{"root": root})
+}
+
+// writeUserSection sets the named top-level table to value (or removes it
+// when value is nil), preserving every other top-level key already in the
+// file. Deletes the file when the result is empty.
+func writeUserSection(name string, value map[string]any) error {
 	path, err := UserPath()
 	if err != nil {
 		return err
@@ -252,10 +291,10 @@ func WriteUserHarness(id string) error {
 		return err
 	}
 
-	if id == "" {
-		delete(root, "harness")
+	if value == nil {
+		delete(root, name)
 	} else {
-		root["harness"] = map[string]any{"id": id}
+		root[name] = value
 	}
 
 	if len(root) == 0 {
