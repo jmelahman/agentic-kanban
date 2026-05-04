@@ -14,6 +14,7 @@ import (
 	"github.com/jmelahman/kanban/internal/git"
 	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/kanbantoml"
 )
 
 type Manager struct {
@@ -123,6 +124,7 @@ func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, erro
 		_ = m.store.UpdateSessionStatus(ctx, sess.ID, db.SessionStatusError)
 		return nil, err
 	}
+	applyKanbanDevcontainerOverrides(cfg, kanbantoml.Load(sess.WorktreePath).Devcontainer)
 
 	_ = m.store.UpdateSessionStatus(ctx, sess.ID, db.SessionStatusStarting)
 
@@ -188,6 +190,23 @@ func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, erro
 	})
 
 	return sess, nil
+}
+
+// applyKanbanDevcontainerOverrides layers the [devcontainer] section from
+// .kanban.toml (project + user) onto the parsed devcontainer.json: run_args
+// and mounts append, container_env merges with kanban values winning.
+func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanbantoml.DevcontainerSection) {
+	if cfg == nil || dev == nil {
+		return
+	}
+	cfg.RunArgs = append(cfg.RunArgs, dev.RunArgs...)
+	cfg.Mounts = append(cfg.Mounts, dev.Mounts...)
+	if len(dev.ContainerEnv) > 0 && cfg.ContainerEnv == nil {
+		cfg.ContainerEnv = map[string]string{}
+	}
+	for k, v := range dev.ContainerEnv {
+		cfg.ContainerEnv[k] = v
+	}
 }
 
 // Stop tears down the devcontainer; worktree is preserved.

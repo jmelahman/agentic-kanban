@@ -87,6 +87,18 @@ review_column = "In Review"
 done_column   = "Done"
 closed_column = "Done"
 
+# Extra knobs layered onto the worktree's devcontainer.json at session spawn.
+# `mounts` and `run_args` append to whatever the devcontainer.json declares;
+# `container_env` merges with kanban values winning. There is no conditional
+# logic - if you want a host-specific bind (e.g. the SSH agent socket) only
+# on machines that have it, set it in your user-level config, not the repo.
+[devcontainer]
+mounts   = ["type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock"]
+run_args = ["--cap-add=SYS_PTRACE"]
+
+[devcontainer.container_env]
+SSH_AUTH_SOCK = "/tmp/ssh-agent.sock"
+
 # Per-task ports: associate .vscode/tasks.json labels with container ports.
 # When such a task runs, kanban allocates a host port from 13000-13099 and
 # runs a TCP proxy.
@@ -100,6 +112,8 @@ container_port = 8080
 ```
 
 `[[task]]` entries merge by `label`: a user entry with the same label replaces the project entry, and user-only labels are appended.
+
+The user-config path can also be overridden from the CLI: `kanban serve --config /path/to/config.toml` (or `$KANBAN_CONFIG`) replaces the default `$XDG_CONFIG_HOME/kanban/config.toml` lookup.
 
 ## API
 

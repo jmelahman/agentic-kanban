@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"syscall"
 	"time"
@@ -72,6 +73,7 @@ func Root() *cobra.Command {
 	var addr string
 	var dataDir string
 	var worktreesDir string
+	var configPath string
 	var portRangeStart int
 	var portRangeEnd int
 
@@ -85,12 +87,16 @@ func Root() *cobra.Command {
 		Use:   "serve",
 		Short: "Start the kanban HTTP server",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := applyConfigPath(configPath); err != nil {
+				return err
+			}
 			return run(addr, dataDir, worktreesDir, portRangeStart, portRangeEnd)
 		},
 	}
 	serve.Flags().StringVar(&addr, "addr", ":7474", "HTTP listen address")
 	serve.Flags().StringVar(&dataDir, "data-dir", "", "Override data directory (default: $KANBAN_DATA_DIR or XDG)")
 	serve.Flags().StringVar(&worktreesDir, "worktrees-dir", "", "Override default parent directory for new board worktrees (default: $KANBAN_WORKTREES_DIR or <data-dir>/worktrees)")
+	serve.Flags().StringVar(&configPath, "config", "", "Override user-level kanban config path (default: $KANBAN_CONFIG or $XDG_CONFIG_HOME/kanban/config.toml)")
 	serve.Flags().IntVar(&portRangeStart, "port-range-start", 13000, "First host port available for proxy allocation")
 	serve.Flags().IntVar(&portRangeEnd, "port-range-end", 13099, "Last host port available for proxy allocation (inclusive)")
 
@@ -117,6 +123,21 @@ func Root() *cobra.Command {
 	addClientCommands(cmd)
 
 	return cmd
+}
+
+// applyConfigPath publishes the requested user-config path via $KANBAN_CONFIG
+// so kanbantoml.UserPath() (called from many sites) picks it up without
+// threading the override through every caller. The flag wins over a
+// pre-existing env var; an empty flag leaves the env alone.
+func applyConfigPath(p string) error {
+	if p == "" {
+		return nil
+	}
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return fmt.Errorf("resolve --config path: %w", err)
+	}
+	return os.Setenv("KANBAN_CONFIG", abs)
 }
 
 func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd int) error {

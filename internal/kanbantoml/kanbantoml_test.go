@@ -167,12 +167,72 @@ container_port = 5173
 	}
 }
 
+func TestLoad_DevcontainerAppendsAndMergesEnv(t *testing.T) {
+	withUserConfig(t, `[devcontainer]
+mounts = ["type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock"]
+run_args = ["--cap-add=SYS_PTRACE"]
+
+[devcontainer.container_env]
+SSH_AUTH_SOCK = "/tmp/ssh-agent.sock"
+LANG = "en_US.UTF-8"
+`)
+	repo := writeProject(t, `[devcontainer]
+mounts = ["type=volume,source=node_modules,target=/workspace/node_modules"]
+
+[devcontainer.container_env]
+LANG = "C.UTF-8"
+TZ = "UTC"
+`)
+
+	d := Load(repo).Devcontainer
+	if d == nil {
+		t.Fatal("devcontainer section missing")
+	}
+
+	if got := len(d.Mounts); got != 2 {
+		t.Errorf("len(mounts) = %d; want 2 (project + user appended)", got)
+	}
+	if d.Mounts[0] != "type=volume,source=node_modules,target=/workspace/node_modules" {
+		t.Errorf("mounts[0] = %q; want project entry first", d.Mounts[0])
+	}
+	if d.Mounts[1] != "type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock" {
+		t.Errorf("mounts[1] = %q; want user entry second", d.Mounts[1])
+	}
+
+	if got := len(d.RunArgs); got != 1 || d.RunArgs[0] != "--cap-add=SYS_PTRACE" {
+		t.Errorf("run_args = %v; want [--cap-add=SYS_PTRACE]", d.RunArgs)
+	}
+
+	if got := d.ContainerEnv["LANG"]; got != "en_US.UTF-8" {
+		t.Errorf("container_env[LANG] = %q; want en_US.UTF-8 (user override)", got)
+	}
+	if got := d.ContainerEnv["TZ"]; got != "UTC" {
+		t.Errorf("container_env[TZ] = %q; want UTC (project preserved)", got)
+	}
+	if got := d.ContainerEnv["SSH_AUTH_SOCK"]; got != "/tmp/ssh-agent.sock" {
+		t.Errorf("container_env[SSH_AUTH_SOCK] = %q; want /tmp/ssh-agent.sock (user-only)", got)
+	}
+}
+
+func TestUserPath_KanbanConfigEnvOverride(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "/should/not/be/used")
+	t.Setenv("KANBAN_CONFIG", "/tmp/custom/kanban.toml")
+
+	got, err := UserPath()
+	if err != nil {
+		t.Fatalf("UserPath: %v", err)
+	}
+	if got != "/tmp/custom/kanban.toml" {
+		t.Errorf("UserPath = %q; want /tmp/custom/kanban.toml", got)
+	}
+}
+
 func TestLoad_NoFiles(t *testing.T) {
 	withUserConfig(t, "")
 	repo := writeProject(t, "")
 
 	f := Load(repo)
-	if f.Harness != nil || f.Sync != nil || f.Merge != nil || f.GitHub != nil || f.Tasks != nil {
+	if f.Harness != nil || f.Sync != nil || f.Merge != nil || f.GitHub != nil || f.Devcontainer != nil || f.Tasks != nil {
 		t.Errorf("expected fully empty File, got %+v", f)
 	}
 }

@@ -19,12 +19,13 @@ import (
 )
 
 type File struct {
-	Harness   *HarnessSection   `toml:"harness"`
-	Sync      *SyncSection      `toml:"sync"`
-	Merge     *MergeSection     `toml:"merge"`
-	GitHub    *GitHubSection    `toml:"github"`
-	Worktrees *WorktreesSection `toml:"worktrees"`
-	Tasks     []TaskEntry       `toml:"task"`
+	Harness      *HarnessSection      `toml:"harness"`
+	Sync         *SyncSection         `toml:"sync"`
+	Merge        *MergeSection        `toml:"merge"`
+	GitHub       *GitHubSection       `toml:"github"`
+	Worktrees    *WorktreesSection    `toml:"worktrees"`
+	Devcontainer *DevcontainerSection `toml:"devcontainer"`
+	Tasks        []TaskEntry          `toml:"task"`
 }
 
 type HarnessSection struct {
@@ -46,6 +47,16 @@ type MergeSection struct {
 	AllowRebase      *bool `toml:"allow_rebase"`
 }
 
+// DevcontainerSection augments the loaded devcontainer.json. Mounts and
+// run_args append to whatever the devcontainer.json already declares;
+// container_env merges key-by-key with user values winning over both the
+// project file and the devcontainer.json.
+type DevcontainerSection struct {
+	RunArgs      []string          `toml:"run_args"`
+	Mounts       []string          `toml:"mounts"`
+	ContainerEnv map[string]string `toml:"container_env"`
+}
+
 type GitHubSection struct {
 	AutoMove     *bool   `toml:"auto_move"`
 	DraftColumn  *string `toml:"draft_column"`
@@ -59,8 +70,14 @@ type TaskEntry struct {
 	ContainerPort int    `toml:"container_port"`
 }
 
-// UserPath returns the user-level config path.
+// UserPath returns the user-level config path. $KANBAN_CONFIG, when set,
+// overrides the default location so callers (e.g. the `serve --config` flag)
+// can point at an arbitrary file without threading the path through every
+// caller of Load.
 func UserPath() (string, error) {
+	if path := os.Getenv("KANBAN_CONFIG"); path != "" {
+		return path, nil
+	}
 	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
 		return filepath.Join(dir, "kanban", "config.toml"), nil
 	}
@@ -117,6 +134,7 @@ func merge(project, user File) File {
 	out.Merge = mergeMerge(project.Merge, user.Merge)
 	out.GitHub = mergeGitHub(project.GitHub, user.GitHub)
 	out.Worktrees = mergeWorktrees(project.Worktrees, user.Worktrees)
+	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
 	out.Tasks = mergeTasks(project.Tasks, user.Tasks)
 
 	return out
@@ -217,6 +235,34 @@ func mergeGitHub(p, u *GitHubSection) *GitHubSection {
 		}
 		if u.ClosedColumn != nil {
 			out.ClosedColumn = u.ClosedColumn
+		}
+	}
+	return &out
+}
+
+func mergeDevcontainer(p, u *DevcontainerSection) *DevcontainerSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := DevcontainerSection{}
+	if p != nil {
+		out.RunArgs = append(out.RunArgs, p.RunArgs...)
+		out.Mounts = append(out.Mounts, p.Mounts...)
+		for k, v := range p.ContainerEnv {
+			if out.ContainerEnv == nil {
+				out.ContainerEnv = map[string]string{}
+			}
+			out.ContainerEnv[k] = v
+		}
+	}
+	if u != nil {
+		out.RunArgs = append(out.RunArgs, u.RunArgs...)
+		out.Mounts = append(out.Mounts, u.Mounts...)
+		for k, v := range u.ContainerEnv {
+			if out.ContainerEnv == nil {
+				out.ContainerEnv = map[string]string{}
+			}
+			out.ContainerEnv[k] = v
 		}
 	}
 	return &out
