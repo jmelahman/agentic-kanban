@@ -2,7 +2,7 @@
 
 [![Deploy Status](https://github.com/jmelahman/agentic-kanban/actions/workflows/release.yml/badge.svg)](https://github.com/jmelahman/agentic-kanban/actions)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jmelahman/agentic-kanban.svg)](https://pkg.go.dev/github.com/jmelahman/agentic-kanban)
-[![PyPI](https://img.shields.io/pypi/v/release-agentic-kanban.svg)](https://pypi.org/project/agentic-kanban/)
+[![PyPI](https://img.shields.io/pypi/v/agentic-kanban.svg)](https://pypi.org/project/agentic-kanban/)
 
 A kanban board for managing AI agent sessions.
 
@@ -109,11 +109,11 @@ Path parameter `{id}` accepts either the numeric board id or the board slug.
 
 Body fields:
 
-| Field       | Type    | Required | Notes                                                                                          |
-| ----------- | ------- | -------- | ---------------------------------------------------------------------------------------------- |
-| `title`     | string  | yes      |                                                                                                |
-| `body`      | string  | no       | Markdown ticket description.                                                                   |
-| `column_id` | integer | no       | Numeric column id. Wins over `column` if both set.                                             |
+| Field       | Type    | Required | Notes                                                                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `title`     | string  | yes      |                                                                                                 |
+| `body`      | string  | no       | Markdown ticket description.                                                                    |
+| `column_id` | integer | no       | Numeric column id. Wins over `column` if both set.                                              |
 | `column`    | string  | no       | Column name (case-insensitive) or numeric string. Defaults to the leftmost column when omitted. |
 
 Returns `201` with the created `Ticket` JSON, or `400` / `404` on validation failures. SSE subscribers on `/api/boards/{id}/events` receive a `ticket_created` event.
