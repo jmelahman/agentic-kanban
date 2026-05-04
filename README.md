@@ -2,7 +2,7 @@
 
 [![Deploy Status](https://github.com/jmelahman/agentic-kanban/actions/workflows/release.yml/badge.svg)](https://github.com/jmelahman/agentic-kanban/actions)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jmelahman/agentic-kanban.svg)](https://pkg.go.dev/github.com/jmelahman/agentic-kanban)
-[![PyPI](https://img.shields.io/pypi/v/release-agentic-kanban.svg)](https://pypi.org/project/release-agentic-kanban/)
+[![PyPI](https://img.shields.io/pypi/v/release-agentic-kanban.svg)](https://pypi.org/project/agentic-kanban/)
 
 A kanban board for managing AI agent sessions.
 
@@ -14,9 +14,20 @@ A kanban board for managing AI agent sessions.
   </picture>
 </p>
 
-Each ticket is bound to an agent session (Claude Code, pi/Ollama, …) running inside its own git worktree, executed in the target repository's existing devcontainer. The active harness is selected globally in the app's settings.
+Each ticket is bound to an agent session (Claude Code, pi.dev) running inside its own git worktree, executed in the target repository's existing devcontainer.
+The active harness is selected globally in the app's settings.
 
-## Run
+## Install
+
+**python:**
+
+```
+uv tool install agentic-kanban
+```
+
+This will install the binary to `~/.local/bin/kanban`.
+
+**docker:**
 
 ```bash
 SOURCE=$HOME/code
@@ -35,7 +46,9 @@ docker run -d --name kanban \
   lahmanja/kanban:latest
 ```
 
-Open `http://localhost:7474`.
+**github:**
+
+Prebuilt packages are available from [Github Releases](https://github.com/jmelahman/agentic-kanban/releases).
 
 ## Build
 
