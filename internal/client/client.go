@@ -1,4 +1,7 @@
-package mcp
+// Package client is a thin HTTP client for the kanban REST API. It's used
+// by both the MCP server (internal/mcp) and the kanban CLI subcommands
+// (cmd/server) so the request shapes stay in one place.
+package client
 
 import (
 	"bytes"
@@ -11,28 +14,38 @@ import (
 	"strings"
 )
 
-// kanbanClient is a tiny HTTP client for the kanban server. Tool handlers are
-// thin wrappers over the existing REST surface; see internal/api for the
-// endpoint definitions.
-type kanbanClient struct {
+// Client wraps an *http.Client and a base URL.
+type Client struct {
 	baseURL string
 	hc      *http.Client
 }
 
-func newKanbanClient(baseURL string, hc *http.Client) *kanbanClient {
+// New returns a Client. If hc is nil, http.DefaultClient is used.
+func New(baseURL string, hc *http.Client) *Client {
 	if hc == nil {
 		hc = http.DefaultClient
 	}
-	return &kanbanClient{baseURL: strings.TrimRight(baseURL, "/"), hc: hc}
+	return &Client{baseURL: strings.TrimRight(baseURL, "/"), hc: hc}
 }
 
-type boardSummary struct {
+// Board mirrors the subset of fields callers need from /api/boards.
+type Board struct {
 	ID   int64  `json:"id"`
 	Name string `json:"name"`
 	Slug string `json:"slug"`
 }
 
-func (c *kanbanClient) listBoards(ctx context.Context) ([]boardSummary, error) {
+// CreateTicketArgs is the input shape for CreateTicket. Only Board and Title
+// are required; the server defaults Column to the leftmost column.
+type CreateTicketArgs struct {
+	Board  string `json:"-"`
+	Title  string `json:"title"`
+	Body   string `json:"body,omitempty"`
+	Column string `json:"column,omitempty"`
+}
+
+// ListBoards calls GET /api/boards.
+func (c *Client) ListBoards(ctx context.Context) ([]Board, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/boards", nil)
 	if err != nil {
 		return nil, err
@@ -49,9 +62,9 @@ func (c *kanbanClient) listBoards(ctx context.Context) ([]boardSummary, error) {
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		return nil, err
 	}
-	out := make([]boardSummary, 0, len(raw))
+	out := make([]Board, 0, len(raw))
 	for _, b := range raw {
-		var s boardSummary
+		var s Board
 		_ = json.Unmarshal(b["id"], &s.ID)
 		_ = json.Unmarshal(b["name"], &s.Name)
 		_ = json.Unmarshal(b["slug"], &s.Slug)
@@ -60,14 +73,11 @@ func (c *kanbanClient) listBoards(ctx context.Context) ([]boardSummary, error) {
 	return out, nil
 }
 
-type createTicketArgs struct {
-	Board  string `json:"board"`
-	Title  string `json:"title"`
-	Body   string `json:"body,omitempty"`
-	Column string `json:"column,omitempty"`
-}
-
-func (c *kanbanClient) createTicket(ctx context.Context, a createTicketArgs) (json.RawMessage, error) {
+// CreateTicket calls POST /api/boards/{board}/tickets and returns the raw
+// JSON the server responded with. Callers that want a typed value can
+// re-decode; we keep the raw form here so both MCP (which forwards to the
+// agent) and CLI (which re-prints) can use it.
+func (c *Client) CreateTicket(ctx context.Context, a CreateTicketArgs) (json.RawMessage, error) {
 	if a.Board == "" {
 		return nil, fmt.Errorf("board required")
 	}
@@ -102,7 +112,7 @@ func (c *kanbanClient) createTicket(ctx context.Context, a createTicketArgs) (js
 	return io.ReadAll(resp.Body)
 }
 
-func (c *kanbanClient) readError(resp *http.Response) error {
+func (c *Client) readError(resp *http.Response) error {
 	b, _ := io.ReadAll(resp.Body)
 	var e struct {
 		Error string `json:"error"`

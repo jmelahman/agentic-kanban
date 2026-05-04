@@ -14,6 +14,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/jmelahman/kanban/internal/client"
 )
 
 // Protocol version we advertise. Clients can still negotiate; we just echo
@@ -28,8 +30,7 @@ func Run(ctx context.Context, serverURL string) error {
 }
 
 func run(ctx context.Context, serverURL string, in io.Reader, out io.Writer, hc *http.Client) error {
-	client := newKanbanClient(serverURL, hc)
-	srv := &server{client: client, out: out}
+	srv := &server{client: client.New(serverURL, hc), out: out}
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
@@ -46,7 +47,7 @@ func run(ctx context.Context, serverURL string, in io.Reader, out io.Writer, hc 
 }
 
 type server struct {
-	client *kanbanClient
+	client *client.Client
 	out    io.Writer
 }
 
@@ -194,19 +195,29 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 	}
 	switch p.Name {
 	case "create_ticket":
-		var args createTicketArgs
+		var args struct {
+			Board  string `json:"board"`
+			Title  string `json:"title"`
+			Body   string `json:"body"`
+			Column string `json:"column"`
+		}
 		if len(p.Arguments) > 0 {
 			if err := json.Unmarshal(p.Arguments, &args); err != nil {
 				return nil, fmt.Errorf("invalid arguments: %w", err)
 			}
 		}
-		raw, err := s.client.createTicket(ctx, args)
+		raw, err := s.client.CreateTicket(ctx, client.CreateTicketArgs{
+			Board:  args.Board,
+			Title:  args.Title,
+			Body:   args.Body,
+			Column: args.Column,
+		})
 		if err != nil {
 			return errorResult(err.Error()), nil
 		}
 		return textResult(string(raw)), nil
 	case "list_boards":
-		boards, err := s.client.listBoards(ctx)
+		boards, err := s.client.ListBoards(ctx)
 		if err != nil {
 			return errorResult(err.Error()), nil
 		}

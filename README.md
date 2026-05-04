@@ -101,7 +101,7 @@ container_port = 8080
 
 ## API
 
-The HTTP server (default `:7474`) exposes a small REST API. The endpoint most useful for scripting is ticket creation:
+The HTTP server (default `:7474`) exposes a small REST API. The endpoint most useful for scripting is ticket creation.
 
 ### `POST /api/boards/{id}/tickets`
 
@@ -118,24 +118,29 @@ Body fields:
 
 Returns `201` with the created `Ticket` JSON, or `400` / `404` on validation failures. SSE subscribers on `/api/boards/{id}/events` receive a `ticket_created` event.
 
+The server has no authentication — bind only to `127.0.0.1` (the default container mapping does this).
+
+## CLI
+
+When kanban is installed natively (e.g. `go install` or a release binary on `$PATH`), two subcommands wrap the API for shell use:
+
 ```bash
-# Default column (Backlog), board by slug
-curl -sX POST http://localhost:7474/api/boards/my-board/tickets \
-     -H 'content-type: application/json' \
-     -d '{"title":"Investigate flaky test"}' | jq
+# List boards
+kanban list-boards
 
-# Pick a column by name
-curl -sX POST http://localhost:7474/api/boards/my-board/tickets \
-     -H 'content-type: application/json' \
-     -d '{"title":"Wire CI","column":"In Progress","body":"add a workflow"}' | jq
+# Create a ticket (default column = leftmost)
+kanban create-ticket --board my-board --title "Investigate flaky test"
 
-# Numeric ids (back-compat)
-curl -sX POST http://localhost:7474/api/boards/1/tickets \
-     -H 'content-type: application/json' \
-     -d '{"title":"Compat","column_id":2}' | jq
+# Pick a column, attach a body, get full JSON back
+kanban create-ticket \
+  --board my-board \
+  --title "Wire CI" \
+  --column "In Progress" \
+  --body "add a workflow" \
+  --json
 ```
 
-The server has no authentication — bind only to `127.0.0.1` (the default container mapping does this).
+Both commands take `--server` (default `http://localhost:7474`); the `KANBAN_URL` env var is used as a fallback.
 
 ## MCP
 
