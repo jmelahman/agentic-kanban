@@ -17,8 +17,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://kanban:7474",
-      "/ws": { target: "ws://kanban:7474", ws: true },
+      "/api": `http://${process.env.KANBAN_BACKEND ?? "kanban:7474"}`,
+      "/ws": { target: `ws://${process.env.KANBAN_BACKEND ?? "kanban:7474"}`, ws: true },
     },
   },
 });

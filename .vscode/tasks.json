@@ -26,6 +26,17 @@
       "options": {
         "cwd": "${workspaceFolder}/web"
       }
+    },
+    {
+      "label": "Kanban Frontend (Local Backend)",
+      "type": "shell",
+      "command": "npm install && npm run dev -- --host 0.0.0.0",
+      "options": {
+        "cwd": "${workspaceFolder}/web",
+        "env": {
+          "KANBAN_BACKEND": "localhost:7474"
+        }
+      }
     }
   ]
 }
