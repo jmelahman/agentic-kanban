@@ -307,7 +307,11 @@ func (r *Runner) Start(ctx context.Context, sess *db.Session, task VSCodeTask) (
 	return tr, nil
 }
 
-// Stop sends SIGTERM-equivalent by killing the exec'd process.
+// Stop sends SIGTERM to the exec'd shell and every descendant. Docker exec
+// processes don't run in their own session, so signaling only the shell would
+// orphan grandchildren like `wgo`, `npm`, or `node` — they'd keep running and
+// hold the stdout pipe open, blocking the Start goroutine from ever marking
+// the run exited.
 func (r *Runner) Stop(ctx context.Context, sess *db.Session, tr *db.TaskRun) error {
 	if tr.ExecID == nil || sess.ContainerID == nil {
 		return nil
@@ -319,8 +323,17 @@ func (r *Runner) Stop(ctx context.Context, sess *db.Session, tr *db.TaskRun) err
 	if inspect.Pid == 0 {
 		return nil
 	}
-	// Both kills exiting non-zero just means the process is already gone, which is fine.
-	_, _ = r.docker.ExecRun(ctx, *sess.ContainerID, []string{"sh", "-c", fmt.Sprintf("kill -TERM -%d 2>/dev/null || kill -TERM %d 2>/dev/null", inspect.Pid, inspect.Pid)})
+	script := fmt.Sprintf(`walk(){
+  echo "$1"
+  for s in /proc/[0-9]*/status; do
+    [ -r "$s" ] || continue
+    if [ "$(awk '/^PPid:/{print $2; exit}' "$s")" = "$1" ]; then
+      d=${s%%%%/status}; walk "${d##*/}"
+    fi
+  done
+}
+kill -TERM $(walk %d) 2>/dev/null || true`, inspect.Pid)
+	_, _ = r.docker.ExecRun(ctx, *sess.ContainerID, []string{"sh", "-c", script})
 	return nil
 }
 
