@@ -85,7 +85,6 @@ export function SessionPane({
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
   const mergeMenuRef = useRef<HTMLDivElement | null>(null);
-  const paneRef = useRef<HTMLElement | null>(null);
   const [width, setWidth] = useState<number>(() =>
     loadInitialSize(WIDTH_STORAGE_KEY, DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH),
   );
@@ -100,11 +99,9 @@ export function SessionPane({
     if (ticketId == null) return;
     const handler = (e: MouseEvent) => {
       const target = e.target as Element | null;
-      if (paneRef.current?.contains(target as Node)) return;
+      if (!target?.closest("[data-board-area]")) return;
       // Ticket clicks switch the active ticket themselves; skip close to avoid a flicker.
-      if (target?.closest("[data-ticket-card]")) return;
-      // Toasts overlay everything; clicking one (e.g. to dismiss) shouldn't close the pane.
-      if (target?.closest("[data-toast]")) return;
+      if (target.closest("[data-ticket-card]")) return;
       onClose();
     };
     window.addEventListener("mousedown", handler);
@@ -291,7 +288,7 @@ export function SessionPane({
       : { width: `${width}px`, flex: `0 0 ${width}px` };
 
   return (
-    <aside ref={paneRef} className={paneClass} style={paneStyle}>
+    <aside className={paneClass} style={paneStyle}>
       {!fullscreen && (
         <div
           role="separator"
