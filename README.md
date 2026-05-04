@@ -1,6 +1,22 @@
-# kanban
+# Agentic Kanban
 
-A kanban board for managing AI agent sessions. Each ticket is bound to an agent session (Claude Code, pi/Ollama, …) running inside its own git worktree, executed in the target repository's existing devcontainer. The active harness is selected globally in the app's settings.
+[![Test status](https://github.com/jmelahman/agentic-kanban/actions/workflows/test.yml/badge.svg)](https://github.com/jmelahman/agentic-kanban/actions)
+[![Deploy Status](https://github.com/jmelahman/agentic-kanban/actions/workflows/release.yml/badge.svg)](https://github.com/jmelahman/agentic-kanban/actions)
+[![Go Reference](https://pkg.go.dev/badge/github.com/jmelahman/agentic-kanban.svg)](https://pkg.go.dev/github.com/jmelahman/agentic-kanban)
+[![PyPI](https://img.shields.io/pypi/v/release-agentic-kanban.svg)](https://pypi.org/project/release-agentic-kanban/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/jmelahman/agentic-kanban)](https://goreportcard.com/report/github.com/jmelahman/agentic-kanban)
+
+A kanban board for managing AI agent sessions.
+
+<p align="center">
+  <picture align="center">
+    <source media="(prefers-color-scheme: dark)" srcset="https://github.com/jmelahman/agentic-kanban/blob/master/assets/demo_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://github.com/jmelahman/agentic-kanban/blob/master/assets/demo_light.png">
+    <img src="https://github.com/jmelahman/agentic-kanban/blob/master/assets/demo_light.png">
+  </picture>
+</p>
+
+Each ticket is bound to an agent session (Claude Code, pi/Ollama, …) running inside its own git worktree, executed in the target repository's existing devcontainer. The active harness is selected globally in the app's settings.
 
 ## Run
 
@@ -12,10 +28,8 @@ docker run -d --name kanban \
   -p 13000-13099:13000-13099 \
   -v $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock \
   -v $HOME/.claude:$HOME/.claude \
-  # Agent config dir. Claude Code reads ~/.claude; for other harnesses
-  # (e.g. pi/Ollama) substitute or add the relevant path.
-  -v $SOURCE:$SOURCE \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
+  -v $SOURCE:$SOURCE \
   -e HOME=$HOME \
   -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
   -e KANBAN_DATA_DIR=$HOME/.local/share/kanban \
@@ -28,8 +42,7 @@ Open `http://localhost:7474`.
 ## Build
 
 ```bash
-cd kanban
-docker build -t kanban:dev .
+docker bake
 ```
 
 ## Configuration
