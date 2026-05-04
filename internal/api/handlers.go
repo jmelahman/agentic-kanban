@@ -448,6 +448,20 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, fmt.Errorf("no session for ticket"), 404)
 		return
 	}
+	if err := h.sessions.Merge(r.Context(), sess.ID, req.Strategy); err != nil {
+		httpError(w, err, 409)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	t, err := h.store.GetTicket(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 404)
+		return
+	}
 	cols, err := h.store.ListColumns(r.Context(), t.BoardID)
 	if err != nil {
 		httpError(w, err, 500)
@@ -464,9 +478,10 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, fmt.Errorf("board has no Done column"), 409)
 		return
 	}
-	if err := h.sessions.Merge(r.Context(), sess.ID, req.Strategy); err != nil {
-		httpError(w, err, 409)
-		return
+	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
+		if err := h.sessions.Stop(r.Context(), sess.ID); err != nil {
+			log.Printf("done: stop session %d: %v", sess.ID, err)
+		}
 	}
 	maxPos, err := h.store.MaxTicketPosition(r.Context(), doneCol.ID)
 	if err != nil {
@@ -476,9 +491,6 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 	if err := h.store.MoveTicket(r.Context(), t.ID, doneCol.ID, maxPos+1); err != nil {
 		httpError(w, err, 500)
 		return
-	}
-	if err := h.sessions.Destroy(r.Context(), sess.ID); err != nil {
-		log.Printf("merge: destroy session %d: %v", sess.ID, err)
 	}
 	if updated, _ := h.store.GetTicket(r.Context(), id); updated != nil {
 		h.bus.Publish(updated.BoardID, "ticket_moved", updated)

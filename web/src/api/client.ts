@@ -158,6 +158,7 @@ export const api = {
     request<void>(`/api/tickets/${id}/sync`, { method: "POST", body: JSON.stringify({ strategy }) }),
   mergeTicket: (id: number, strategy: "merge-commit" | "squash" | "rebase") =>
     request<void>(`/api/tickets/${id}/merge`, { method: "POST", body: JSON.stringify({ strategy }) }),
+  doneTicket: (id: number) => request<void>(`/api/tickets/${id}/done`, { method: "POST" }),
 
   ensureSession: (ticketId: number) => request<Session>(`/api/tickets/${ticketId}/session`, { method: "POST" }),
   startSession: (id: number) => request<Session>(`/api/sessions/${id}/start`, { method: "POST" }),

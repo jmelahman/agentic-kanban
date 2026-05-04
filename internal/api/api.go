@@ -68,6 +68,7 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("DELETE /api/tickets/{id}", h.deleteTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/sync", h.syncTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/merge", h.mergeTicket)
+	mux.HandleFunc("POST /api/tickets/{id}/done", h.doneTicket)
 
 	mux.HandleFunc("POST /api/tickets/{id}/session", h.ensureSession)
 	mux.HandleFunc("POST /api/sessions/{id}/start", h.startSession)
