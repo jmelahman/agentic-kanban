@@ -1,5 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
 import { useCallback, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
@@ -7,6 +15,7 @@ import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { Column } from "./Column";
 import { PtyTerminal } from "./PtyTerminal";
 import { SessionPane } from "./SessionPane";
+import { TicketDragPreview } from "./Ticket";
 
 // Statuses where the container is up and the PTY broker can attach. We avoid
 // mounting PtyTerminal during "starting" (set optimistically by the create/start
@@ -18,6 +27,7 @@ export function Board({ boardId }: { boardId: number }) {
   const qc = useQueryClient();
   const stateQ = useQuery({ queryKey: queryKeys.board(boardId), queryFn: () => api.boardState(boardId) });
   const [activeTicket, setActiveTicket] = useState<number | null>(null);
+  const [draggingId, setDraggingId] = useState<number | null>(null);
   const [terminalSlot, setTerminalSlot] = useState<HTMLDivElement | null>(null);
   const onTerminalSlot = useCallback((el: HTMLDivElement | null) => setTerminalSlot(el), []);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
@@ -35,7 +45,12 @@ export function Board({ boardId }: { boardId: number }) {
   const { board, columns, tickets, sessions, merge_config, sync_config } = stateQ.data;
   const sessionByTicket = new Map<number, (typeof sessions)[number]>(sessions.map((s) => [s.ticket_id, s]));
 
+  function onDragStart(e: DragStartEvent) {
+    setDraggingId(Number(e.active.id));
+  }
+
   function onDragEnd(e: DragEndEvent) {
+    setDraggingId(null);
     const ticketId = Number(e.active.id);
     const overId = e.over?.id;
     if (overId == null) return;
@@ -45,9 +60,16 @@ export function Board({ boardId }: { boardId: number }) {
     moveMut.mutate({ id: ticketId, column_id: targetCol, position: target.length });
   }
 
+  const draggingTicket = draggingId != null ? tickets.find((t) => t.id === draggingId) ?? null : null;
+
   return (
     <div className={`flex h-full ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}>
-      <DndContext sensors={sensors} onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+        onDragCancel={() => setDraggingId(null)}
+      >
         <div data-board-area className="flex min-h-0 flex-1 gap-2 overflow-x-auto p-3">
           {columns.map((c) => (
             <Column
@@ -61,6 +83,15 @@ export function Board({ boardId }: { boardId: number }) {
             />
           ))}
         </div>
+        <DragOverlay>
+          {draggingTicket ? (
+            <TicketDragPreview
+              ticket={draggingTicket}
+              session={sessionByTicket.get(draggingTicket.id) ?? null}
+              active={activeTicket === draggingTicket.id}
+            />
+          ) : null}
+        </DragOverlay>
       </DndContext>
       <SessionPane
         key={activeTicket ?? "none"}

@@ -14,6 +14,52 @@ const STATUS_COLOR: Record<string, string> = {
   error: "text-red-400",
 };
 
+function TicketCard({
+  ticket,
+  session,
+  active,
+  onClick,
+  onDoubleClick,
+  className,
+  innerRef,
+  style,
+  dragProps,
+  interactive = true,
+  titleSlot,
+}: {
+  ticket: TicketType;
+  session: Session | null;
+  active: boolean;
+  onClick?: () => void;
+  onDoubleClick?: React.MouseEventHandler<HTMLDivElement>;
+  className?: string;
+  innerRef?: (el: HTMLElement | null) => void;
+  style?: React.CSSProperties;
+  dragProps?: React.HTMLAttributes<HTMLDivElement>;
+  interactive?: boolean;
+  titleSlot?: React.ReactNode;
+}) {
+  const status = session?.status ?? "stopped";
+  const interactiveCls = interactive ? "cursor-pointer hover:bg-zinc-700" : "";
+  return (
+    <div
+      ref={innerRef}
+      {...dragProps}
+      style={style}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      data-ticket-card="true"
+      className={`rounded bg-zinc-800 p-2 text-sm transition-colors duration-150 ${interactiveCls} ${active ? "ring-2 ring-red-500" : ""} ${className ?? ""}`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        {titleSlot ?? <span className="font-medium">{ticket.title}</span>}
+        <span className={`text-xs ${STATUS_COLOR[status] ?? "text-zinc-500"}`}>{status}</span>
+      </div>
+      {ticket.body && <p className="mt-1 text-xs text-zinc-400 line-clamp-2">{ticket.body}</p>}
+    </div>
+  );
+}
+
 export function Ticket({
   ticket,
   session,
@@ -38,7 +84,6 @@ export function Ticket({
     transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
     opacity: isDragging ? 0.5 : 1,
   };
-  const status = session?.status ?? "stopped";
 
   const renameMut = useMutation({
     mutationFn: (title: string) => api.updateTicket(ticket.id, { title }),
@@ -51,7 +96,6 @@ export function Ticket({
   useEffect(() => {
     if (editing) {
       setDraft(ticket.title);
-      // Defer focus until the input has been rendered.
       requestAnimationFrame(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
@@ -70,21 +114,21 @@ export function Ticket({
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      {...(editing ? {} : attributes)}
-      {...(editing ? {} : listeners)}
-      style={style}
+    <TicketCard
+      ticket={ticket}
+      session={session}
+      active={active}
       onClick={editing ? undefined : onSelect}
       onDoubleClick={(e) => {
         e.stopPropagation();
         setEditing(true);
       }}
-      data-ticket-card="true"
-      className={`rounded bg-zinc-800 p-2 text-sm transition-colors duration-150 ${editing ? "" : "cursor-pointer hover:bg-zinc-700"} ${active ? "ring-2 ring-red-500" : ""}`}
-    >
-      <div className="flex items-center justify-between gap-2">
-        {editing ? (
+      innerRef={setNodeRef}
+      style={style}
+      dragProps={editing ? undefined : { ...attributes, ...listeners }}
+      interactive={!editing}
+      titleSlot={
+        editing ? (
           <input
             ref={inputRef}
             value={draft}
@@ -103,12 +147,27 @@ export function Ticket({
             disabled={renameMut.isPending}
             className="min-w-0 flex-1 rounded bg-zinc-900 px-1 py-0.5 text-sm font-medium outline-none ring-1 ring-zinc-700 focus:ring-red-500"
           />
-        ) : (
-          <span className="font-medium">{ticket.title}</span>
-        )}
-        <span className={`text-xs ${STATUS_COLOR[status] ?? "text-zinc-500"}`}>{status}</span>
-      </div>
-      {ticket.body && <p className="mt-1 text-xs text-zinc-400 line-clamp-2">{ticket.body}</p>}
-    </div>
+        ) : undefined
+      }
+    />
+  );
+}
+
+export function TicketDragPreview({
+  ticket,
+  session,
+  active,
+}: {
+  ticket: TicketType;
+  session: Session | null;
+  active: boolean;
+}) {
+  return (
+    <TicketCard
+      ticket={ticket}
+      session={session}
+      active={active}
+      className="shadow-2xl ring-1 ring-zinc-700"
+    />
   );
 }
