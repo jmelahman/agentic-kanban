@@ -1,0 +1,61 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "Kanban" [level=1] [ref=e5]
+      - combobox [ref=e6]:
+        - option "— select board —"
+        - option "Onyx" [selected]
+        - option "Kanban"
+        - option "Internal Tools"
+        - option "Code"
+      - generic [ref=e7]:
+        - button "App settings" [ref=e8]:
+          - img [ref=e9]
+        - button "Board settings" [ref=e16]:
+          - img [ref=e17]
+        - button "archived" [ref=e20]
+        - button "+ new board" [ref=e13]
+    - main [ref=e14]:
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - heading "Backlog" [level=2] [ref=e25]
+              - generic [ref=e26]: "0"
+            - button "+ add ticket" [ref=e28]
+          - generic [ref=e29]:
+            - generic [ref=e30]:
+              - heading "In Progress" [level=2] [ref=e31]
+              - generic [ref=e32]: "0"
+            - button "+ add ticket" [ref=e34]
+          - generic [ref=e35]:
+            - generic [ref=e36]:
+              - heading "Review" [level=2] [ref=e37]
+              - generic [ref=e38]: "1"
+            - button "Upgrade litellm to latest awaiting_perm" [active] [ref=e40] [cursor=pointer]:
+              - generic [ref=e41]:
+                - generic [ref=e42]: Upgrade litellm to latest
+                - generic [ref=e43]: awaiting_perm
+            - button "+ add ticket" [ref=e44]
+          - generic [ref=e45]:
+            - generic [ref=e46]:
+              - heading "Done" [level=2] [ref=e47]
+              - generic [ref=e48]: "3"
+            - generic [ref=e49]:
+              - 'button "Ensure we use `uv pip install --freeze` stopped" [ref=e50] [cursor=pointer]':
+                - generic [ref=e51]:
+                  - generic [ref=e52]: "Ensure we use `uv pip install --freeze`"
+                  - generic [ref=e53]: stopped
+              - 'button "chore(deps): pip install with `--no-deps` stopped" [ref=e54] [cursor=pointer]':
+                - generic [ref=e55]:
+                  - generic [ref=e56]: "chore(deps): pip install with `--no-deps`"
+                  - generic [ref=e57]: stopped
+              - 'button "chore(format): fix whitespace in backend/onyx/utils/playwright_fetch.py stopped" [ref=e58] [cursor=pointer]':
+                - generic [ref=e59]:
+                  - generic [ref=e60]: "chore(format): fix whitespace in backend/onyx/utils/playwright_fetch.py"
+                  - generic [ref=e61]: stopped
+            - button "+ add ticket" [ref=e62]
+        - status [ref=e63]: Draggable item 104 was dropped over droppable area col-7
+  - generic:
+    - textbox "Terminal input":
+      - textbox "Terminal input"
