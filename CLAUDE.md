@@ -49,16 +49,7 @@ playwright` ad-hoc.
 
 `@playwright/mcp` defaults to the `chrome` channel which looks at
 `/opt/google/chrome/chrome`; the devcontainer Dockerfile symlinks that to the
-bundled Chromium under `$PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`. If you hit
-`Chromium distribution 'chrome' is not found`, the running image predates that
-symlink — rebuild, or symlink manually:
-
-```bash
-sudo ln -sf /ms-playwright/chromium-*/chrome-linux64/chrome /opt/google/chrome/chrome
-```
-
-Don't try `npx playwright install chrome` — `dl.google.com` and
-`archive.ubuntu.com` are firewalled.
+bundled Chromium under `$PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`.
 
 ## Layout
 
