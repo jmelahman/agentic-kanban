@@ -30,7 +30,7 @@
     {
       "label": "Kanban Frontend (Local Backend)",
       "type": "shell",
-      "command": "npm install && npm run dev -- --host 0.0.0.0",
+      "command": "npm install && npm run dev -- --host 0.0.0.0 --port 5174",
       "options": {
         "cwd": "${workspaceFolder}/web",
         "env": {
