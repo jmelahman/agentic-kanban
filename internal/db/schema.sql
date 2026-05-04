@@ -2,8 +2,9 @@ CREATE TABLE IF NOT EXISTS boards (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
-  source_repo_path TEXT NOT NULL,
-  worktree_root TEXT NOT NULL,
+  repo_path TEXT,
+  mount_path TEXT,
+  worktree_root TEXT,
   base_branch TEXT NOT NULL DEFAULT 'main',
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -39,7 +40,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   status TEXT NOT NULL DEFAULT 'stopped',
   started_at INTEGER,
   stopped_at INTEGER,
-  pr_state TEXT NOT NULL DEFAULT ''
+  pr_state TEXT NOT NULL DEFAULT '',
+  mount_path TEXT,
+  repo_path TEXT
 );
 
 CREATE TABLE IF NOT EXISTS port_allocations (

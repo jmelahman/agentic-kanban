@@ -20,20 +20,23 @@ export function BoardSettings({
   const qc = useQueryClient();
   const { push } = useToast();
   const [name, setName] = useState(board.name);
-  const [repo, setRepo] = useState(board.source_repo_path);
+  const [repo, setRepo] = useState(board.repo_path);
+  const [mount, setMount] = useState(board.mount_path);
   const [base, setBase] = useState(board.base_branch);
 
   useEffect(() => {
     setName(board.name);
-    setRepo(board.source_repo_path);
+    setRepo(board.repo_path);
+    setMount(board.mount_path);
     setBase(board.base_branch);
-  }, [board.id, board.name, board.source_repo_path, board.base_branch]);
+  }, [board.id, board.name, board.repo_path, board.mount_path, board.base_branch]);
 
   const updateMut = useMutation({
     mutationFn: () =>
       api.updateBoard(board.id, {
         name: name.trim(),
-        source_repo_path: repo.trim(),
+        repo_path: repo.trim(),
+        mount_path: mount.trim(),
         base_branch: base.trim(),
       }),
     onSuccess: () => {
@@ -53,8 +56,14 @@ export function BoardSettings({
     },
   });
 
-  const dirty = name.trim() !== board.name || repo.trim() !== board.source_repo_path || base.trim() !== board.base_branch;
-  const valid = name.trim() !== "" && repo.trim() !== "" && base.trim() !== "";
+  const dirty =
+    name.trim() !== board.name ||
+    repo.trim() !== board.repo_path ||
+    mount.trim() !== board.mount_path ||
+    base.trim() !== board.base_branch;
+  const hasRepo = repo.trim() !== "";
+  const hasMount = mount.trim() !== "";
+  const valid = name.trim() !== "" && (hasRepo || hasMount) && (!hasRepo || base.trim() !== "");
   const busy = updateMut.isPending || deleteMut.isPending;
 
   return (
@@ -77,23 +86,34 @@ export function BoardSettings({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Source repo path</span>
+          <span className="text-xs text-zinc-400">Repository path</span>
           <input
             className="rounded bg-zinc-900 px-2 py-1 font-mono"
+            placeholder="/host/path/to/repo (optional)"
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
-            required
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Base branch</span>
+          <span className="text-xs text-zinc-400">Mount path</span>
           <input
-            className="rounded bg-zinc-900 px-2 py-1"
-            value={base}
-            onChange={(e) => setBase(e.target.value)}
-            required
+            className="rounded bg-zinc-900 px-2 py-1 font-mono"
+            placeholder="host directory mounted into the container (defaults to repository)"
+            value={mount}
+            onChange={(e) => setMount(e.target.value)}
           />
         </label>
+        {hasRepo && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-zinc-400">Base branch</span>
+            <input
+              className="rounded bg-zinc-900 px-2 py-1"
+              value={base}
+              onChange={(e) => setBase(e.target.value)}
+              required
+            />
+          </label>
+        )}
         <div className="flex flex-col gap-1 text-xs text-zinc-500">
           <span>slug: <span className="font-mono">{board.slug}</span></span>
           <span>worktree root: <span className="font-mono">{board.worktree_root}</span></span>

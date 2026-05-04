@@ -45,10 +45,11 @@ func (h *handlers) version(w http.ResponseWriter, r *http.Request) {
 // Boards
 
 type createBoardReq struct {
-	Name           string `json:"name"`
-	SourceRepoPath string `json:"source_repo_path"`
-	WorktreeRoot   string `json:"worktree_root"`
-	BaseBranch     string `json:"base_branch"`
+	Name         string `json:"name"`
+	RepoPath     string `json:"repo_path"`
+	MountPath    string `json:"mount_path"`
+	WorktreeRoot string `json:"worktree_root"`
+	BaseBranch   string `json:"base_branch"`
 }
 
 func (h *handlers) listBoards(w http.ResponseWriter, r *http.Request) {
@@ -66,22 +67,30 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 400)
 		return
 	}
-	if req.Name == "" || req.SourceRepoPath == "" {
-		httpError(w, fmt.Errorf("name and source_repo_path required"), 400)
+	req.Name = strings.TrimSpace(req.Name)
+	req.RepoPath = strings.TrimSpace(req.RepoPath)
+	req.MountPath = strings.TrimSpace(req.MountPath)
+	if req.Name == "" {
+		httpError(w, fmt.Errorf("name required"), 400)
+		return
+	}
+	if req.RepoPath == "" && req.MountPath == "" {
+		httpError(w, fmt.Errorf("at least one of repo_path or mount_path required"), 400)
 		return
 	}
 	if req.BaseBranch == "" {
 		req.BaseBranch = "main"
 	}
-	if req.WorktreeRoot == "" {
+	if req.WorktreeRoot == "" && req.RepoPath != "" {
 		req.WorktreeRoot = filepath.Join(h.config.WorktreesDir(), slugify(req.Name))
 	}
 	board := &db.Board{
-		Name:           req.Name,
-		Slug:           slugify(req.Name),
-		SourceRepoPath: req.SourceRepoPath,
-		WorktreeRoot:   req.WorktreeRoot,
-		BaseBranch:     req.BaseBranch,
+		Name:         req.Name,
+		Slug:         slugify(req.Name),
+		RepoPath:     req.RepoPath,
+		MountPath:    req.MountPath,
+		WorktreeRoot: req.WorktreeRoot,
+		BaseBranch:   req.BaseBranch,
 	}
 	if err := h.store.CreateBoard(r.Context(), board); err != nil {
 		if isUniqueViolation(err) {
@@ -95,10 +104,11 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateBoardReq struct {
-	Name           *string `json:"name"`
-	SourceRepoPath *string `json:"source_repo_path"`
-	WorktreeRoot   *string `json:"worktree_root"`
-	BaseBranch     *string `json:"base_branch"`
+	Name         *string `json:"name"`
+	RepoPath     *string `json:"repo_path"`
+	MountPath    *string `json:"mount_path"`
+	WorktreeRoot *string `json:"worktree_root"`
+	BaseBranch   *string `json:"base_branch"`
 }
 
 func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
@@ -121,13 +131,15 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		board.Name = name
 	}
-	if req.SourceRepoPath != nil {
-		path := strings.TrimSpace(*req.SourceRepoPath)
-		if path == "" {
-			httpError(w, fmt.Errorf("source_repo_path cannot be empty"), 400)
-			return
-		}
-		board.SourceRepoPath = path
+	if req.RepoPath != nil {
+		board.RepoPath = strings.TrimSpace(*req.RepoPath)
+	}
+	if req.MountPath != nil {
+		board.MountPath = strings.TrimSpace(*req.MountPath)
+	}
+	if board.RepoPath == "" && board.MountPath == "" {
+		httpError(w, fmt.Errorf("at least one of repo_path or mount_path required"), 400)
+		return
 	}
 	if req.WorktreeRoot != nil {
 		board.WorktreeRoot = *req.WorktreeRoot
@@ -216,8 +228,8 @@ func (h *handlers) boardState(w http.ResponseWriter, r *http.Request) {
 		Columns:     cols,
 		Tickets:     tickets,
 		Sessions:    sessions,
-		MergeConfig: loadMergeConfig(board.SourceRepoPath),
-		SyncConfig:  loadSyncConfig(board.SourceRepoPath),
+		MergeConfig: loadMergeConfig(board.RepoPath),
+		SyncConfig:  loadSyncConfig(board.RepoPath),
 	})
 }
 
@@ -451,7 +463,7 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	if !loadSyncConfig(board.SourceRepoPath).allows(req.Strategy) {
+	if !loadSyncConfig(board.RepoPath).allows(req.Strategy) {
 		httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
 		return
 	}
@@ -495,7 +507,7 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	if !loadMergeConfig(board.SourceRepoPath).allows(req.Strategy) {
+	if !loadMergeConfig(board.RepoPath).allows(req.Strategy) {
 		httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
 		return
 	}
@@ -924,7 +936,7 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 	}
 	repoPath := ""
 	if board, err := h.boardForSession(r.Context(), sess); err == nil && board != nil {
-		repoPath = board.SourceRepoPath
+		repoPath = board.RepoPath
 	}
 	resolved := harness.Resolve(repoPath)
 	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, resolved.PTYCommand, "/workspace")

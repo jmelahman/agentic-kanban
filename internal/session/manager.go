@@ -40,7 +40,10 @@ func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
 // into the kanban API (e.g. http://kanban:7474).
 func (m *Manager) SetAPIBase(base string) { m.apiBase = base }
 
-// Ensure creates a session row for a ticket if missing, allocating a worktree.
+// Ensure creates a session row for a ticket if missing, allocating a worktree
+// only when the board is associated with a real git repo. For repo-less boards
+// the session's "worktree path" is the board's mount path (or repo_path
+// fallback) so downstream tools that need a host-side directory still have one.
 func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket) (*db.Session, error) {
 	if sess, err := m.store.GetSessionByTicket(ctx, ticket.ID); err == nil {
 		if err := writeClaudeSettings(sess.WorktreePath); err != nil {
@@ -49,16 +52,33 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 		return sess, nil
 	}
 
-	branch := fmt.Sprintf("kanban/%s/%s", board.Slug, ticket.Slug)
-	worktreePath := filepath.Join(board.WorktreeRoot, ticket.Slug)
 	containerName := fmt.Sprintf("kanban-%s-%s", board.Slug, ticket.Slug)
 
-	if _, statErr := os.Stat(worktreePath); statErr == nil {
-		// Worktree directory already exists from a previous run; trust it.
-	} else if err := git.AddWorktree(board.SourceRepoPath, branch, worktreePath, board.BaseBranch); err != nil {
-		// Branch may already exist (orphaned). Try attaching it to a fresh worktree.
-		if err2 := git.AddWorktreeFromExisting(board.SourceRepoPath, branch, worktreePath); err2 != nil {
-			return nil, fmt.Errorf("create worktree: %w", err)
+	// Resolve paths against an empty session so we use the board defaults.
+	paths := ResolvePaths(board, &db.Session{})
+
+	var worktreePath, branch string
+	if paths.HasRepo {
+		branch = fmt.Sprintf("kanban/%s/%s", board.Slug, ticket.Slug)
+		worktreeRoot := board.WorktreeRoot
+		if worktreeRoot == "" {
+			return nil, fmt.Errorf("board %q has a repo but no worktree_root configured", board.Slug)
+		}
+		worktreePath = filepath.Join(worktreeRoot, ticket.Slug)
+		if _, statErr := os.Stat(worktreePath); statErr == nil {
+			// Worktree directory already exists from a previous run; trust it.
+		} else if err := git.AddWorktree(paths.RepoPath, branch, worktreePath, board.BaseBranch); err != nil {
+			// Branch may already exist (orphaned). Try attaching it to a fresh worktree.
+			if err2 := git.AddWorktreeFromExisting(paths.RepoPath, branch, worktreePath); err2 != nil {
+				return nil, fmt.Errorf("create worktree: %w", err)
+			}
+		}
+	} else {
+		// No repo — use the resolved mount as the session's "worktree" so things
+		// like task discovery and claude settings have a host directory to act on.
+		worktreePath = paths.MountPath
+		if worktreePath == "" {
+			return nil, fmt.Errorf("board %q has neither repo_path nor mount_path configured", board.Slug)
 		}
 	}
 
@@ -125,16 +145,19 @@ func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, erro
 	}
 
 	board, _ := m.boardForSession(ctx, sess)
-	sourceRepoPath := ""
-	if board != nil {
-		sourceRepoPath = board.SourceRepoPath
+	paths := ResolvePaths(board, sess)
+	worktreeMount := ""
+	if paths.HasRepo {
+		worktreeMount = sess.WorktreePath
 	}
 
 	res, err := m.docker.Spawn(ctx, cfg, docker.SpawnOptions{
-		WorktreePath:   sess.WorktreePath,
-		SourceRepoPath: sourceRepoPath,
-		ContainerName:  containerName,
-		Ports:          mappings,
+		WorktreePath:     sess.WorktreePath,
+		MountPath:        paths.MountPath,
+		RepoWorktreePath: worktreeMount,
+		SourceRepoPath:   paths.RepoPath,
+		ContainerName:    containerName,
+		Ports:            mappings,
 		ExtraEnv: map[string]string{
 			"KANBAN_SESSION_ID": fmt.Sprintf("%d", sess.ID),
 			"KANBAN_API_URL":    m.apiBase,
@@ -221,14 +244,13 @@ func (m *Manager) Destroy(ctx context.Context, sessionID int64) error {
 	_ = m.Stop(ctx, sessionID)
 
 	board, _ := m.boardForSession(ctx, sess)
-	if board != nil && sess.WorktreePath != "" {
-		_ = git.RemoveWorktree(board.SourceRepoPath, sess.WorktreePath)
-	}
-	if sess.WorktreePath != "" {
+	paths := ResolvePaths(board, sess)
+	if paths.HasRepo && sess.WorktreePath != "" {
+		_ = git.RemoveWorktree(paths.RepoPath, sess.WorktreePath)
 		_ = os.RemoveAll(sess.WorktreePath)
-	}
-	if board != nil && sess.BranchName != "" {
-		_ = git.DeleteBranch(board.SourceRepoPath, sess.BranchName)
+		if sess.BranchName != "" {
+			_ = git.DeleteBranch(paths.RepoPath, sess.BranchName)
+		}
 	}
 	return m.store.DeleteSession(ctx, sess.ID)
 }
@@ -240,12 +262,16 @@ func (m *Manager) Sync(ctx context.Context, sessionID int64, strategy string) er
 	if err != nil {
 		return err
 	}
-	if sess.WorktreePath == "" {
-		return fmt.Errorf("session has no worktree")
-	}
 	board, err := m.boardForSession(ctx, sess)
 	if err != nil {
 		return err
+	}
+	paths := ResolvePaths(board, sess)
+	if !paths.HasRepo {
+		return fmt.Errorf("session has no associated repository")
+	}
+	if sess.WorktreePath == "" {
+		return fmt.Errorf("session has no worktree")
 	}
 	clean, err := git.IsClean(sess.WorktreePath)
 	if err != nil {
@@ -280,12 +306,16 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 	if err != nil {
 		return err
 	}
-	if sess.WorktreePath == "" || sess.BranchName == "" {
-		return fmt.Errorf("session has no worktree")
-	}
 	board, err := m.boardForSession(ctx, sess)
 	if err != nil {
 		return err
+	}
+	paths := ResolvePaths(board, sess)
+	if !paths.HasRepo {
+		return fmt.Errorf("session has no associated repository")
+	}
+	if sess.WorktreePath == "" || sess.BranchName == "" {
+		return fmt.Errorf("session has no worktree")
 	}
 	ticket, err := m.store.GetTicket(ctx, sess.TicketID)
 	if err != nil {
@@ -299,7 +329,7 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			return fmt.Errorf("stage pending changes: %w", err)
 		}
 		msg := ticket.Title
-		h := harness.Resolve(board.SourceRepoPath)
+		h := harness.Resolve(paths.RepoPath)
 		if generated, err := m.generateCommitMessage(ctx, sess, h, ticket.Title); err == nil {
 			msg = generated
 		} else {
@@ -309,34 +339,34 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			return fmt.Errorf("commit pending changes: %w", err)
 		}
 	}
-	if clean, err := git.IsClean(board.SourceRepoPath); err != nil {
+	if clean, err := git.IsClean(paths.RepoPath); err != nil {
 		return fmt.Errorf("check source repo clean: %w", err)
 	} else if !clean {
 		return fmt.Errorf("source repo has uncommitted changes; commit or stash before merging")
 	}
-	cur, err := git.CurrentBranch(board.SourceRepoPath)
+	cur, err := git.CurrentBranch(paths.RepoPath)
 	if err != nil {
 		return fmt.Errorf("read source repo branch: %w", err)
 	}
 	if cur != board.BaseBranch {
 		return fmt.Errorf("source repo must have %s checked out (currently on %q)", board.BaseBranch, cur)
 	}
-	baseHead, err := git.CurrentHead(board.SourceRepoPath, "HEAD")
+	baseHead, err := git.CurrentHead(paths.RepoPath, "HEAD")
 	if err != nil {
 		return fmt.Errorf("read base head: %w", err)
 	}
 
 	switch strategy {
 	case "merge-commit":
-		if err := git.MergeNoFF(board.SourceRepoPath, sess.BranchName); err != nil {
-			git.MergeAbort(board.SourceRepoPath)
+		if err := git.MergeNoFF(paths.RepoPath, sess.BranchName); err != nil {
+			git.MergeAbort(paths.RepoPath)
 			return fmt.Errorf("merge aborted: %w", err)
 		}
 	case "squash":
 		msg := fmt.Sprintf("%s (#%d)", ticket.Title, ticket.ID)
-		if err := git.MergeSquash(board.SourceRepoPath, sess.BranchName, msg); err != nil {
-			git.MergeAbort(board.SourceRepoPath)
-			git.ResetHard(board.SourceRepoPath, baseHead)
+		if err := git.MergeSquash(paths.RepoPath, sess.BranchName, msg); err != nil {
+			git.MergeAbort(paths.RepoPath)
+			git.ResetHard(paths.RepoPath, baseHead)
 			return fmt.Errorf("squash aborted: %w", err)
 		}
 	case "rebase":
@@ -344,7 +374,7 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			git.RebaseAbort(sess.WorktreePath)
 			return fmt.Errorf("rebase aborted: %w", err)
 		}
-		if err := git.MergeFFOnly(board.SourceRepoPath, sess.BranchName); err != nil {
+		if err := git.MergeFFOnly(paths.RepoPath, sess.BranchName); err != nil {
 			return fmt.Errorf("fast-forward aborted: %w", err)
 		}
 	default:

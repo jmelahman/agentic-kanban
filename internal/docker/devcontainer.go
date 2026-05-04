@@ -61,7 +61,19 @@ type PortMapping struct {
 
 // SpawnOptions configures a devcontainer spawn.
 type SpawnOptions struct {
+	// WorktreePath is the host path used for variable substitution in the
+	// devcontainer config (${localWorkspaceFolder}). Historically this was
+	// also what got bind-mounted at the workspace folder; that role is now
+	// played by MountPath, which defaults to WorktreePath when unset.
 	WorktreePath string
+	// MountPath is the host directory bind-mounted into the container at the
+	// devcontainer's workspaceFolder. May be a parent directory of multiple
+	// repos. Defaults to WorktreePath if empty.
+	MountPath string
+	// RepoWorktreePath, when non-empty, is bind-mounted at /repository inside
+	// the container so the session can find its branch-isolated worktree at a
+	// stable path even when MountPath points at a parent directory.
+	RepoWorktreePath string
 	// SourceRepoPath is the host path of the parent git repo that owns the
 	// worktree. When set, the parent repo's .git directory is bind-mounted
 	// at the same absolute host path so the worktree's gitdir pointer
@@ -76,6 +88,13 @@ type SpawnOptions struct {
 	// attached to after start so it can reach kanban (or other peers) by name.
 	AttachNetwork string
 }
+
+// RepoMountTarget is where the per-session git worktree is bind-mounted inside
+// the container when SpawnOptions.RepoWorktreePath is set. It is independent
+// of the devcontainer workspaceFolder so multi-repo containers can mount a
+// parent directory at /workspace and still expose the active branch worktree
+// at a stable, predictable path.
+const RepoMountTarget = "/repository"
 
 // SpawnResult is what we return after starting a devcontainer.
 type SpawnResult struct {
@@ -306,7 +325,11 @@ func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnO
 	if cfg.WorkspaceFolder == "" {
 		cfg.WorkspaceFolder = "/workspace"
 	}
-	cfg.Substitute(NewSubstitutionContext(opts.WorktreePath, cfg.WorkspaceFolder))
+	substSource := opts.MountPath
+	if substSource == "" {
+		substSource = opts.WorktreePath
+	}
+	cfg.Substitute(NewSubstitutionContext(substSource, cfg.WorkspaceFolder))
 
 	imageRef, err := c.ensureImage(ctx, cfg, opts.WorktreePath)
 	if err != nil {
@@ -353,8 +376,20 @@ func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnO
 func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef string, hostGatewayIP string) (*container.HostConfig, *network.NetworkingConfig, *container.Config, error) {
 	wsFolder := cfg.WorkspaceFolder
 
+	mountSource := opts.MountPath
+	if mountSource == "" {
+		mountSource = opts.WorktreePath
+	}
 	mounts := []mount.Mount{
-		{Type: mount.TypeBind, Source: opts.WorktreePath, Target: wsFolder, Consistency: mount.ConsistencyDelegated},
+		{Type: mount.TypeBind, Source: mountSource, Target: wsFolder, Consistency: mount.ConsistencyDelegated},
+	}
+	if opts.RepoWorktreePath != "" && opts.RepoWorktreePath != mountSource {
+		mounts = append(mounts, mount.Mount{
+			Type:        mount.TypeBind,
+			Source:      opts.RepoWorktreePath,
+			Target:      RepoMountTarget,
+			Consistency: mount.ConsistencyDelegated,
+		})
 	}
 	if gitDir, ok := resolveSourceGitDir(opts.SourceRepoPath); ok {
 		mounts = append(mounts, mount.Mount{

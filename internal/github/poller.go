@@ -134,7 +134,10 @@ func (p *Poller) tick(ctx context.Context) {
 	}
 	for i := range boards {
 		b := &boards[i]
-		cfg := LoadConfig(b.SourceRepoPath)
+		if b.RepoPath == "" {
+			continue
+		}
+		cfg := LoadConfig(b.RepoPath)
 		if !cfg.AutoMove {
 			continue
 		}
@@ -167,7 +170,7 @@ func (p *Poller) syncBoard(ctx context.Context, board *db.Board, cfg Config) err
 	if len(branches) == 0 {
 		return nil
 	}
-	prs, err := p.listPRs(ctx, board.SourceRepoPath)
+	prs, err := p.listPRs(ctx, board.RepoPath)
 	if err != nil {
 		return err
 	}

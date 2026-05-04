@@ -1,13 +1,14 @@
 package db
 
 type Board struct {
-	ID             int64  `json:"id"`
-	Name           string `json:"name"`
-	Slug           string `json:"slug"`
-	SourceRepoPath string `json:"source_repo_path"`
-	WorktreeRoot   string `json:"worktree_root"`
-	BaseBranch     string `json:"base_branch"`
-	CreatedAt      int64  `json:"created_at"`
+	ID           int64  `json:"id"`
+	Name         string `json:"name"`
+	Slug         string `json:"slug"`
+	RepoPath     string `json:"repo_path"`
+	MountPath    string `json:"mount_path"`
+	WorktreeRoot string `json:"worktree_root"`
+	BaseBranch   string `json:"base_branch"`
+	CreatedAt    int64  `json:"created_at"`
 }
 
 type Column struct {
@@ -40,6 +41,8 @@ type Session struct {
 	StartedAt     *int64  `json:"started_at,omitempty"`
 	StoppedAt     *int64  `json:"stopped_at,omitempty"`
 	PRState       string  `json:"pr_state,omitempty"`
+	MountPath     string  `json:"mount_path,omitempty"`
+	RepoPath      string  `json:"repo_path,omitempty"`
 }
 
 type PortAllocation struct {

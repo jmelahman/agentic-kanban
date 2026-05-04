@@ -8,15 +8,23 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
+  const [mount, setMount] = useState("");
   const [base, setBase] = useState("main");
 
   const createMut = useMutation({
-    mutationFn: () => api.createBoard({ name, source_repo_path: repo, base_branch: base }),
+    mutationFn: () =>
+      api.createBoard({
+        name,
+        repo_path: repo.trim() || undefined,
+        mount_path: mount.trim() || undefined,
+        base_branch: repo.trim() ? base : undefined,
+      }),
     onSuccess: (board) => {
       onCreated(board);
       setOpen(false);
       setName("");
       setRepo("");
+      setMount("");
       setBase("main");
     },
   });
@@ -25,6 +33,10 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
     if (createMut.isPending) return;
     setOpen(false);
   };
+
+  const hasRepo = repo.trim() !== "";
+  const hasMount = mount.trim() !== "";
+  const canSubmit = name.trim() !== "" && (hasRepo || hasMount);
 
   return (
     <>
@@ -36,6 +48,7 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
           className="flex flex-col gap-3 p-4 text-sm"
           onSubmit={(e) => {
             e.preventDefault();
+            if (!canSubmit) return;
             createMut.mutate();
           }}
         >
@@ -54,21 +67,34 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
             <span className="text-xs text-zinc-400">Repository path</span>
             <input
               className="rounded bg-zinc-900 px-2 py-1"
-              placeholder="/host/path/to/repo"
+              placeholder="/host/path/to/repo (optional)"
               value={repo}
               onChange={(e) => setRepo(e.target.value)}
-              required
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Base branch</span>
+            <span className="text-xs text-zinc-400">Mount path</span>
             <input
               className="rounded bg-zinc-900 px-2 py-1"
-              placeholder="base branch"
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
+              placeholder="host directory mounted into the container (defaults to repository)"
+              value={mount}
+              onChange={(e) => setMount(e.target.value)}
             />
           </label>
+          {hasRepo && (
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-zinc-400">Base branch</span>
+              <input
+                className="rounded bg-zinc-900 px-2 py-1"
+                placeholder="base branch"
+                value={base}
+                onChange={(e) => setBase(e.target.value)}
+              />
+            </label>
+          )}
+          {!hasRepo && !hasMount && (
+            <p className="text-xs text-zinc-500">Provide at least a repository path or a mount path.</p>
+          )}
           <div className="mt-2 flex items-center justify-end gap-2">
             <Button
               type="button"
@@ -82,6 +108,7 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
               type="submit"
               variant="primary"
               size="lg"
+              disabled={!canSubmit}
               pending={createMut.isPending}
               idleLabel="create"
               pendingLabel="creating…"

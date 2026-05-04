@@ -28,7 +28,7 @@ import (
 type testEnv struct {
 	t        *testing.T
 	dir      string
-	repoPath string // initialized git repo, used as Board.SourceRepoPath
+	repoPath string // initialized git repo, used as Board.RepoPath
 	store    *db.Store
 	cfg      *config.Config
 	srv      *httptest.Server
@@ -71,11 +71,11 @@ func newEnv(t *testing.T) *testEnv {
 func (e *testEnv) seedBoard(name string) *db.Board {
 	e.t.Helper()
 	b := &db.Board{
-		Name:           name,
-		Slug:           strings.ToLower(strings.ReplaceAll(name, " ", "-")),
-		SourceRepoPath: e.repoPath,
-		WorktreeRoot:   filepath.Join(e.dir, "worktrees", strings.ToLower(name)),
-		BaseBranch:     "main",
+		Name:         name,
+		Slug:         strings.ToLower(strings.ReplaceAll(name, " ", "-")),
+		RepoPath:     e.repoPath,
+		WorktreeRoot: filepath.Join(e.dir, "worktrees", strings.ToLower(name)),
+		BaseBranch:   "main",
 	}
 	if err := e.store.CreateBoard(context.Background(), b); err != nil {
 		e.t.Fatal(err)

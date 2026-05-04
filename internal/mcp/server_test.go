@@ -160,11 +160,11 @@ func newKanbanTestServer(t *testing.T) (*httptest.Server, *db.Store, *db.Board) 
 	t.Cleanup(srv.Close)
 
 	board := &db.Board{
-		Name:           "MCP Board",
-		Slug:           "mcp-board",
-		SourceRepoPath: repoPath,
-		WorktreeRoot:   filepath.Join(dir, "worktrees", "mcp"),
-		BaseBranch:     "main",
+		Name:         "MCP Board",
+		Slug:         "mcp-board",
+		RepoPath:     repoPath,
+		WorktreeRoot: filepath.Join(dir, "worktrees", "mcp"),
+		BaseBranch:   "main",
 	}
 	if err := store.CreateBoard(t.Context(), board); err != nil {
 		t.Fatal(err)

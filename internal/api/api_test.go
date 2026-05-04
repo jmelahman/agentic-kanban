@@ -49,9 +49,9 @@ func TestBoards_Lifecycle(t *testing.T) {
 
 	t.Run("create_happy_path", func(t *testing.T) {
 		resp := e.post("/api/boards", map[string]any{
-			"name":             "My Project",
-			"source_repo_path": e.repoPath,
-			"base_branch":      "main",
+			"name":        "My Project",
+			"repo_path":   e.repoPath,
+			"base_branch": "main",
 		})
 		assertStatus(t, resp, 201)
 		b := decodeJSON[db.Board](t, resp)
@@ -64,7 +64,7 @@ func TestBoards_Lifecycle(t *testing.T) {
 	})
 
 	t.Run("create_missing_name_returns_400", func(t *testing.T) {
-		resp := e.post("/api/boards", map[string]any{"source_repo_path": e.repoPath})
+		resp := e.post("/api/boards", map[string]any{"repo_path": e.repoPath})
 		assertStatus(t, resp, 400)
 	})
 

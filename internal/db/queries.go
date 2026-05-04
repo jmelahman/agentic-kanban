@@ -14,8 +14,8 @@ var ErrNotFound = errors.New("not found")
 
 func (s *Store) CreateBoard(ctx context.Context, b *Board) error {
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO boards (name, slug, source_repo_path, worktree_root, base_branch) VALUES (?, ?, ?, ?, ?)`,
-		b.Name, b.Slug, b.SourceRepoPath, b.WorktreeRoot, b.BaseBranch,
+		`INSERT INTO boards (name, slug, repo_path, mount_path, worktree_root, base_branch) VALUES (?, ?, ?, ?, ?, ?)`,
+		b.Name, b.Slug, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch,
 	)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (s *Store) createDefaultColumns(ctx context.Context, boardID int64) error {
 }
 
 func (s *Store) ListBoards(ctx context.Context) ([]Board, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, slug, source_repo_path, worktree_root, base_branch, created_at FROM boards ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, created_at FROM boards ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -53,9 +53,13 @@ func (s *Store) ListBoards(ctx context.Context) ([]Board, error) {
 	boards := []Board{}
 	for rows.Next() {
 		var b Board
-		if err := rows.Scan(&b.ID, &b.Name, &b.Slug, &b.SourceRepoPath, &b.WorktreeRoot, &b.BaseBranch, &b.CreatedAt); err != nil {
+		var repo, mount, worktreeRoot sql.NullString
+		if err := rows.Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &b.CreatedAt); err != nil {
 			return nil, err
 		}
+		b.RepoPath = repo.String
+		b.MountPath = mount.String
+		b.WorktreeRoot = worktreeRoot.String
 		boards = append(boards, b)
 	}
 	return boards, rows.Err()
@@ -63,8 +67,8 @@ func (s *Store) ListBoards(ctx context.Context) ([]Board, error) {
 
 func (s *Store) UpdateBoard(ctx context.Context, b *Board) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE boards SET name=?, source_repo_path=?, worktree_root=?, base_branch=? WHERE id=?`,
-		b.Name, b.SourceRepoPath, b.WorktreeRoot, b.BaseBranch, b.ID,
+		`UPDATE boards SET name=?, repo_path=?, mount_path=?, worktree_root=?, base_branch=? WHERE id=?`,
+		b.Name, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch, b.ID,
 	)
 	if err != nil {
 		return err
@@ -96,27 +100,35 @@ func (s *Store) DeleteBoard(ctx context.Context, id int64) error {
 
 func (s *Store) GetBoard(ctx context.Context, id int64) (*Board, error) {
 	var b Board
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, source_repo_path, worktree_root, base_branch, created_at FROM boards WHERE id=?`, id).
-		Scan(&b.ID, &b.Name, &b.Slug, &b.SourceRepoPath, &b.WorktreeRoot, &b.BaseBranch, &b.CreatedAt)
+	var repo, mount, worktreeRoot sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, created_at FROM boards WHERE id=?`, id).
+		Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &b.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	b.RepoPath = repo.String
+	b.MountPath = mount.String
+	b.WorktreeRoot = worktreeRoot.String
 	return &b, nil
 }
 
 func (s *Store) GetBoardBySlug(ctx context.Context, slug string) (*Board, error) {
 	var b Board
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, source_repo_path, worktree_root, base_branch, created_at FROM boards WHERE slug=?`, slug).
-		Scan(&b.ID, &b.Name, &b.Slug, &b.SourceRepoPath, &b.WorktreeRoot, &b.BaseBranch, &b.CreatedAt)
+	var repo, mount, worktreeRoot sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, created_at FROM boards WHERE slug=?`, slug).
+		Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &b.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	b.RepoPath = repo.String
+	b.MountPath = mount.String
+	b.WorktreeRoot = worktreeRoot.String
 	return &b, nil
 }
 
@@ -281,9 +293,9 @@ func (s *Store) DeleteTicket(ctx context.Context, id int64) error {
 func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 	if sess.ID == 0 {
 		res, err := s.db.ExecContext(ctx,
-			`INSERT INTO sessions (ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState,
+			`INSERT INTO sessions (ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, mount_path, repo_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath),
 		)
 		if err != nil {
 			return err
@@ -296,8 +308,8 @@ func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE sessions SET worktree_path=?, branch_name=?, container_id=?, container_name=?, status=?, started_at=?, stopped_at=?, pr_state=? WHERE id=?`,
-		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.ID,
+		`UPDATE sessions SET worktree_path=?, branch_name=?, container_id=?, container_name=?, status=?, started_at=?, stopped_at=?, pr_state=?, mount_path=?, repo_path=? WHERE id=?`,
+		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), sess.ID,
 	)
 	return err
 }
@@ -314,35 +326,41 @@ func (s *Store) UpdateSessionPRState(ctx context.Context, id int64, prState stri
 
 func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 	var sess Session
+	var mount, repo sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state FROM sessions WHERE id=?`, id,
-	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState)
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, mount_path, repo_path FROM sessions WHERE id=?`, id,
+	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &mount, &repo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	sess.MountPath = mount.String
+	sess.RepoPath = repo.String
 	return &sess, nil
 }
 
 func (s *Store) GetSessionByTicket(ctx context.Context, ticketID int64) (*Session, error) {
 	var sess Session
+	var mount, repo sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state FROM sessions WHERE ticket_id=?`, ticketID,
-	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState)
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, mount_path, repo_path FROM sessions WHERE ticket_id=?`, ticketID,
+	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &mount, &repo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	sess.MountPath = mount.String
+	sess.RepoPath = repo.String
 	return &sess, nil
 }
 
 func (s *Store) ListSessionsByBoard(ctx context.Context, boardID int64) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state
+		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state, s.mount_path, s.repo_path
          FROM sessions s JOIN tickets t ON t.id=s.ticket_id WHERE t.board_id=?`, boardID)
 	if err != nil {
 		return nil, err
@@ -351,9 +369,12 @@ func (s *Store) ListSessionsByBoard(ctx context.Context, boardID int64) ([]Sessi
 	sessions := []Session{}
 	for rows.Next() {
 		var sess Session
-		if err := rows.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState); err != nil {
+		var mount, repo sql.NullString
+		if err := rows.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &mount, &repo); err != nil {
 			return nil, err
 		}
+		sess.MountPath = mount.String
+		sess.RepoPath = repo.String
 		sessions = append(sessions, sess)
 	}
 	return sessions, rows.Err()
@@ -539,4 +560,14 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// nullIfEmpty returns sql.NullString{Valid:false} when s is empty, so optional
+// columns are stored as SQL NULL (matching the schema's nullable definitions)
+// rather than as empty strings.
+func nullIfEmpty(s string) sql.NullString {
+	if s == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: s, Valid: true}
 }
