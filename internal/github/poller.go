@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jmelahman/kanban/internal/db"
@@ -301,7 +302,7 @@ func (p *Poller) listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
 		return nil, err
 	}
 	apiBase := apiBaseFor(host)
-	tok := token()
+	tok := token(host)
 
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -397,11 +398,40 @@ func apiBaseFor(host string) string {
 	return "https://" + host + "/api/v3"
 }
 
-func token() string {
+var (
+	ghTokenCache   sync.Map // host -> string
+	ghTokenLookPath = exec.LookPath
+	ghTokenRun      = func(name string, args ...string) ([]byte, error) {
+		return exec.Command(name, args...).Output()
+	}
+)
+
+func token(host string) string {
 	if v := os.Getenv("GH_TOKEN"); v != "" {
 		return v
 	}
-	return os.Getenv("GITHUB_TOKEN")
+	if v := os.Getenv("GITHUB_TOKEN"); v != "" {
+		return v
+	}
+	key := host
+	if key == "" {
+		key = "github.com"
+	}
+	if v, ok := ghTokenCache.Load(key); ok {
+		return v.(string)
+	}
+	tok := ""
+	if _, err := ghTokenLookPath("gh"); err == nil {
+		args := []string{"auth", "token"}
+		if key != "github.com" {
+			args = append(args, "--hostname", key)
+		}
+		if out, err := ghTokenRun("gh", args...); err == nil {
+			tok = strings.TrimSpace(string(out))
+		}
+	}
+	ghTokenCache.Store(key, tok)
+	return tok
 }
 
 // parseNextLink extracts the URL of rel="next" from a GitHub Link header.

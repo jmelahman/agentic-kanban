@@ -100,13 +100,68 @@ func TestClassify(t *testing.T) {
 }
 
 func TestTokenPrefersGHToken(t *testing.T) {
+	resetTokenCache()
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "fallback")
-	if got := token(); got != "fallback" {
+	if got := token(""); got != "fallback" {
 		t.Errorf("fallback: got %q", got)
 	}
 	t.Setenv("GH_TOKEN", "primary")
-	if got := token(); got != "primary" {
+	if got := token(""); got != "primary" {
 		t.Errorf("primary: got %q", got)
 	}
+}
+
+func TestTokenFallsBackToGHCLI(t *testing.T) {
+	resetTokenCache()
+	t.Setenv("GH_TOKEN", "")
+	t.Setenv("GITHUB_TOKEN", "")
+
+	origLook, origRun := ghTokenLookPath, ghTokenRun
+	t.Cleanup(func() {
+		ghTokenLookPath, ghTokenRun = origLook, origRun
+		resetTokenCache()
+	})
+
+	ghTokenLookPath = func(string) (string, error) { return "/usr/bin/gh", nil }
+	calls := 0
+	var lastArgs []string
+	ghTokenRun = func(name string, args ...string) ([]byte, error) {
+		calls++
+		lastArgs = args
+		return []byte("ghcli-token\n"), nil
+	}
+
+	if got := token("github.com"); got != "ghcli-token" {
+		t.Errorf("github.com: got %q", got)
+	}
+	if got := token("github.com"); got != "ghcli-token" {
+		t.Errorf("cached: got %q", got)
+	}
+	if calls != 1 {
+		t.Errorf("expected 1 gh exec, got %d", calls)
+	}
+
+	if got := token("ghe.example.com"); got != "ghcli-token" {
+		t.Errorf("ghe: got %q", got)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 gh execs after ghe lookup, got %d", calls)
+	}
+	want := []string{"auth", "token", "--hostname", "ghe.example.com"}
+	if len(lastArgs) != len(want) {
+		t.Fatalf("ghe args: got %v, want %v", lastArgs, want)
+	}
+	for i := range want {
+		if lastArgs[i] != want[i] {
+			t.Fatalf("ghe args: got %v, want %v", lastArgs, want)
+		}
+	}
+}
+
+func resetTokenCache() {
+	ghTokenCache.Range(func(k, _ any) bool {
+		ghTokenCache.Delete(k)
+		return true
+	})
 }
