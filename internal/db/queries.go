@@ -107,6 +107,19 @@ func (s *Store) GetBoard(ctx context.Context, id int64) (*Board, error) {
 	return &b, nil
 }
 
+func (s *Store) GetBoardBySlug(ctx context.Context, slug string) (*Board, error) {
+	var b Board
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, source_repo_path, worktree_root, base_branch, created_at FROM boards WHERE slug=?`, slug).
+		Scan(&b.ID, &b.Name, &b.Slug, &b.SourceRepoPath, &b.WorktreeRoot, &b.BaseBranch, &b.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &b, nil
+}
+
 // Columns
 
 func (s *Store) ListColumns(ctx context.Context, boardID int64) ([]Column, error) {

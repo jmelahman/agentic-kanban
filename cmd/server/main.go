@@ -22,6 +22,7 @@ import (
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/mcp"
 	"github.com/jmelahman/kanban/internal/session"
 )
 
@@ -92,6 +93,25 @@ func Root() *cobra.Command {
 	serve.Flags().IntVar(&portRangeEnd, "port-range-end", 13099, "Last host port available for proxy allocation (inclusive)")
 
 	cmd.AddCommand(serve)
+
+	var mcpServerURL string
+	mcpCmd := &cobra.Command{
+		Use:   "mcp",
+		Short: "Run kanban as an MCP (Model Context Protocol) server over stdio",
+		Long: "Run a Model Context Protocol server on stdin/stdout that exposes\n" +
+			"kanban tools to AI agents (Claude Desktop, Claude Code, etc.).\n" +
+			"Tools forward to a running `kanban serve` over HTTP.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			url := mcpServerURL
+			if env := os.Getenv("KANBAN_URL"); env != "" && !cmd.Flags().Changed("server") {
+				url = env
+			}
+			return mcp.Run(cmd.Context(), url)
+		},
+	}
+	mcpCmd.Flags().StringVar(&mcpServerURL, "server", "http://localhost:7474", "Base URL of the kanban HTTP server")
+	cmd.AddCommand(mcpCmd)
+
 	return cmd
 }
 

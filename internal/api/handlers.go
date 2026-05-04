@@ -224,14 +224,14 @@ func (h *handlers) boardState(w http.ResponseWriter, r *http.Request) {
 // Tickets
 
 type createTicketReq struct {
-	ColumnID int64  `json:"column_id"`
+	ColumnID int64  `json:"column_id,omitempty"`
+	Column   string `json:"column,omitempty"`
 	Title    string `json:"title"`
 	Body     string `json:"body"`
 }
 
 func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
-	boardID := pathID(r, "id")
-	board, err := h.store.GetBoard(r.Context(), boardID)
+	board, err := h.resolveBoardIdent(r.Context(), r.PathValue("id"))
 	if err != nil {
 		httpError(w, err, 404)
 		return
@@ -241,13 +241,18 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 400)
 		return
 	}
-	if req.Title == "" || req.ColumnID == 0 {
-		httpError(w, fmt.Errorf("title and column_id required"), 400)
+	if req.Title == "" {
+		httpError(w, fmt.Errorf("title required"), 400)
+		return
+	}
+	columnID, err := h.resolveColumn(r.Context(), board.ID, req.ColumnID, req.Column)
+	if err != nil {
+		httpError(w, err, 400)
 		return
 	}
 	t := &db.Ticket{
-		BoardID:  boardID,
-		ColumnID: req.ColumnID,
+		BoardID:  board.ID,
+		ColumnID: columnID,
 		Title:    req.Title,
 		Slug:     slugify(req.Title),
 		Body:     req.Body,
@@ -256,12 +261,63 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err, 500)
 		return
 	}
-	h.bus.Publish(boardID, "ticket_created", t)
+	h.bus.Publish(board.ID, "ticket_created", t)
 	h.hooks.Fire(&board.ID, hooks.EventTicketCreated, map[string]string{
 		"ticket_id": fmt.Sprintf("%d", t.ID),
-		"board":    board.Name,
+		"board":     board.Name,
 	})
 	writeJSON(w, 201, t)
+}
+
+// resolveBoardIdent looks up a board by numeric id first, then by slug. The
+// numeric path stays the canonical form for back-compat; slug is a fallback
+// so programmatic callers don't need to pre-resolve IDs.
+func (h *handlers) resolveBoardIdent(ctx context.Context, ident string) (*db.Board, error) {
+	if ident == "" {
+		return nil, fmt.Errorf("board identifier required")
+	}
+	if id, err := strconv.ParseInt(ident, 10, 64); err == nil {
+		if b, err := h.store.GetBoard(ctx, id); err == nil {
+			return b, nil
+		}
+	}
+	return h.store.GetBoardBySlug(ctx, ident)
+}
+
+// resolveColumn picks a column for a new ticket. Precedence: numeric column_id
+// > column (numeric string or case-insensitive name) > leftmost column.
+func (h *handlers) resolveColumn(ctx context.Context, boardID int64, columnID int64, column string) (int64, error) {
+	cols, err := h.store.ListColumns(ctx, boardID)
+	if err != nil {
+		return 0, err
+	}
+	if len(cols) == 0 {
+		return 0, fmt.Errorf("board has no columns")
+	}
+	if columnID > 0 {
+		for _, c := range cols {
+			if c.ID == columnID {
+				return c.ID, nil
+			}
+		}
+		return 0, fmt.Errorf("column_id %d not found on this board", columnID)
+	}
+	if column != "" {
+		if id, err := strconv.ParseInt(column, 10, 64); err == nil {
+			for _, c := range cols {
+				if c.ID == id {
+					return c.ID, nil
+				}
+			}
+		}
+		for _, c := range cols {
+			if strings.EqualFold(c.Name, column) {
+				return c.ID, nil
+			}
+		}
+		return 0, fmt.Errorf("column %q not found on this board", column)
+	}
+	return cols[0].ID, nil
 }
 
 type moveTicketReq struct {

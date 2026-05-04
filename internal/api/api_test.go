@@ -142,6 +142,55 @@ func TestTickets_Lifecycle(t *testing.T) {
 		assertStatus(t, resp, 404)
 	})
 
+	t.Run("create_by_slug", func(t *testing.T) {
+		resp := e.post(fmt.Sprintf("/api/boards/%s/tickets", board.Slug), map[string]any{
+			"title": "via slug",
+		})
+		assertStatus(t, resp, 201)
+		tk := decodeJSON[db.Ticket](t, resp)
+		if tk.BoardID != board.ID {
+			t.Errorf("BoardID = %d, want %d", tk.BoardID, board.ID)
+		}
+	})
+
+	t.Run("create_default_column", func(t *testing.T) {
+		resp := e.post(fmt.Sprintf("/api/boards/%d/tickets", board.ID), map[string]any{
+			"title": "no column specified",
+		})
+		assertStatus(t, resp, 201)
+		tk := decodeJSON[db.Ticket](t, resp)
+		if tk.ColumnID != cols[0].ID {
+			t.Errorf("default column = %d, want leftmost %d", tk.ColumnID, cols[0].ID)
+		}
+	})
+
+	t.Run("create_column_by_name", func(t *testing.T) {
+		resp := e.post(fmt.Sprintf("/api/boards/%d/tickets", board.ID), map[string]any{
+			"title":  "named column",
+			"column": "in progress",
+		})
+		assertStatus(t, resp, 201)
+		tk := decodeJSON[db.Ticket](t, resp)
+		if tk.ColumnID != cols[1].ID {
+			t.Errorf("ColumnID = %d, want %d (In Progress)", tk.ColumnID, cols[1].ID)
+		}
+	})
+
+	t.Run("create_unknown_column_400", func(t *testing.T) {
+		resp := e.post(fmt.Sprintf("/api/boards/%d/tickets", board.ID), map[string]any{
+			"title":  "bad column",
+			"column": "Nope",
+		})
+		assertStatus(t, resp, 400)
+	})
+
+	t.Run("create_unknown_slug_404", func(t *testing.T) {
+		resp := e.post("/api/boards/no-such-slug/tickets", map[string]any{
+			"title": "x",
+		})
+		assertStatus(t, resp, 404)
+	})
+
 	t.Run("move_happy_path", func(t *testing.T) {
 		tk := e.seedTicket(board, "ToMove")
 		resp := e.patch(fmt.Sprintf("/api/tickets/%d/move", tk.ID), map[string]any{

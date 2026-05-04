@@ -98,3 +98,77 @@ container_port = 8080
 ```
 
 `[[task]]` entries merge by `label`: a user entry with the same label replaces the project entry, and user-only labels are appended.
+
+## API
+
+The HTTP server (default `:7474`) exposes a small REST API. The endpoint most useful for scripting is ticket creation:
+
+### `POST /api/boards/{id}/tickets`
+
+Path parameter `{id}` accepts either the numeric board id or the board slug.
+
+Body fields:
+
+| Field       | Type    | Required | Notes                                                                                          |
+| ----------- | ------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `title`     | string  | yes      |                                                                                                |
+| `body`      | string  | no       | Markdown ticket description.                                                                   |
+| `column_id` | integer | no       | Numeric column id. Wins over `column` if both set.                                             |
+| `column`    | string  | no       | Column name (case-insensitive) or numeric string. Defaults to the leftmost column when omitted. |
+
+Returns `201` with the created `Ticket` JSON, or `400` / `404` on validation failures. SSE subscribers on `/api/boards/{id}/events` receive a `ticket_created` event.
+
+```bash
+# Default column (Backlog), board by slug
+curl -sX POST http://localhost:7474/api/boards/my-board/tickets \
+     -H 'content-type: application/json' \
+     -d '{"title":"Investigate flaky test"}' | jq
+
+# Pick a column by name
+curl -sX POST http://localhost:7474/api/boards/my-board/tickets \
+     -H 'content-type: application/json' \
+     -d '{"title":"Wire CI","column":"In Progress","body":"add a workflow"}' | jq
+
+# Numeric ids (back-compat)
+curl -sX POST http://localhost:7474/api/boards/1/tickets \
+     -H 'content-type: application/json' \
+     -d '{"title":"Compat","column_id":2}' | jq
+```
+
+The server has no authentication — bind only to `127.0.0.1` (the default container mapping does this).
+
+## MCP
+
+The same binary can run as a [Model Context Protocol](https://modelcontextprotocol.io) server over stdio, exposing kanban tools to AI agents. The MCP server is a thin client of the HTTP API above, so `kanban serve` must be running.
+
+```bash
+kanban mcp --server http://localhost:7474
+# or via env
+KANBAN_URL=http://localhost:7474 kanban mcp
+```
+
+Tools:
+
+- `create_ticket` — args: `board` (id or slug), `title`, optional `body`, optional `column` (name or id, defaults to leftmost column).
+- `list_boards` — returns `[{id, name, slug}]` for discovery.
+
+### Claude Desktop
+
+Add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "kanban": {
+      "command": "/path/to/kanban",
+      "args": ["mcp", "--server", "http://localhost:7474"]
+    }
+  }
+}
+```
+
+### Claude Code
+
+```bash
+claude mcp add kanban -- /path/to/kanban mcp --server http://localhost:7474
+```
