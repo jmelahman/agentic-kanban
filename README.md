@@ -89,9 +89,7 @@ closed_column = "Done"
 
 # Extra knobs layered onto the worktree's devcontainer.json at session spawn.
 # `mounts` and `run_args` append to whatever the devcontainer.json declares;
-# `container_env` merges with kanban values winning. There is no conditional
-# logic - if you want a host-specific bind (e.g. the SSH agent socket) only
-# on machines that have it, set it in your user-level config, not the repo.
+# `container_env` merges with kanban values winning.
 [devcontainer]
 mounts   = ["type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock"]
 run_args = ["--cap-add=SYS_PTRACE"]
