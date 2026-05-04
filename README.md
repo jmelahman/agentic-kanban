@@ -35,7 +35,7 @@ docker run -d --name kanban \
   --restart unless-stopped \
   -p 127.0.0.1:7474:7474 \
   -p 13000-13099:13000-13099 \
-  -v $XDG_RUNTIME_DIR/docker.sock:/var/run/docker.sock \
+  -v ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock \
   -v $HOME/.claude:$HOME/.claude \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
   -v $SOURCE:$SOURCE \
@@ -45,6 +45,8 @@ docker run -d --name kanban \
   -e GH_TOKEN=$(gh auth token) \
   lahmanja/kanban:latest
 ```
+
+_TIP: Set `DOCKER_SOCK_PATH` in your shell for [rootless Docker](https://docs.docker.com/engine/security/rootless/) support._
 
 **github:**
 
