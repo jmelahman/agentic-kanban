@@ -87,6 +87,7 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("DELETE /api/ports/{id}", h.deletePort)
 
 	mux.HandleFunc("/ws/sessions/{id}/pty", h.wsPTY)
+	mux.HandleFunc("/ws/sessions/{id}/shell", h.wsShell)
 
 	mux.HandleFunc("GET /api/settings", h.getSettings)
 	mux.HandleFunc("PATCH /api/settings", h.updateSettings)

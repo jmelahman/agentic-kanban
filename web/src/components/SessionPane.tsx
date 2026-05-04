@@ -71,7 +71,8 @@ export function SessionPane({
   ticketId,
   session,
   onClose,
-  onTerminalSlot,
+  onAgentSlot,
+  onShellSlot,
   orientation,
 }: {
   boardId: number;
@@ -81,13 +82,14 @@ export function SessionPane({
   ticketId: number | null;
   session: Session | null;
   onClose: () => void;
-  onTerminalSlot: (el: HTMLDivElement | null) => void;
+  onAgentSlot: (el: HTMLDivElement | null) => void;
+  onShellSlot: (el: HTMLDivElement | null) => void;
   orientation: TerminalOrientation;
 }) {
   const isHorizontal = orientation === "horizontal";
   const qc = useQueryClient();
   const toast = useToast();
-  const [tab, setTab] = useState<"terminal" | "tasks">("terminal");
+  const [tab, setTab] = useState<"agent" | "shell" | "tasks">("agent");
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
@@ -582,16 +584,26 @@ export function SessionPane({
         </div>
       </div>
       <div className="flex border-b border-zinc-800 text-sm">
-        <Tab active={tab === "terminal"} onClick={() => setTab("terminal")} label="terminal" />
+        <Tab active={tab === "agent"} onClick={() => setTab("agent")} label="agent" />
+        <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="shell" />
         <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
       </div>
       <div className="min-h-0 flex-1">
-        {tab === "terminal" && (
+        {tab === "agent" && (
           <div className="h-full">
             {session && isRunning ? (
-              <div ref={onTerminalSlot} className="h-full w-full" />
+              <div ref={onAgentSlot} className="h-full w-full" />
             ) : (
-              <p className="p-4 text-sm text-zinc-400">Start the session to attach a terminal.</p>
+              <p className="p-4 text-sm text-zinc-400">Start the session to attach the agent.</p>
+            )}
+          </div>
+        )}
+        {tab === "shell" && (
+          <div className="h-full">
+            {session && isRunning ? (
+              <div ref={onShellSlot} className="h-full w-full" />
+            ) : (
+              <p className="p-4 text-sm text-zinc-400">Start the session to attach a shell.</p>
             )}
           </div>
         )}

@@ -23,18 +23,29 @@ type ptyControl struct {
 }
 
 // AttachAgent upgrades the request to a WebSocket and routes it through the
-// per-session PTY broker, which holds the docker exec connection across
+// per-session agent PTY broker, which holds the docker exec connection across
 // client reconnects (e.g. page refresh). The command argument is the agent
 // CLI argv chosen by the caller (typically derived from the global harness
 // setting); it must be non-empty.
 func (m *Manager) AttachAgent(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, command []string, workDir string) error {
+	return m.attachKind(ctx, sess, w, r, "agent", command, workDir)
+}
+
+// AttachShell upgrades the request to a WebSocket and runs an interactive
+// shell inside the session container, brokered alongside (and independent of)
+// the agent PTY.
+func (m *Manager) AttachShell(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, workDir string) error {
+	return m.attachKind(ctx, sess, w, r, "shell", []string{"bash"}, workDir)
+}
+
+func (m *Manager) attachKind(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, kind string, command []string, workDir string) error {
 	if sess.ContainerID == nil || *sess.ContainerID == "" {
 		http.Error(w, "session not running", http.StatusBadRequest)
 		return errors.New("not running")
 	}
 	if len(command) == 0 {
-		http.Error(w, "no agent command configured", http.StatusBadRequest)
-		return errors.New("no agent command configured")
+		http.Error(w, "no command configured", http.StatusBadRequest)
+		return errors.New("no command configured")
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -43,7 +54,7 @@ func (m *Manager) AttachAgent(ctx context.Context, sess *db.Session, w http.Resp
 	}
 	defer conn.Close()
 
-	broker, err := m.brokers.attach(ctx, sess, command, workDir)
+	broker, err := m.brokers.attach(ctx, sess, kind, command, workDir)
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte("error: "+err.Error()))
 		return err

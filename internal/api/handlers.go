@@ -979,6 +979,16 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, resolved.PTYCommand, "/workspace")
 }
 
+func (h *handlers) wsShell(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 404)
+		return
+	}
+	_ = h.sessions.AttachShell(r.Context(), sess, w, r, "/workspace")
+}
+
 // Settings — backed by the user-level config file at
 // $XDG_CONFIG_HOME/kanban/config.toml. Empty values mean "no user override".
 

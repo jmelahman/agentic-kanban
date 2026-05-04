@@ -8,7 +8,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
@@ -28,8 +28,11 @@ export function Board({ boardId }: { boardId: number }) {
   const stateQ = useQuery({ queryKey: queryKeys.board(boardId), queryFn: () => api.boardState(boardId) });
   const [activeTicket, setActiveTicket] = useState<number | null>(null);
   const [draggingId, setDraggingId] = useState<number | null>(null);
-  const [terminalSlot, setTerminalSlot] = useState<HTMLDivElement | null>(null);
-  const onTerminalSlot = useCallback((el: HTMLDivElement | null) => setTerminalSlot(el), []);
+  const [agentSlot, setAgentSlot] = useState<HTMLDivElement | null>(null);
+  const onAgentSlot = useCallback((el: HTMLDivElement | null) => setAgentSlot(el), []);
+  const [shellSlot, setShellSlot] = useState<HTMLDivElement | null>(null);
+  const onShellSlot = useCallback((el: HTMLDivElement | null) => setShellSlot(el), []);
+  const [shellOpened, setShellOpened] = useState<Set<number>>(() => new Set());
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const orientation = useTerminalOrientation();
 
@@ -39,11 +42,28 @@ export function Board({ boardId }: { boardId: number }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.board(boardId) }),
   });
 
+  const sessions = stateQ.data?.sessions ?? [];
+  const sessionByTicket = new Map<number, (typeof sessions)[number]>(sessions.map((s) => [s.ticket_id, s]));
+  const activeSession = activeTicket != null ? sessionByTicket.get(activeTicket) ?? null : null;
+  const activeSessionId = activeSession?.id ?? null;
+
+  // The shell tab is lazy: we only spawn the shell PTY once the user has opened
+  // the shell tab at least once for that session (the slot ref fires non-null).
+  useEffect(() => {
+    if (shellSlot && activeSessionId != null) {
+      setShellOpened((prev) => {
+        if (prev.has(activeSessionId)) return prev;
+        const next = new Set(prev);
+        next.add(activeSessionId);
+        return next;
+      });
+    }
+  }, [shellSlot, activeSessionId]);
+
   if (stateQ.isLoading) return <p className="p-4 text-sm text-zinc-400">Loading…</p>;
   if (!stateQ.data) return <p className="p-4 text-sm text-red-400">No data.</p>;
 
-  const { board, columns, tickets, sessions, merge_config, sync_config } = stateQ.data;
-  const sessionByTicket = new Map<number, (typeof sessions)[number]>(sessions.map((s) => [s.ticket_id, s]));
+  const { board, columns, tickets, merge_config, sync_config } = stateQ.data;
 
   function onDragStart(e: DragStartEvent) {
     setDraggingId(Number(e.active.id));
@@ -100,20 +120,36 @@ export function Board({ boardId }: { boardId: number }) {
         mergeConfig={merge_config}
         syncConfig={sync_config}
         ticketId={activeTicket}
-        session={activeTicket != null ? sessionByTicket.get(activeTicket) ?? null : null}
+        session={activeSession}
         onClose={() => setActiveTicket(null)}
-        onTerminalSlot={onTerminalSlot}
+        onAgentSlot={onAgentSlot}
+        onShellSlot={onShellSlot}
         orientation={orientation}
       />
       {sessions
         .filter((s) => ATTACHABLE.has(s.status))
-        .map((s) => (
-          <PtyTerminal
-            key={`${s.id}:${s.started_at ?? 0}`}
-            sessionId={s.id}
-            mountTarget={activeTicket === s.ticket_id ? terminalSlot : null}
-          />
-        ))}
+        .flatMap((s) => {
+          const isActive = activeTicket === s.ticket_id;
+          const elements = [
+            <PtyTerminal
+              key={`${s.id}:agent:${s.started_at ?? 0}`}
+              sessionId={s.id}
+              kind="agent"
+              mountTarget={isActive ? agentSlot : null}
+            />,
+          ];
+          if (shellOpened.has(s.id)) {
+            elements.push(
+              <PtyTerminal
+                key={`${s.id}:shell:${s.started_at ?? 0}`}
+                sessionId={s.id}
+                kind="shell"
+                mountTarget={isActive ? shellSlot : null}
+              />,
+            );
+          }
+          return elements;
+        })}
     </div>
   );
 }

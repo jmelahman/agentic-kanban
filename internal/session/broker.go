@@ -79,10 +79,10 @@ func (r *ringBuffer) Snapshot() []byte {
 // The single reader goroutine is the only writer of binary frames to the
 // active client. WS handlers call register/unregister/write/resize.
 type sessionPTY struct {
-	sessionID int64
-	attached  *docker.AttachedExec
-	docker    *docker.Client
-	set       *brokerSet
+	key      brokerKey
+	attached *docker.AttachedExec
+	docker   *docker.Client
+	set      *brokerSet
 
 	mu     sync.Mutex
 	buf    *ringBuffer
@@ -92,27 +92,36 @@ type sessionPTY struct {
 	closed bool
 }
 
-// brokerSet manages the set of active brokers, one per session id.
+// brokerKey identifies a broker by session id and kind ("agent", "shell"),
+// so a single session can host multiple independent PTYs.
+type brokerKey struct {
+	sessionID int64
+	kind      string
+}
+
+// brokerSet manages the set of active brokers, one per (session id, kind).
 type brokerSet struct {
 	docker *docker.Client
 
 	mu      sync.Mutex
-	perSess map[int64]*sessionPTY
+	perSess map[brokerKey]*sessionPTY
 }
 
 func newBrokerSet(dc *docker.Client) *brokerSet {
 	return &brokerSet{
 		docker:  dc,
-		perSess: map[int64]*sessionPTY{},
+		perSess: map[brokerKey]*sessionPTY{},
 	}
 }
 
-// attach returns the broker for this session, creating it (and starting the
-// underlying docker exec) on first use. Subsequent calls return the existing
-// broker — the cmd and workDir arguments are only honored at creation time.
-func (s *brokerSet) attach(ctx context.Context, sess *db.Session, cmd []string, workDir string) (*sessionPTY, error) {
+// attach returns the broker for this session and kind, creating it (and
+// starting the underlying docker exec) on first use. Subsequent calls with
+// the same key return the existing broker — the cmd and workDir arguments
+// are only honored at creation time.
+func (s *brokerSet) attach(ctx context.Context, sess *db.Session, kind string, cmd []string, workDir string) (*sessionPTY, error) {
+	key := brokerKey{sessionID: sess.ID, kind: kind}
 	s.mu.Lock()
-	if b, ok := s.perSess[sess.ID]; ok {
+	if b, ok := s.perSess[key]; ok {
 		s.mu.Unlock()
 		return b, nil
 	}
@@ -126,25 +135,30 @@ func (s *brokerSet) attach(ctx context.Context, sess *db.Session, cmd []string, 
 		return nil, err
 	}
 	b := &sessionPTY{
-		sessionID: sess.ID,
-		attached:  att,
-		docker:    s.docker,
-		set:       s,
-		buf:       newRingBuffer(replayBufferSize),
+		key:      key,
+		attached: att,
+		docker:   s.docker,
+		set:      s,
+		buf:      newRingBuffer(replayBufferSize),
 	}
-	s.perSess[sess.ID] = b
+	s.perSess[key] = b
 	s.mu.Unlock()
 	go b.readLoop()
 	return b, nil
 }
 
-// closeFor tears down the broker for a session, if any. Idempotent and safe
-// when no broker exists.
+// closeFor tears down all brokers for a session. Idempotent and safe when no
+// broker exists.
 func (s *brokerSet) closeFor(sessionID int64) {
 	s.mu.Lock()
-	b := s.perSess[sessionID]
+	var victims []*sessionPTY
+	for k, b := range s.perSess {
+		if k.sessionID == sessionID {
+			victims = append(victims, b)
+		}
+	}
 	s.mu.Unlock()
-	if b != nil {
+	for _, b := range victims {
 		b.shutdown()
 	}
 }
@@ -177,7 +191,7 @@ func (b *sessionPTY) readLoop() {
 		}
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
-				log.Printf("session %d pty read: %v", b.sessionID, err)
+				log.Printf("session %d %s pty read: %v", b.key.sessionID, b.key.kind, err)
 			}
 			return
 		}
@@ -204,8 +218,8 @@ func (b *sessionPTY) shutdown() {
 	_ = b.attached.Conn.Conn.Close()
 
 	b.set.mu.Lock()
-	if cur, ok := b.set.perSess[b.sessionID]; ok && cur == b {
-		delete(b.set.perSess, b.sessionID)
+	if cur, ok := b.set.perSess[b.key]; ok && cur == b {
+		delete(b.set.perSess, b.key)
 	}
 	b.set.mu.Unlock()
 }

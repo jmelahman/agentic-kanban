@@ -5,10 +5,11 @@ const ghosttyReady = init();
 
 type Props = {
   sessionId: number;
+  kind: "agent" | "shell";
   mountTarget: HTMLElement | null;
 };
 
-export function PtyTerminal({ sessionId, mountTarget }: Props) {
+export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
 
@@ -37,7 +38,8 @@ export function PtyTerminal({ sessionId, mountTarget }: Props) {
       fit.fit();
 
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${proto}//${window.location.host}/ws/sessions/${sessionId}/pty`);
+      const path = kind === "shell" ? "shell" : "pty";
+      const ws = new WebSocket(`${proto}//${window.location.host}/ws/sessions/${sessionId}/${path}`);
       ws.binaryType = "arraybuffer";
 
       const sendResize = () => {
@@ -89,7 +91,7 @@ export function PtyTerminal({ sessionId, mountTarget }: Props) {
       hostRef.current = null;
       fitRef.current = null;
     };
-  }, [sessionId]);
+  }, [sessionId, kind]);
 
   useEffect(() => {
     const host = hostRef.current;
