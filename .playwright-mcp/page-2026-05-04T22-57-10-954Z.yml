@@ -1,0 +1,77 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "Kanban" [level=1] [ref=e5]
+    - combobox [ref=e6]:
+      - option "— select board —"
+      - option "Onyx" [selected]
+      - option "Kanban"
+      - option "Internal Tools"
+      - option "Code"
+    - generic [ref=e7]:
+      - button "App settings" [ref=e8]:
+        - img [ref=e9]
+      - button "Board settings" [ref=e16]:
+        - img [ref=e17]
+      - button "archived" [ref=e20]
+      - button "+ new board" [ref=e13]
+  - main [ref=e14]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - heading "Backlog" [level=2] [ref=e25]
+            - generic [ref=e26]: "0"
+          - button "+ add ticket" [ref=e28]
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - heading "In Progress" [level=2] [ref=e31]
+            - generic [ref=e32]: "1"
+          - button "Upgrade litellm to latest awaiting_perm" [active] [ref=e34] [cursor=pointer]:
+            - generic [ref=e35]:
+              - generic [ref=e36]: Upgrade litellm to latest
+              - generic [ref=e37]: awaiting_perm
+          - button "+ add ticket" [ref=e38]
+        - generic [ref=e39]:
+          - generic [ref=e40]:
+            - heading "Review" [level=2] [ref=e41]
+            - generic [ref=e42]: "0"
+          - button "+ add ticket" [ref=e44]
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - heading "Done" [level=2] [ref=e47]
+            - generic [ref=e48]: "2"
+          - generic [ref=e49]:
+            - 'button "Ensure we use `uv pip install --freeze` stopped" [ref=e50] [cursor=pointer]':
+              - generic [ref=e51]:
+                - generic [ref=e52]: "Ensure we use `uv pip install --freeze`"
+                - generic [ref=e53]: stopped
+            - 'button "chore(deps): pip install with `--no-deps` stopped" [ref=e54] [cursor=pointer]':
+              - generic [ref=e55]:
+                - generic [ref=e56]: "chore(deps): pip install with `--no-deps`"
+                - generic [ref=e57]: stopped
+          - button "+ add ticket" [ref=e58]
+      - status [ref=e59]
+      - complementary [ref=e60]:
+        - separator [ref=e61]
+        - generic [ref=e62]:
+          - generic [ref=e63]: "Ticket #104"
+          - generic [ref=e64]: kanban/onyx/upgrade-litellm-to-latest
+          - generic [ref=e65]:
+            - button "stop" [ref=e66]:
+              - img [ref=e67]
+            - button "rebase from main" [ref=e69]:
+              - img [ref=e70]
+            - button "squash and merge" [ref=e75]:
+              - img [ref=e76]
+            - button "archive" [ref=e81]:
+              - img [ref=e82]
+            - button "done" [ref=e85]:
+              - img [ref=e86]
+            - button "Fullscreen" [ref=e88]:
+              - img [ref=e89]
+            - button "✕" [ref=e94]
+        - generic [ref=e95]:
+          - button "terminal" [ref=e96]
+          - button "tasks" [ref=e97]
+        - textbox "Terminal input" [ref=e101]:
+          - textbox "Terminal input" [ref=e103]

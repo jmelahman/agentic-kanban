@@ -55,7 +55,7 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
   const portByContainer = new Map(ports.map((p) => [p.container_port, p]));
 
   return (
-    <div className="flex h-full flex-col gap-3 p-3 text-sm">
+    <div className="flex h-full flex-col gap-3 overflow-y-auto p-3 text-sm [scrollbar-gutter:stable]">
       <section>
         <h3 className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Detected tasks</h3>
         {tasks.length === 0 && <p className="text-zinc-500">No .vscode/tasks.json or launch.json detected.</p>}
@@ -93,7 +93,7 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
           })}
         </ul>
       </section>
-      <section className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+      <section>
         <h3 className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Runs</h3>
         <ul className="flex flex-col gap-1">
           {runs.map((r) => (
