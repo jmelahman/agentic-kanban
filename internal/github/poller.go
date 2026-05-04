@@ -149,6 +149,8 @@ func (p *Poller) tick(ctx context.Context) {
 }
 
 type ghPR struct {
+	Number   int64   `json:"number"`
+	HTMLURL  string  `json:"html_url"`
 	State    string  `json:"state"`     // "open" or "closed"
 	Draft    bool    `json:"draft"`
 	MergedAt *string `json:"merged_at"` // null until merged
@@ -202,10 +204,13 @@ func (p *Poller) syncBoard(ctx context.Context, board *db.Board, cfg Config) err
 			continue
 		}
 		newState := classify(pr)
-		if newState == sess.PRState {
+		stateChanged := newState != sess.PRState
+		numberChanged := sess.PRNumber == nil || *sess.PRNumber != pr.Number
+		urlChanged := sess.PRURL != pr.HTMLURL
+		if !stateChanged && !numberChanged && !urlChanged {
 			continue
 		}
-		if err := p.applyTransition(ctx, board, sess, sess.PRState, newState, cfg, colByName); err != nil {
+		if err := p.applyTransition(ctx, board, sess, sess.PRState, newState, pr, cfg, colByName); err != nil {
 			log.Printf("github poller: ticket %d: %v", sess.TicketID, err)
 		}
 	}
@@ -242,12 +247,18 @@ func columnFor(state string, cfg Config) string {
 	return ""
 }
 
-func (p *Poller) applyTransition(ctx context.Context, board *db.Board, sess *db.Session, prior, next string, cfg Config, colByName map[string]*db.Column) error {
+func (p *Poller) applyTransition(ctx context.Context, board *db.Board, sess *db.Session, prior, next string, pr ghPR, cfg Config, colByName map[string]*db.Column) error {
 	// Always persist the new observation, even when we decide not to move.
 	defer func() {
-		if err := p.store.UpdateSessionPRState(ctx, sess.ID, next); err != nil {
+		number := pr.Number
+		if err := p.store.UpdateSessionPR(ctx, sess.ID, next, &number, pr.HTMLURL); err != nil {
 			log.Printf("github poller: persist pr_state %d: %v", sess.ID, err)
+			return
 		}
+		sess.PRState = next
+		sess.PRNumber = &number
+		sess.PRURL = pr.HTMLURL
+		p.bus.Publish(board.ID, "session_updated", sess)
 	}()
 
 	target := columnFor(next, cfg)

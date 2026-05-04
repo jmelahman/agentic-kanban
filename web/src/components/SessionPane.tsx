@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, BoardState, MergeConfig, Session, SyncConfig } from "@/api/client";
+import { api, BoardState, MergeConfig, PRState, Session, SyncConfig } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
@@ -47,6 +47,13 @@ type SyncStrategy = "rebase" | "merge";
 const SYNC_STRATEGY_LABELS: Record<SyncStrategy, string> = {
   rebase: "rebase from",
   merge: "merge from",
+};
+
+const PR_STATE_COLOR: Record<PRState, string> = {
+  draft: "text-zinc-400",
+  open: "text-emerald-400",
+  merged: "text-purple-400",
+  closed: "text-red-400",
 };
 
 function enabledSyncStrategies(cfg: SyncConfig): SyncStrategy[] {
@@ -314,6 +321,19 @@ export function SessionPane({
       <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2 text-sm">
         <span className="font-medium">Ticket #{ticketId}</span>
         <span className="text-zinc-400">{session?.branch_name}</span>
+        {session?.pr_number != null && session.pr_url && (
+          <a
+            href={session.pr_url}
+            target="_blank"
+            rel="noreferrer"
+            className={`hover:underline ${
+              session.pr_state ? PR_STATE_COLOR[session.pr_state as PRState] ?? "text-zinc-400" : "text-zinc-400"
+            }`}
+            title={session.pr_state ? `PR ${session.pr_state}` : "pull request"}
+          >
+            #{session.pr_number}
+          </a>
+        )}
         <div className="ml-auto flex gap-2">
           {!session && (
             compact ? (

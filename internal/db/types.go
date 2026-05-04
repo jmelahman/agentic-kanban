@@ -41,6 +41,8 @@ type Session struct {
 	StartedAt     *int64  `json:"started_at,omitempty"`
 	StoppedAt     *int64  `json:"stopped_at,omitempty"`
 	PRState       string  `json:"pr_state,omitempty"`
+	PRNumber      *int64  `json:"pr_number,omitempty"`
+	PRURL         string  `json:"pr_url,omitempty"`
 	MountPath     string  `json:"mount_path,omitempty"`
 	RepoPath      string  `json:"repo_path,omitempty"`
 }

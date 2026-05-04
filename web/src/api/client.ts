@@ -23,6 +23,8 @@ export type Ticket = {
   archived_at?: number;
 };
 
+export type PRState = "draft" | "open" | "merged" | "closed";
+
 export type Session = {
   id: number;
   ticket_id: number;
@@ -33,6 +35,9 @@ export type Session = {
   status: string;
   started_at?: number;
   stopped_at?: number;
+  pr_state?: PRState | "";
+  pr_number?: number;
+  pr_url?: string;
 };
 
 export type MergeConfig = {

@@ -311,9 +311,9 @@ func (s *Store) DeleteTicket(ctx context.Context, id int64) error {
 func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 	if sess.ID == 0 {
 		res, err := s.db.ExecContext(ctx,
-			`INSERT INTO sessions (ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, mount_path, repo_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath),
+			`INSERT INTO sessions (ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, mount_path, repo_path)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath),
 		)
 		if err != nil {
 			return err
@@ -326,8 +326,8 @@ func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE sessions SET worktree_path=?, branch_name=?, container_id=?, container_name=?, status=?, started_at=?, stopped_at=?, pr_state=?, mount_path=?, repo_path=? WHERE id=?`,
-		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), sess.ID,
+		`UPDATE sessions SET worktree_path=?, branch_name=?, container_id=?, container_name=?, status=?, started_at=?, stopped_at=?, pr_state=?, pr_number=?, pr_url=?, mount_path=?, repo_path=? WHERE id=?`,
+		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), sess.ID,
 	)
 	return err
 }
@@ -337,23 +337,27 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, id int64, status string
 	return err
 }
 
-func (s *Store) UpdateSessionPRState(ctx context.Context, id int64, prState string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET pr_state=? WHERE id=?`, prState, id)
+func (s *Store) UpdateSessionPR(ctx context.Context, id int64, prState string, prNumber *int64, prURL string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET pr_state=?, pr_number=?, pr_url=? WHERE id=?`,
+		prState, prNumber, nullIfEmpty(prURL), id,
+	)
 	return err
 }
 
 func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 	var sess Session
-	var mount, repo sql.NullString
+	var mount, repo, prURL sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, mount_path, repo_path FROM sessions WHERE id=?`, id,
-	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &mount, &repo)
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, mount_path, repo_path FROM sessions WHERE id=?`, id,
+	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &sess.PRNumber, &prURL, &mount, &repo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	sess.PRURL = prURL.String
 	sess.MountPath = mount.String
 	sess.RepoPath = repo.String
 	return &sess, nil
@@ -361,16 +365,17 @@ func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 
 func (s *Store) GetSessionByTicket(ctx context.Context, ticketID int64) (*Session, error) {
 	var sess Session
-	var mount, repo sql.NullString
+	var mount, repo, prURL sql.NullString
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, mount_path, repo_path FROM sessions WHERE ticket_id=?`, ticketID,
-	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &mount, &repo)
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, mount_path, repo_path FROM sessions WHERE ticket_id=?`, ticketID,
+	).Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &sess.PRNumber, &prURL, &mount, &repo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, err
 	}
+	sess.PRURL = prURL.String
 	sess.MountPath = mount.String
 	sess.RepoPath = repo.String
 	return &sess, nil
@@ -378,7 +383,7 @@ func (s *Store) GetSessionByTicket(ctx context.Context, ticketID int64) (*Sessio
 
 func (s *Store) ListSessionsByBoard(ctx context.Context, boardID int64) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state, s.mount_path, s.repo_path
+		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state, s.pr_number, s.pr_url, s.mount_path, s.repo_path
          FROM sessions s JOIN tickets t ON t.id=s.ticket_id WHERE t.board_id=?`, boardID)
 	if err != nil {
 		return nil, err
@@ -387,10 +392,11 @@ func (s *Store) ListSessionsByBoard(ctx context.Context, boardID int64) ([]Sessi
 	sessions := []Session{}
 	for rows.Next() {
 		var sess Session
-		var mount, repo sql.NullString
-		if err := rows.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &mount, &repo); err != nil {
+		var mount, repo, prURL sql.NullString
+		if err := rows.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &sess.PRNumber, &prURL, &mount, &repo); err != nil {
 			return nil, err
 		}
+		sess.PRURL = prURL.String
 		sess.MountPath = mount.String
 		sess.RepoPath = repo.String
 		sessions = append(sessions, sess)

@@ -1,0 +1,66 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "Kanban" [level=1] [ref=e5]
+    - combobox [ref=e6]:
+      - option "— select board —"
+      - option "PR Demo" [selected]
+    - generic [ref=e7]:
+      - button "App settings" [ref=e8]:
+        - img [ref=e9]
+      - button "Board settings" [ref=e16]:
+        - img [ref=e17]
+      - button "archived" [ref=e20]
+      - button "+ new board" [ref=e13]
+  - main [ref=e14]:
+    - generic [ref=e21]:
+      - generic [ref=e22]:
+        - generic [ref=e23]:
+          - generic [ref=e24]:
+            - heading "Backlog" [level=2] [ref=e25]
+            - generic [ref=e26]: "0"
+          - button "+ add ticket" [ref=e28]
+        - generic [ref=e29]:
+          - generic [ref=e30]:
+            - heading "In Progress" [level=2] [ref=e31]
+            - generic [ref=e32]: "0"
+          - button "+ add ticket" [ref=e34]
+        - generic [ref=e35]:
+          - generic [ref=e36]:
+            - heading "Review" [level=2] [ref=e37]
+            - generic [ref=e38]: "1"
+          - button "Implement PR badge stopped" [active] [ref=e40] [cursor=pointer]:
+            - generic [ref=e41]:
+              - generic [ref=e42]: Implement PR badge
+              - generic [ref=e43]: stopped
+          - button "+ add ticket" [ref=e44]
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - heading "Done" [level=2] [ref=e47]
+            - generic [ref=e48]: "0"
+          - button "+ add ticket" [ref=e50]
+      - status [ref=e51]
+      - complementary [ref=e52]:
+        - separator [ref=e53]
+        - generic [ref=e54]:
+          - generic [ref=e55]: "Ticket #1"
+          - generic [ref=e56]: kanban/pr-demo/implement-pr-badge
+          - link "#123" [ref=e57] [cursor=pointer]:
+            - /url: https://github.com/demo/demo/pull/123
+          - generic [ref=e58]:
+            - button "start" [ref=e59]:
+              - img [ref=e60]
+            - button "sync" [ref=e63]:
+              - img [ref=e64]
+            - button "merge" [ref=e70]:
+              - img [ref=e71]
+            - button "archive" [ref=e76]:
+              - img [ref=e77]
+            - button "done" [ref=e80]:
+              - img [ref=e81]
+            - button "Fullscreen" [ref=e83]:
+              - img [ref=e84]
+            - button "✕" [ref=e89]
+        - generic [ref=e90]:
+          - button "terminal" [ref=e91]
+          - button "tasks" [ref=e92]
+        - paragraph [ref=e95]: Start the session to attach a terminal.
