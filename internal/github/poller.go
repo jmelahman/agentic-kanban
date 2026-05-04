@@ -44,7 +44,7 @@ type Config struct {
 
 func defaultConfig() Config {
 	return Config{
-		AutoMove:     false,
+		AutoMove:     true,
 		DraftColumn:  "In Progress",
 		ReviewColumn: "Review",
 		DoneColumn:   "Done",
@@ -54,7 +54,7 @@ func defaultConfig() Config {
 
 // LoadConfig returns the [github] section from the merged kanban config
 // (user file layered over <repoPath>/.kanban.toml). Missing keys keep their
-// disabled defaults.
+// defaults; auto_move is on by default.
 func LoadConfig(repoPath string) Config {
 	cfg := defaultConfig()
 	g := kanbantoml.Load(repoPath).GitHub
