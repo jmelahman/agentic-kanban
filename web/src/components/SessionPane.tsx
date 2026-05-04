@@ -446,7 +446,7 @@ export function SessionPane({
           {session && mergeStrategies.length === 1 && (
             compact ? (
               <Button
-                variant="primary"
+                variant="neutral"
                 size="icon"
                 onClick={() => mergeMut.mutate(mergeStrategies[0])}
                 disabled={mergeMut.isPending}
@@ -457,7 +457,7 @@ export function SessionPane({
               </Button>
             ) : (
               <Button
-                variant="primary"
+                variant="neutral"
                 onClick={() => mergeMut.mutate(mergeStrategies[0])}
                 pending={mergeMut.isPending}
                 idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
@@ -470,7 +470,7 @@ export function SessionPane({
             <div className="relative" ref={mergeMenuRef}>
               {compact ? (
                 <Button
-                  variant="primary"
+                  variant="neutral"
                   size="icon"
                   onClick={() => setMergeMenuOpen((v) => !v)}
                   disabled={mergeMut.isPending}
@@ -481,7 +481,7 @@ export function SessionPane({
                 </Button>
               ) : (
                 <Button
-                  variant="primary"
+                  variant="neutral"
                   onClick={() => setMergeMenuOpen((v) => !v)}
                   pending={mergeMut.isPending}
                   idleLabel="merge ▾"
@@ -527,7 +527,7 @@ export function SessionPane({
           )}
           {compact ? (
             <Button
-              variant="neutral"
+              variant="primary"
               size="icon"
               onClick={() => doneMut.mutate()}
               disabled={doneMut.isPending}
@@ -538,7 +538,7 @@ export function SessionPane({
             </Button>
           ) : (
             <Button
-              variant="neutral"
+              variant="primary"
               onClick={() => doneMut.mutate()}
               pending={doneMut.isPending}
               idleLabel="done"
@@ -583,17 +583,7 @@ export function SessionPane({
 
 function SyncIcon() {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg {...iconProps()} viewBox="-3 -3 30 30">
       <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
       <path d="M21 3v5h-5" />
       <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
@@ -604,17 +594,7 @@ function SyncIcon() {
 
 function MergeIcon() {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
+    <svg {...iconProps()} viewBox="-3 -3 30 30">
       <circle cx="6" cy="6" r="3" />
       <circle cx="6" cy="18" r="3" />
       <circle cx="18" cy="9" r="3" />
