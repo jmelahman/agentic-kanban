@@ -3,6 +3,7 @@ import { DndContext, DragEndEvent, PointerSensor, useSensor, useSensors } from "
 import { useCallback, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { Column } from "./Column";
 import { PtyTerminal } from "./PtyTerminal";
 import { SessionPane } from "./SessionPane";
@@ -20,6 +21,7 @@ export function Board({ boardId }: { boardId: number }) {
   const [terminalSlot, setTerminalSlot] = useState<HTMLDivElement | null>(null);
   const onTerminalSlot = useCallback((el: HTMLDivElement | null) => setTerminalSlot(el), []);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const orientation = useTerminalOrientation();
 
   const moveMut = useMutation({
     mutationFn: (input: { id: number; column_id: number; position: number }) =>
@@ -44,9 +46,9 @@ export function Board({ boardId }: { boardId: number }) {
   }
 
   return (
-    <div className="flex h-full">
+    <div className={`flex h-full ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}>
       <DndContext sensors={sensors} onDragEnd={onDragEnd}>
-        <div className="flex flex-1 gap-2 overflow-x-auto p-3">
+        <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto p-3">
           {columns.map((c) => (
             <Column
               key={c.id}
@@ -70,6 +72,7 @@ export function Board({ boardId }: { boardId: number }) {
         session={activeTicket != null ? sessionByTicket.get(activeTicket) ?? null : null}
         onClose={() => setActiveTicket(null)}
         onTerminalSlot={onTerminalSlot}
+        orientation={orientation}
       />
       {sessions
         .filter((s) => ATTACHABLE.has(s.status))

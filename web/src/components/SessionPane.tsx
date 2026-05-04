@@ -4,6 +4,7 @@ import { api, BoardState, MergeConfig, Session, SyncConfig } from "@/api/client"
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
+import { TerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { Button, Spinner } from "./Button";
 import { TasksPanel } from "./TasksPanel";
 
@@ -11,14 +12,18 @@ const MIN_WIDTH = 320;
 const MAX_WIDTH = 1600;
 const DEFAULT_WIDTH = 640;
 const WIDTH_STORAGE_KEY = "sessionPane.width";
+const MIN_HEIGHT = 200;
+const MAX_HEIGHT = 1200;
+const DEFAULT_HEIGHT = 360;
+const HEIGHT_STORAGE_KEY = "sessionPane.height";
 // Below this pane width, sync/merge buttons collapse to icon-only.
 const COMPACT_WIDTH = 680;
 
-function loadInitialWidth(): number {
-  const raw = typeof localStorage !== "undefined" ? localStorage.getItem(WIDTH_STORAGE_KEY) : null;
+function loadInitialSize(key: string, fallback: number, min: number, max: number): number {
+  const raw = typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
   const n = raw ? Number(raw) : NaN;
-  if (!Number.isFinite(n)) return DEFAULT_WIDTH;
-  return Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, n));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
 }
 
 type MergeStrategy = "merge-commit" | "squash" | "rebase";
@@ -60,6 +65,7 @@ export function SessionPane({
   session,
   onClose,
   onTerminalSlot,
+  orientation,
 }: {
   boardId: number;
   baseBranch: string;
@@ -69,7 +75,9 @@ export function SessionPane({
   session: Session | null;
   onClose: () => void;
   onTerminalSlot: (el: HTMLDivElement | null) => void;
+  orientation: TerminalOrientation;
 }) {
+  const isHorizontal = orientation === "horizontal";
   const qc = useQueryClient();
   const toast = useToast();
   const [tab, setTab] = useState<"terminal" | "tasks">("terminal");
@@ -78,7 +86,12 @@ export function SessionPane({
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
   const mergeMenuRef = useRef<HTMLDivElement | null>(null);
   const paneRef = useRef<HTMLElement | null>(null);
-  const [width, setWidth] = useState<number>(() => loadInitialWidth());
+  const [width, setWidth] = useState<number>(() =>
+    loadInitialSize(WIDTH_STORAGE_KEY, DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH),
+  );
+  const [height, setHeight] = useState<number>(() =>
+    loadInitialSize(HEIGHT_STORAGE_KEY, DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT),
+  );
   const [resizing, setResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const autoStartedRef = useRef<number | null>(null);
@@ -110,13 +123,16 @@ export function SessionPane({
   useEffect(() => {
     if (!resizing) return;
     let pending: number | null = null;
-    let nextWidth = width;
+    let nextSize = isHorizontal ? height : width;
     const apply = () => {
       pending = null;
-      setWidth(nextWidth);
+      if (isHorizontal) setHeight(nextSize);
+      else setWidth(nextSize);
     };
     const onMove = (e: MouseEvent) => {
-      nextWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - e.clientX));
+      nextSize = isHorizontal
+        ? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, window.innerHeight - e.clientY))
+        : Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - e.clientX));
       if (pending == null) pending = requestAnimationFrame(apply);
     };
     const onUp = () => setResizing(false);
@@ -124,7 +140,7 @@ export function SessionPane({
     window.addEventListener("mouseup", onUp);
     const prevCursor = document.body.style.cursor;
     const prevSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
+    document.body.style.cursor = isHorizontal ? "row-resize" : "col-resize";
     document.body.style.userSelect = "none";
     return () => {
       if (pending != null) cancelAnimationFrame(pending);
@@ -133,12 +149,17 @@ export function SessionPane({
       document.body.style.cursor = prevCursor;
       document.body.style.userSelect = prevSelect;
     };
-  }, [resizing]);
+  }, [resizing, isHorizontal]);
 
   useEffect(() => {
     if (resizing) return;
     localStorage.setItem(WIDTH_STORAGE_KEY, String(width));
   }, [width, resizing]);
+
+  useEffect(() => {
+    if (resizing) return;
+    localStorage.setItem(HEIGHT_STORAGE_KEY, String(height));
+  }, [height, resizing]);
 
   useEffect(() => {
     if (!syncMenuOpen) return;
@@ -250,30 +271,41 @@ export function SessionPane({
   const status = session?.status;
   const isRunning = status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
-  const compact = !fullscreen && width < COMPACT_WIDTH;
+  const compact = !fullscreen && !isHorizontal && width < COMPACT_WIDTH;
+
+  const paneClass = fullscreen
+    ? "fixed inset-0 z-40 flex flex-col bg-zinc-950"
+    : isHorizontal
+      ? "relative flex flex-col border-t border-zinc-800 bg-zinc-950"
+      : "relative flex flex-col border-l border-zinc-800 bg-zinc-950";
+  const paneStyle = fullscreen
+    ? undefined
+    : isHorizontal
+      ? { height: `${height}px`, flex: `0 0 ${height}px` }
+      : { width: `${width}px`, flex: `0 0 ${width}px` };
 
   return (
-    <aside
-      ref={paneRef}
-      className={
-        fullscreen
-          ? "fixed inset-0 z-40 flex flex-col bg-zinc-950"
-          : "relative flex flex-col border-l border-zinc-800 bg-zinc-950"
-      }
-      style={fullscreen ? undefined : { width: `${width}px`, flex: `0 0 ${width}px` }}
-    >
+    <aside ref={paneRef} className={paneClass} style={paneStyle}>
       {!fullscreen && (
         <div
           role="separator"
-          aria-orientation="vertical"
+          aria-orientation={isHorizontal ? "horizontal" : "vertical"}
           onMouseDown={(e) => {
             e.preventDefault();
             setResizing(true);
           }}
-          onDoubleClick={() => setWidth(DEFAULT_WIDTH)}
-          className={`absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-red-500/40 ${
-            resizing ? "bg-red-500/60" : ""
-          }`}
+          onDoubleClick={() =>
+            isHorizontal ? setHeight(DEFAULT_HEIGHT) : setWidth(DEFAULT_WIDTH)
+          }
+          className={
+            isHorizontal
+              ? `absolute left-0 top-0 z-20 h-1 w-full -translate-y-1/2 cursor-row-resize hover:bg-red-500/40 ${
+                  resizing ? "bg-red-500/60" : ""
+                }`
+              : `absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-red-500/40 ${
+                  resizing ? "bg-red-500/60" : ""
+                }`
+          }
         />
       )}
       <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2 text-sm">
