@@ -143,7 +143,7 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.WorktreeRoot != nil {
-		board.WorktreeRoot = *req.WorktreeRoot
+		board.WorktreeRoot = strings.TrimSpace(*req.WorktreeRoot)
 	}
 	if req.BaseBranch != nil {
 		base := strings.TrimSpace(*req.BaseBranch)
