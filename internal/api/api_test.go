@@ -191,6 +191,53 @@ func TestTickets_Lifecycle(t *testing.T) {
 		assertStatus(t, resp, 404)
 	})
 
+	t.Run("update_rename", func(t *testing.T) {
+		tk := e.seedTicket(board, "OldName")
+		resp := e.patch(fmt.Sprintf("/api/tickets/%d", tk.ID), map[string]any{
+			"title": "  New Name  ",
+		})
+		assertStatus(t, resp, 200)
+		got := decodeJSON[db.Ticket](t, resp)
+		if got.Title != "New Name" {
+			t.Errorf("title = %q, want %q", got.Title, "New Name")
+		}
+		if got.Slug != tk.Slug {
+			t.Errorf("slug should be stable on rename: got %q, want %q", got.Slug, tk.Slug)
+		}
+		stored, _ := e.store.GetTicket(t.Context(), tk.ID)
+		if stored.Title != "New Name" {
+			t.Errorf("stored title = %q", stored.Title)
+		}
+	})
+
+	t.Run("update_body_only", func(t *testing.T) {
+		tk := e.seedTicket(board, "BodyEdit")
+		resp := e.patch(fmt.Sprintf("/api/tickets/%d", tk.ID), map[string]any{
+			"body": "new body",
+		})
+		assertStatus(t, resp, 200)
+		got := decodeJSON[db.Ticket](t, resp)
+		if got.Title != "BodyEdit" {
+			t.Errorf("title should be unchanged, got %q", got.Title)
+		}
+		if got.Body != "new body" {
+			t.Errorf("body = %q", got.Body)
+		}
+	})
+
+	t.Run("update_empty_title_400", func(t *testing.T) {
+		tk := e.seedTicket(board, "X")
+		resp := e.patch(fmt.Sprintf("/api/tickets/%d", tk.ID), map[string]any{
+			"title": "   ",
+		})
+		assertStatus(t, resp, 400)
+	})
+
+	t.Run("update_unknown_404", func(t *testing.T) {
+		resp := e.patch("/api/tickets/9999", map[string]any{"title": "x"})
+		assertStatus(t, resp, 404)
+	})
+
 	t.Run("move_happy_path", func(t *testing.T) {
 		tk := e.seedTicket(board, "ToMove")
 		resp := e.patch(fmt.Sprintf("/api/tickets/%d/move", tk.ID), map[string]any{

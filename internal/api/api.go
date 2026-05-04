@@ -62,6 +62,7 @@ func NewMux(d Deps) http.Handler {
 
 	mux.HandleFunc("POST /api/boards/{id}/tickets", h.createTicket)
 	mux.HandleFunc("GET /api/boards/{id}/archived", h.listArchivedTickets)
+	mux.HandleFunc("PATCH /api/tickets/{id}", h.updateTicket)
 	mux.HandleFunc("PATCH /api/tickets/{id}/move", h.moveTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/archive", h.archiveTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/unarchive", h.unarchiveTicket)

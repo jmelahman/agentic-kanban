@@ -149,6 +149,8 @@ export const api = {
 
   createTicket: (boardId: number, input: { column_id: number; title: string; body?: string }) =>
     request<Ticket>(`/api/boards/${boardId}/tickets`, { method: "POST", body: JSON.stringify(input) }),
+  updateTicket: (id: number, input: { title?: string; body?: string }) =>
+    request<Ticket>(`/api/tickets/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   moveTicket: (id: number, input: { column_id: number; position: number }) =>
     request<void>(`/api/tickets/${id}/move`, { method: "PATCH", body: JSON.stringify(input) }),
   archiveTicket: (id: number) => request<void>(`/api/tickets/${id}/archive`, { method: "POST" }),
@@ -198,7 +200,7 @@ export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => v
       opts.onEvent(e.type, null);
     }
   };
-  for (const t of ["ticket_created", "ticket_moved", "ticket_archived", "ticket_unarchived", "ticket_deleted", "session_updated", "ready"]) {
+  for (const t of ["ticket_created", "ticket_updated", "ticket_moved", "ticket_archived", "ticket_unarchived", "ticket_deleted", "session_updated", "ready"]) {
     es.addEventListener(t, handler as EventListener);
   }
   es.onopen = () => opts.onStatus?.("open");

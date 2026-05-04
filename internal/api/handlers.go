@@ -281,6 +281,42 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, t)
 }
 
+type updateTicketReq struct {
+	Title *string `json:"title"`
+	Body  *string `json:"body"`
+}
+
+func (h *handlers) updateTicket(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	t, err := h.store.GetTicket(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 404)
+		return
+	}
+	var req updateTicketReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpError(w, err, 400)
+		return
+	}
+	if req.Title != nil {
+		title := strings.TrimSpace(*req.Title)
+		if title == "" {
+			httpError(w, fmt.Errorf("title cannot be empty"), 400)
+			return
+		}
+		t.Title = title
+	}
+	if req.Body != nil {
+		t.Body = *req.Body
+	}
+	if err := h.store.UpdateTicket(r.Context(), t); err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	h.bus.Publish(t.BoardID, "ticket_updated", t)
+	writeJSON(w, 200, t)
+}
+
 // resolveBoardIdent looks up a board by numeric id first, then by slug. The
 // numeric path stays the canonical form for back-compat; slug is a fallback
 // so programmatic callers don't need to pre-resolve IDs.

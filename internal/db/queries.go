@@ -221,6 +221,24 @@ func (s *Store) GetTicket(ctx context.Context, id int64) (*Ticket, error) {
 	return &t, nil
 }
 
+func (s *Store) UpdateTicket(ctx context.Context, t *Ticket) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE tickets SET title=?, body=? WHERE id=?`,
+		t.Title, t.Body, t.ID,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) MoveTicket(ctx context.Context, ticketID, columnID int64, position int) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE tickets SET column_id=?, position=? WHERE id=?`, columnID, position, ticketID)
 	return err
