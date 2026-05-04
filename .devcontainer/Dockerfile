@@ -62,7 +62,9 @@ RUN npm install -g \
 # root and dev users can launch it.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN npx playwright install --with-deps chromium \
- && chmod -R a+rX /ms-playwright
+ && chmod -R a+rX /ms-playwright \
+ && mkdir -p /opt/google/chrome \
+ && ln -sf "$(find /ms-playwright -maxdepth 3 -type f -name chrome -path '*chrome-linux64*' | head -n1)" /opt/google/chrome/chrome
 
 # Pre-seed GitHub's SSH host keys so git-over-SSH never prompts.  Keys are
 # pinned in-repo (verified against the fingerprints GitHub publishes at
