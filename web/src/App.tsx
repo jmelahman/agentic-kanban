@@ -89,8 +89,7 @@ export default function App() {
           {activeBoard && (
             <Button
               variant="neutral"
-              size="sm"
-              className="inline-flex h-7 w-7 items-center justify-center"
+              size="icon"
               onClick={() => setShowSettings(true)}
               aria-label="Board settings"
               title="Board settings"
@@ -100,8 +99,7 @@ export default function App() {
           )}
           <Button
             variant="neutral"
-            size="sm"
-            className="inline-flex h-7 w-7 items-center justify-center"
+            size="icon"
             onClick={() => setShowAppSettings(true)}
             aria-label="App settings"
             title="App settings"

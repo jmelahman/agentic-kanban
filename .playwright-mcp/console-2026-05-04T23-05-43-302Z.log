@@ -1,5 +1,0 @@
-[     205ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=93d9d324:20102
-[   29906ms] [LOG] [vite] server connection lost. Polling for restart... @ http://localhost:5173/@vite/client:864
-[   29911ms] [ERROR] Failed to load resource: net::ERR_INCOMPLETE_CHUNKED_ENCODING @ http://localhost:5173/api/boards/2/events:0
-[   32913ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:5173/api/boards/2/events:0
-[   34978ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=e84a3ed1:20102

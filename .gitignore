@@ -39,6 +39,15 @@ web/node_modules/
 
 # Local planning artifacts
 plans/
+.playwright-mcp/
+
+# Block all PNGs by default to keep dev/Playwright screenshots out of commits.
+# Allowlist legit asset locations below; use `git add -f` for one-off exceptions.
+*.png
+!assets/*.png
+!web/public/**/*.png
+!web/src/**/*.png
+.claude-tmp/
 
 # python packaging
 dist/
