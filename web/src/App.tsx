@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, subscribeBoard } from "@/api/client";
+import { api, BoardState, Session, subscribeBoard, Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { AppSettings } from "@/components/AppSettings";
 import { ArchivedDrawer } from "@/components/ArchivedDrawer";
@@ -42,9 +42,15 @@ export default function App() {
 
   useEffect(() => {
     if (activeId == null) return;
+    const key = queryKeys.board(activeId);
     return subscribeBoard(activeId, {
-      onEvent: (type) => {
-        qc.invalidateQueries({ queryKey: queryKeys.board(activeId) });
+      onEvent: (type, data) => {
+        const patched = applyBoardEvent(qc.getQueryData<BoardState>(key), type, data);
+        if (patched === undefined) {
+          qc.invalidateQueries({ queryKey: key });
+        } else if (patched !== null) {
+          qc.setQueryData(key, patched);
+        }
         if (type === "ticket_archived" || type === "ticket_unarchived" || type === "ticket_deleted") {
           qc.invalidateQueries({ queryKey: queryKeys.archived(activeId) });
         }
@@ -116,12 +122,12 @@ export default function App() {
       <main className="min-h-0 flex-1 overflow-hidden">
         {activeId != null ? <Board boardId={activeId} /> : <p className="p-4 text-sm text-fg-muted">No board selected.</p>}
       </main>
-      {activeId != null && (
-        <ArchivedDrawer open={showArchived} boardId={activeId} onClose={() => setShowArchived(false)} />
+      {activeId != null && showArchived && (
+        <ArchivedDrawer open boardId={activeId} onClose={() => setShowArchived(false)} />
       )}
-      {activeBoard && (
+      {activeBoard && showSettings && (
         <BoardSettings
-          open={showSettings}
+          open
           board={activeBoard}
           onClose={() => setShowSettings(false)}
           onDeleted={() => {
@@ -130,7 +136,57 @@ export default function App() {
           }}
         />
       )}
-      <AppSettings open={showAppSettings} onClose={() => setShowAppSettings(false)} />
+      {showAppSettings && <AppSettings open onClose={() => setShowAppSettings(false)} />}
     </div>
   );
+}
+
+// Patches the cached BoardState with an SSE event payload. Returns the new
+// state, null to indicate "no change" (event for a different board / no cache
+// yet), or undefined to fall back to refetching.
+function applyBoardEvent(
+  prev: BoardState | undefined,
+  type: string,
+  data: unknown,
+): BoardState | null | undefined {
+  if (!prev) return null;
+  switch (type) {
+    case "ticket_created": {
+      const t = data as Ticket;
+      if (!t || prev.tickets.some((x) => x.id === t.id)) return prev;
+      return { ...prev, tickets: [...prev.tickets, t] };
+    }
+    case "ticket_updated":
+    case "ticket_moved": {
+      const t = data as Ticket;
+      if (!t) return null;
+      return { ...prev, tickets: prev.tickets.map((x) => (x.id === t.id ? t : x)) };
+    }
+    case "ticket_archived":
+    case "ticket_deleted": {
+      const t = data as Ticket;
+      if (!t) return null;
+      return {
+        ...prev,
+        tickets: prev.tickets.filter((x) => x.id !== t.id),
+        sessions: prev.sessions.filter((s) => s.ticket_id !== t.id),
+      };
+    }
+    case "ticket_unarchived": {
+      const t = data as Ticket;
+      if (!t || prev.tickets.some((x) => x.id === t.id)) return prev;
+      return { ...prev, tickets: [...prev.tickets, t] };
+    }
+    case "session_updated": {
+      const s = data as Session;
+      if (!s) return null;
+      const idx = prev.sessions.findIndex((x) => x.id === s.id);
+      const sessions = idx === -1 ? [...prev.sessions, s] : prev.sessions.map((x) => (x.id === s.id ? s : x));
+      return { ...prev, sessions };
+    }
+    case "ready":
+      return null;
+    default:
+      return undefined;
+  }
 }
