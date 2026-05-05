@@ -12,8 +12,12 @@ import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
 import { TerminalOrientation } from "@/hooks/useTerminalOrientation";
+import { useShortcut } from "@/keys/useShortcut";
 import { Button, Spinner } from "./Button";
 import { TasksPanel } from "./TasksPanel";
+
+const TAB_ORDER = ["agent", "shell", "tasks"] as const;
+type TabId = (typeof TAB_ORDER)[number];
 
 const MIN_WIDTH = 320;
 const MAX_WIDTH = 1600;
@@ -100,7 +104,21 @@ export function SessionPane({
   const isHorizontal = orientation === "horizontal";
   const qc = useQueryClient();
   const toast = useToast();
-  const [tab, setTab] = useState<"agent" | "shell" | "tasks">("agent");
+  const [tab, setTab] = useState<TabId>("agent");
+  const tabsEnabled = ticketId != null;
+  useShortcut(
+    "tab.next",
+    () => setTab((t) => TAB_ORDER[(TAB_ORDER.indexOf(t) + 1) % TAB_ORDER.length]),
+    { enabled: tabsEnabled },
+  );
+  useShortcut(
+    "tab.prev",
+    () =>
+      setTab(
+        (t) => TAB_ORDER[(TAB_ORDER.indexOf(t) - 1 + TAB_ORDER.length) % TAB_ORDER.length],
+      ),
+    { enabled: tabsEnabled },
+  );
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);

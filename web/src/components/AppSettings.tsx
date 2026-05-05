@@ -16,6 +16,7 @@ import {
 } from "@/hooks/useTerminalOrientation";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
+import { KeybindingsSettings } from "./KeybindingsSettings";
 import { Modal } from "./Modal";
 
 const ACCENT_LABELS: Record<Accent, string> = {
@@ -176,6 +177,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
             <AccentSwatches value={accent} onChange={setAccent} />
           </div>
         </fieldset>
+        <KeybindingsSettings />
         <div className="mt-2 flex items-center justify-end gap-2">
           <Button
             type="button"
