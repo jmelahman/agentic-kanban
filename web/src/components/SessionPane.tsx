@@ -254,6 +254,18 @@ export function SessionPane({
       if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
     },
   });
+  const restartMut = useMutation({
+    mutationFn: () => api.restartSession(session!.id),
+    onMutate: () =>
+      session ? optimisticStatus(session.id, "starting") : { prev: undefined },
+    onSuccess: () => {
+      toast.push("success", "container restarted");
+      qc.invalidateQueries({ queryKey: boardKey });
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
+    },
+  });
   const archiveMut = useMutation({
     mutationFn: () => api.archiveTicket(ticketId!),
     onMutate: () => {
@@ -448,6 +460,29 @@ export function SessionPane({
             />
           ))}
         {session &&
+          isRunning &&
+          (compact ? (
+            <Button
+              variant="neutral"
+              size="icon"
+              onClick={() => restartMut.mutate()}
+              disabled={restartMut.isPending}
+              aria-label="restart container"
+              title="restart container"
+            >
+              {restartMut.isPending ? <Spinner /> : <RestartIcon />}
+            </Button>
+          ) : (
+            <Button
+              variant="neutral"
+              onClick={() => restartMut.mutate()}
+              pending={restartMut.isPending}
+              idleLabel="restart container"
+              pendingLabel="restarting…"
+              title="restart container"
+            />
+          ))}
+        {session &&
           syncStrategies.length === 1 &&
           (compact ? (
             <Button
@@ -458,7 +493,7 @@ export function SessionPane({
               aria-label={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
               title={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
             >
-              {syncMut.isPending ? <Spinner /> : <SyncIcon />}
+              {syncMut.isPending ? <Spinner /> : <DownloadIcon />}
             </Button>
           ) : (
             <Button
@@ -481,7 +516,7 @@ export function SessionPane({
                 aria-label="sync"
                 title={`update from ${baseBranch}`}
               >
-                {syncMut.isPending ? <Spinner /> : <SyncIcon />}
+                {syncMut.isPending ? <Spinner /> : <DownloadIcon />}
               </Button>
             ) : (
               <Button
@@ -717,7 +752,17 @@ export function SessionPane({
   );
 }
 
-function SyncIcon() {
+function DownloadIcon() {
+  return (
+    <svg {...iconProps()}>
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function RestartIcon() {
   return (
     <svg {...iconProps()} viewBox="-3 -3 30 30">
       <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />

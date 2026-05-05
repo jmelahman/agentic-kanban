@@ -639,6 +639,19 @@ func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, sess)
 }
 
+func (h *handlers) restartSession(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	sess, err := h.sessions.Restart(r.Context(), id)
+	if err != nil {
+		httpError(w, err, 500)
+		return
+	}
+	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
+		h.bus.Publish(t.BoardID, "session_updated", sess)
+	}
+	writeJSON(w, 200, sess)
+}
+
 func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	if err := h.sessions.Stop(r.Context(), id); err != nil {

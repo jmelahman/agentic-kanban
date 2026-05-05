@@ -176,6 +176,7 @@ export const api = {
   ensureSession: (ticketId: number) => request<Session>(`/api/tickets/${ticketId}/session`, { method: "POST" }),
   startSession: (id: number) => request<Session>(`/api/sessions/${id}/start`, { method: "POST" }),
   stopSession: (id: number) => request<void>(`/api/sessions/${id}/stop`, { method: "POST" }),
+  restartSession: (id: number) => request<Session>(`/api/sessions/${id}/restart`, { method: "POST" }),
 
   discoverTasks: (sessionId: number) => request<DiscoverTasksResult>(`/api/sessions/${sessionId}/discover-tasks`),
   listTaskRuns: (sessionId: number) => request<TaskRun[]>(`/api/sessions/${sessionId}/task-runs`),

@@ -251,6 +251,16 @@ func (m *Manager) Stop(ctx context.Context, sessionID int64) error {
 	return nil
 }
 
+// Restart stops the session's container (if any) and starts it again. The
+// session row, worktree, branch, and port allocations are preserved. Returns
+// the refreshed session.
+func (m *Manager) Restart(ctx context.Context, sessionID int64) (*db.Session, error) {
+	if err := m.Stop(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	return m.Start(ctx, sessionID)
+}
+
 // Destroy fully tears down a session: stops the container, removes the
 // worktree directory, deletes the branch, and removes the session row.
 // Errors from filesystem/git cleanup are non-fatal and reported via the
