@@ -1,6 +1,8 @@
 .git
 .gitignore
 .dockerignore
+docker-bake.hcl
+compose.yaml
 Dockerfile
 README.md
 **/*.md
