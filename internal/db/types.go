@@ -8,6 +8,7 @@ type Board struct {
 	MountPath    string `json:"mount_path"`
 	WorktreeRoot string `json:"worktree_root"`
 	BaseBranch   string `json:"base_branch"`
+	BranchPrefix string `json:"branch_prefix"`
 	CreatedAt    int64  `json:"created_at"`
 }
 

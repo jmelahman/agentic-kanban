@@ -60,7 +60,7 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 
 	var worktreePath, branch string
 	if paths.HasRepo {
-		branch = fmt.Sprintf("kanban/%s/%s", board.Slug, ticket.Slug)
+		branch = resolveBranchPrefix(board, paths.RepoPath) + "/" + ticket.Slug
 		worktreeRoot := board.WorktreeRoot
 		if worktreeRoot == "" {
 			return nil, fmt.Errorf("board %q has a repo but no worktree_root configured", board.Slug)
@@ -190,6 +190,24 @@ func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, erro
 	})
 
 	return sess, nil
+}
+
+// resolveBranchPrefix picks the literal branch prefix for new sessions on a
+// board. Precedence: board.BranchPrefix, then [branches].prefix from the
+// merged kanban.toml (project file at repoPath plus user file), then the
+// hardcoded "kanban/<slug>" default. The returned value is concatenated with
+// "/" + ticket.Slug to form the full branch name.
+func resolveBranchPrefix(board *db.Board, repoPath string) string {
+	if p := strings.TrimSpace(board.BranchPrefix); p != "" {
+		return p
+	}
+	cfg := kanbantoml.Load(repoPath)
+	if cfg.Branches != nil && cfg.Branches.Prefix != nil {
+		if p := strings.TrimSpace(*cfg.Branches.Prefix); p != "" {
+			return p
+		}
+	}
+	return "kanban/" + board.Slug
 }
 
 // applyKanbanDevcontainerOverrides layers the [devcontainer] section from

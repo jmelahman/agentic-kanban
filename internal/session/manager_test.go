@@ -1,11 +1,62 @@
 package session
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
+	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 )
+
+func TestResolveBranchPrefix(t *testing.T) {
+	// Neutralise the user-level config so tests don't pick up the dev
+	// machine's ~/.config/kanban/config.toml.
+	t.Setenv("KANBAN_CONFIG", filepath.Join(t.TempDir(), "missing.toml"))
+
+	t.Run("board override wins", func(t *testing.T) {
+		repoDir := t.TempDir()
+		writeProjectToml(t, repoDir, `[branches]
+prefix = "proj/"`)
+		got := resolveBranchPrefix(&db.Board{Slug: "demo", BranchPrefix: "feat"}, repoDir)
+		if got != "feat" {
+			t.Errorf("got %q; want feat", got)
+		}
+	})
+
+	t.Run("toml fallback when board empty", func(t *testing.T) {
+		repoDir := t.TempDir()
+		writeProjectToml(t, repoDir, `[branches]
+prefix = "proj"`)
+		got := resolveBranchPrefix(&db.Board{Slug: "demo"}, repoDir)
+		if got != "proj" {
+			t.Errorf("got %q; want proj", got)
+		}
+	})
+
+	t.Run("hardcoded default when neither set", func(t *testing.T) {
+		got := resolveBranchPrefix(&db.Board{Slug: "demo"}, t.TempDir())
+		if got != "kanban/demo" {
+			t.Errorf("got %q; want kanban/demo", got)
+		}
+	})
+
+	t.Run("whitespace-only board prefix falls through", func(t *testing.T) {
+		got := resolveBranchPrefix(&db.Board{Slug: "demo", BranchPrefix: "   "}, t.TempDir())
+		if got != "kanban/demo" {
+			t.Errorf("got %q; want kanban/demo", got)
+		}
+	})
+}
+
+func writeProjectToml(t *testing.T, dir, body string) {
+	t.Helper()
+	path := filepath.Join(dir, ".kanban.toml")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
 
 func TestApplyKanbanDevcontainerOverrides_AppendsAndMergesEnv(t *testing.T) {
 	cfg := &docker.DevcontainerConfig{

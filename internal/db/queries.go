@@ -14,8 +14,8 @@ var ErrNotFound = errors.New("not found")
 
 func (s *Store) CreateBoard(ctx context.Context, b *Board) error {
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO boards (name, slug, repo_path, mount_path, worktree_root, base_branch) VALUES (?, ?, ?, ?, ?, ?)`,
-		b.Name, b.Slug, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch,
+		`INSERT INTO boards (name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		b.Name, b.Slug, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch, nullIfEmpty(b.BranchPrefix),
 	)
 	if err != nil {
 		return err
@@ -45,7 +45,7 @@ func (s *Store) createDefaultColumns(ctx context.Context, boardID int64) error {
 }
 
 func (s *Store) ListBoards(ctx context.Context) ([]Board, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, created_at FROM boards ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, created_at FROM boards ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -53,13 +53,14 @@ func (s *Store) ListBoards(ctx context.Context) ([]Board, error) {
 	boards := []Board{}
 	for rows.Next() {
 		var b Board
-		var repo, mount, worktreeRoot sql.NullString
-		if err := rows.Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &b.CreatedAt); err != nil {
+		var repo, mount, worktreeRoot, branchPrefix sql.NullString
+		if err := rows.Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &branchPrefix, &b.CreatedAt); err != nil {
 			return nil, err
 		}
 		b.RepoPath = repo.String
 		b.MountPath = mount.String
 		b.WorktreeRoot = worktreeRoot.String
+		b.BranchPrefix = branchPrefix.String
 		boards = append(boards, b)
 	}
 	return boards, rows.Err()
@@ -67,8 +68,8 @@ func (s *Store) ListBoards(ctx context.Context) ([]Board, error) {
 
 func (s *Store) UpdateBoard(ctx context.Context, b *Board) error {
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE boards SET name=?, repo_path=?, mount_path=?, worktree_root=?, base_branch=? WHERE id=?`,
-		b.Name, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch, b.ID,
+		`UPDATE boards SET name=?, repo_path=?, mount_path=?, worktree_root=?, base_branch=?, branch_prefix=? WHERE id=?`,
+		b.Name, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch, nullIfEmpty(b.BranchPrefix), b.ID,
 	)
 	if err != nil {
 		return err
@@ -100,9 +101,9 @@ func (s *Store) DeleteBoard(ctx context.Context, id int64) error {
 
 func (s *Store) GetBoard(ctx context.Context, id int64) (*Board, error) {
 	var b Board
-	var repo, mount, worktreeRoot sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, created_at FROM boards WHERE id=?`, id).
-		Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &b.CreatedAt)
+	var repo, mount, worktreeRoot, branchPrefix sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, created_at FROM boards WHERE id=?`, id).
+		Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &branchPrefix, &b.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -112,14 +113,15 @@ func (s *Store) GetBoard(ctx context.Context, id int64) (*Board, error) {
 	b.RepoPath = repo.String
 	b.MountPath = mount.String
 	b.WorktreeRoot = worktreeRoot.String
+	b.BranchPrefix = branchPrefix.String
 	return &b, nil
 }
 
 func (s *Store) GetBoardBySlug(ctx context.Context, slug string) (*Board, error) {
 	var b Board
-	var repo, mount, worktreeRoot sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, created_at FROM boards WHERE slug=?`, slug).
-		Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &b.CreatedAt)
+	var repo, mount, worktreeRoot, branchPrefix sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, created_at FROM boards WHERE slug=?`, slug).
+		Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &branchPrefix, &b.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -129,6 +131,7 @@ func (s *Store) GetBoardBySlug(ctx context.Context, slug string) (*Board, error)
 	b.RepoPath = repo.String
 	b.MountPath = mount.String
 	b.WorktreeRoot = worktreeRoot.String
+	b.BranchPrefix = branchPrefix.String
 	return &b, nil
 }
 

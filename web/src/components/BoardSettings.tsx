@@ -24,6 +24,7 @@ export function BoardSettings({
   const [mount, setMount] = useState(board.mount_path);
   const [worktreeRoot, setWorktreeRoot] = useState(board.worktree_root);
   const [base, setBase] = useState(board.base_branch);
+  const [branchPrefix, setBranchPrefix] = useState(board.branch_prefix);
 
   useEffect(() => {
     setName(board.name);
@@ -31,6 +32,7 @@ export function BoardSettings({
     setMount(board.mount_path);
     setWorktreeRoot(board.worktree_root);
     setBase(board.base_branch);
+    setBranchPrefix(board.branch_prefix);
   }, [
     board.id,
     board.name,
@@ -38,6 +40,7 @@ export function BoardSettings({
     board.mount_path,
     board.worktree_root,
     board.base_branch,
+    board.branch_prefix,
   ]);
 
   const updateMut = useMutation({
@@ -48,6 +51,7 @@ export function BoardSettings({
         mount_path: mount.trim(),
         worktree_root: worktreeRoot.trim(),
         base_branch: base.trim(),
+        branch_prefix: branchPrefix.trim(),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.boards });
@@ -71,7 +75,8 @@ export function BoardSettings({
     repo.trim() !== board.repo_path ||
     mount.trim() !== board.mount_path ||
     worktreeRoot.trim() !== board.worktree_root ||
-    base.trim() !== board.base_branch;
+    base.trim() !== board.base_branch ||
+    branchPrefix.trim() !== board.branch_prefix;
   const hasRepo = repo.trim() !== "";
   const hasMount = mount.trim() !== "";
   const valid =
@@ -147,6 +152,24 @@ export function BoardSettings({
                 them first if you want a clean switch.
               </span>
             )}
+          </label>
+        )}
+        {hasRepo && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-fg-muted">Branch prefix</span>
+            <input
+              className="rounded bg-surface px-2 py-1 font-mono"
+              placeholder={`kanban/${board.slug}`}
+              value={branchPrefix}
+              onChange={(e) => setBranchPrefix(e.target.value)}
+            />
+            <span className="text-xs text-fg-muted">
+              New session branches are{" "}
+              <span className="font-mono">
+                {(branchPrefix.trim() || `kanban/${board.slug}`) + "/<ticket-slug>"}
+              </span>
+              . Existing sessions keep their original branch.
+            </span>
           </label>
         )}
         <div className="flex flex-col gap-1 text-xs text-fg-muted">

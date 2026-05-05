@@ -51,6 +51,7 @@ type createBoardReq struct {
 	MountPath    string `json:"mount_path"`
 	WorktreeRoot string `json:"worktree_root"`
 	BaseBranch   string `json:"base_branch"`
+	BranchPrefix string `json:"branch_prefix"`
 }
 
 func (h *handlers) listBoards(w http.ResponseWriter, r *http.Request) {
@@ -92,6 +93,7 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 		MountPath:    req.MountPath,
 		WorktreeRoot: req.WorktreeRoot,
 		BaseBranch:   req.BaseBranch,
+		BranchPrefix: strings.TrimSpace(req.BranchPrefix),
 	}
 	if err := h.store.CreateBoard(r.Context(), board); err != nil {
 		if isUniqueViolation(err) {
@@ -110,6 +112,7 @@ type updateBoardReq struct {
 	MountPath    *string `json:"mount_path"`
 	WorktreeRoot *string `json:"worktree_root"`
 	BaseBranch   *string `json:"base_branch"`
+	BranchPrefix *string `json:"branch_prefix"`
 }
 
 func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
@@ -152,6 +155,9 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		board.BaseBranch = base
+	}
+	if req.BranchPrefix != nil {
+		board.BranchPrefix = strings.TrimSpace(*req.BranchPrefix)
 	}
 	if err := h.store.UpdateBoard(r.Context(), board); err != nil {
 		httpError(w, err, 500)

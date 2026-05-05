@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS boards (
   mount_path TEXT,
   worktree_root TEXT,
   base_branch TEXT NOT NULL DEFAULT 'main',
+  branch_prefix TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 

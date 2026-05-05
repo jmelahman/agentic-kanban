@@ -24,6 +24,7 @@ type File struct {
 	Merge        *MergeSection        `toml:"merge"`
 	GitHub       *GitHubSection       `toml:"github"`
 	Worktrees    *WorktreesSection    `toml:"worktrees"`
+	Branches     *BranchesSection     `toml:"branches"`
 	Devcontainer *DevcontainerSection `toml:"devcontainer"`
 	Tasks        []TaskEntry          `toml:"task"`
 }
@@ -34,6 +35,13 @@ type HarnessSection struct {
 
 type WorktreesSection struct {
 	Root *string `toml:"root"`
+}
+
+// BranchesSection sets defaults for the branch name new sessions get. Prefix
+// is a literal string concatenated with "/" + ticket.Slug to form the full
+// branch name. Per-board overrides in the boards table take precedence.
+type BranchesSection struct {
+	Prefix *string `toml:"prefix"`
 }
 
 type SyncSection struct {
@@ -134,6 +142,7 @@ func merge(project, user File) File {
 	out.Merge = mergeMerge(project.Merge, user.Merge)
 	out.GitHub = mergeGitHub(project.GitHub, user.GitHub)
 	out.Worktrees = mergeWorktrees(project.Worktrees, user.Worktrees)
+	out.Branches = mergeBranches(project.Branches, user.Branches)
 	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
 	out.Tasks = mergeTasks(project.Tasks, user.Tasks)
 
@@ -150,6 +159,20 @@ func mergeWorktrees(p, u *WorktreesSection) *WorktreesSection {
 	}
 	if u != nil && u.Root != nil {
 		out.Root = u.Root
+	}
+	return &out
+}
+
+func mergeBranches(p, u *BranchesSection) *BranchesSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := BranchesSection{}
+	if p != nil {
+		out.Prefix = p.Prefix
+	}
+	if u != nil && u.Prefix != nil {
+		out.Prefix = u.Prefix
 	}
 	return &out
 }

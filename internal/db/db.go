@@ -62,6 +62,7 @@ func migrate(db *sql.DB) error {
 	stmts := []string{
 		`ALTER TABLE sessions ADD COLUMN pr_number INTEGER`,
 		`ALTER TABLE sessions ADD COLUMN pr_url TEXT`,
+		`ALTER TABLE boards ADD COLUMN branch_prefix TEXT`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
