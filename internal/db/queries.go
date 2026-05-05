@@ -240,8 +240,61 @@ func (s *Store) UpdateTicket(ctx context.Context, t *Ticket) error {
 }
 
 func (s *Store) MoveTicket(ctx context.Context, ticketID, columnID int64, position int) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE tickets SET column_id=?, position=? WHERE id=?`, columnID, position, ticketID)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	var oldCol int64
+	var oldPos int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT column_id, position FROM tickets WHERE id=?`, ticketID,
+	).Scan(&oldCol, &oldPos); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrNotFound
+		}
+		return err
+	}
+
+	if oldCol == columnID {
+		if oldPos == position {
+			return tx.Commit()
+		}
+		if oldPos < position {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE tickets SET position = position - 1
+				 WHERE column_id=? AND id != ? AND position > ? AND position <= ?`,
+				columnID, ticketID, oldPos, position); err != nil {
+				return err
+			}
+		} else {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE tickets SET position = position + 1
+				 WHERE column_id=? AND id != ? AND position >= ? AND position < ?`,
+				columnID, ticketID, position, oldPos); err != nil {
+				return err
+			}
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE tickets SET position = position - 1 WHERE column_id=? AND position > ?`,
+			oldCol, oldPos); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE tickets SET position = position + 1 WHERE column_id=? AND position >= ?`,
+			columnID, position); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE tickets SET column_id=?, position=? WHERE id=?`,
+		columnID, position, ticketID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // MaxTicketPosition returns the largest position among non-archived tickets in

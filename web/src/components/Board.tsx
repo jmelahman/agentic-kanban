@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BoardState } from "@/api/client";
+import { BoardState, Ticket as TicketType } from "@/api/client";
 import {
   DndContext,
   DragEndEvent,
@@ -23,6 +23,38 @@ import { TicketDragPreview } from "./Ticket";
 // flow) because the websocket would race the container spawn and the failed
 // handshake leaves a stray "[disconnected]" line in the terminal.
 const ATTACHABLE = new Set(["idle", "working", "awaiting_perm"]);
+
+function reorderTickets(
+  tickets: TicketType[],
+  movedId: number,
+  targetCol: number,
+  insertIndex: number,
+): TicketType[] {
+  const moved = tickets.find((t) => t.id === movedId);
+  if (!moved) return tickets;
+  const affected = new Set([moved.column_id, targetCol]);
+  const lists = new Map<number, TicketType[]>();
+  for (const colId of affected) {
+    lists.set(
+      colId,
+      tickets
+        .filter((t) => t.column_id === colId && t.id !== movedId)
+        .sort((a, b) => a.position - b.position),
+    );
+  }
+  const targetList = lists.get(targetCol)!;
+  targetList.splice(insertIndex, 0, { ...moved, column_id: targetCol });
+  return tickets.map((t) => {
+    if (t.id === movedId) {
+      return { ...t, column_id: targetCol, position: targetList.findIndex((x) => x.id === movedId) };
+    }
+    if (affected.has(t.column_id)) {
+      const idx = lists.get(t.column_id)!.findIndex((x) => x.id === t.id);
+      if (idx >= 0) return { ...t, position: idx };
+    }
+    return t;
+  });
+}
 
 export function Board({ boardId }: { boardId: number }) {
   const qc = useQueryClient();
@@ -75,23 +107,45 @@ export function Board({ boardId }: { boardId: number }) {
     const ticketId = Number(e.active.id);
     const overId = e.over?.id;
     if (overId == null) return;
-    const targetCol = Number(String(overId).replace(/^col-/, ""));
-    if (Number.isNaN(targetCol)) return;
-    const target = tickets.filter((t) => t.column_id === targetCol);
-    const newPos = target.length;
-    // Optimistically move the ticket so the dnd-kit drop animation lands in the
-    // new column — the overlay animates to the source draggable's position.
+    const moved = tickets.find((t) => t.id === ticketId);
+    if (!moved) return;
+
+    // over.id is either `col-N` (column droppable) or a ticket id (sortable item).
+    let targetCol: number;
+    let insertIndex: number;
+    if (typeof overId === "string" && overId.startsWith("col-")) {
+      targetCol = Number(overId.slice(4));
+      if (Number.isNaN(targetCol)) return;
+      insertIndex = tickets.filter((t) => t.column_id === targetCol && t.id !== ticketId).length;
+    } else {
+      const overTicket = tickets.find((t) => t.id === Number(overId));
+      if (!overTicket) return;
+      targetCol = overTicket.column_id;
+      const targetList = tickets
+        .filter((t) => t.column_id === targetCol && t.id !== ticketId)
+        .sort((a, b) => a.position - b.position);
+      const idx = targetList.findIndex((t) => t.id === overTicket.id);
+      if (idx < 0) {
+        insertIndex = targetList.length;
+      } else if (moved.column_id === targetCol && moved.position < overTicket.position) {
+        // Dragging downward within the same column: drop after the over ticket.
+        insertIndex = idx + 1;
+      } else {
+        insertIndex = idx;
+      }
+    }
+
+    if (moved.column_id === targetCol) {
+      const sourceList = tickets
+        .filter((t) => t.column_id === targetCol)
+        .sort((a, b) => a.position - b.position);
+      if (sourceList.findIndex((t) => t.id === ticketId) === insertIndex) return;
+    }
+
     qc.setQueryData<BoardState>(queryKeys.board(boardId), (old) =>
-      old
-        ? {
-            ...old,
-            tickets: old.tickets.map((t) =>
-              t.id === ticketId ? { ...t, column_id: targetCol, position: newPos } : t,
-            ),
-          }
-        : old,
+      old ? { ...old, tickets: reorderTickets(old.tickets, ticketId, targetCol, insertIndex) } : old,
     );
-    moveMut.mutate({ id: ticketId, column_id: targetCol, position: newPos });
+    moveMut.mutate({ id: ticketId, column_id: targetCol, position: insertIndex });
   }
 
   const draggingTicket = draggingId != null ? tickets.find((t) => t.id === draggingId) ?? null : null;

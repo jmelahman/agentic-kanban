@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useState } from "react";
 import { api, Column as ColumnType, Session, Ticket as TicketType } from "@/api/client";
 import { queryKeys } from "@/api/keys";
@@ -38,18 +39,26 @@ export function Column(props: {
         <span className="text-xs text-fg-muted">{props.tickets.length}</span>
       </div>
       <div className="-mx-0.5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 py-0.5">
-        {props.tickets
-          .slice()
-          .sort((a, b) => a.position - b.position)
-          .map((t) => (
-            <Ticket
-              key={t.id}
-              ticket={t}
-              session={props.sessions.get(t.id) ?? null}
-              active={props.activeTicket === t.id}
-              onSelect={() => props.onSelect(t.id)}
-            />
-          ))}
+        <SortableContext
+          items={props.tickets
+            .slice()
+            .sort((a, b) => a.position - b.position)
+            .map((t) => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {props.tickets
+            .slice()
+            .sort((a, b) => a.position - b.position)
+            .map((t) => (
+              <Ticket
+                key={t.id}
+                ticket={t}
+                session={props.sessions.get(t.id) ?? null}
+                active={props.activeTicket === t.id}
+                onSelect={() => props.onSelect(t.id)}
+              />
+            ))}
+        </SortableContext>
       </div>
       {adding ? (
         <form

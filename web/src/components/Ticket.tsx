@@ -1,4 +1,5 @@
-import { useDraggable } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, Session, Ticket as TicketType } from "@/api/client";
@@ -76,11 +77,13 @@ export function Ticket({
   const [draft, setDraft] = useState(ticket.title);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
     id: ticket.id,
     disabled: editing,
   });
   const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
     opacity: isDragging ? 0.5 : 1,
   };
 
