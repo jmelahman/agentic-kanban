@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BoardState } from "@/api/client";
 import {
   DndContext,
   DragEndEvent,
@@ -39,7 +40,7 @@ export function Board({ boardId }: { boardId: number }) {
   const moveMut = useMutation({
     mutationFn: (input: { id: number; column_id: number; position: number }) =>
       api.moveTicket(input.id, { column_id: input.column_id, position: input.position }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.board(boardId) }),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.board(boardId) }),
   });
 
   const sessions = stateQ.data?.sessions ?? [];
@@ -77,7 +78,20 @@ export function Board({ boardId }: { boardId: number }) {
     const targetCol = Number(String(overId).replace(/^col-/, ""));
     if (Number.isNaN(targetCol)) return;
     const target = tickets.filter((t) => t.column_id === targetCol);
-    moveMut.mutate({ id: ticketId, column_id: targetCol, position: target.length });
+    const newPos = target.length;
+    // Optimistically move the ticket so the dnd-kit drop animation lands in the
+    // new column — the overlay animates to the source draggable's position.
+    qc.setQueryData<BoardState>(queryKeys.board(boardId), (old) =>
+      old
+        ? {
+            ...old,
+            tickets: old.tickets.map((t) =>
+              t.id === ticketId ? { ...t, column_id: targetCol, position: newPos } : t,
+            ),
+          }
+        : old,
+    );
+    moveMut.mutate({ id: ticketId, column_id: targetCol, position: newPos });
   }
 
   const draggingTicket = draggingId != null ? tickets.find((t) => t.id === draggingId) ?? null : null;
