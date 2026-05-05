@@ -40,7 +40,12 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
 
   return (
     <>
-      <Button variant="neutral" size="lg" className="text-sm" onClick={() => setOpen(true)}>
+      <Button
+        variant="neutral"
+        size="sm"
+        className="inline-flex h-7 items-center justify-center"
+        onClick={() => setOpen(true)}
+      >
         + new board
       </Button>
       <Modal open={open} onClose={close} title="New board" busy={createMut.isPending}>

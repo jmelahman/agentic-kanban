@@ -64,19 +64,27 @@ export default function App() {
           ))}
         </select>
         <div className="ml-auto flex items-center gap-2">
-          <Button
-            variant="neutral"
-            size="icon"
-            onClick={() => setShowAppSettings(true)}
-            aria-label="App settings"
-            title="App settings"
-          >
-            <MenuIcon />
-          </Button>
+          <CreateBoardForm
+            onCreated={(b) => {
+              qc.invalidateQueries({ queryKey: queryKeys.boards });
+              setActiveId(b.id);
+            }}
+          />
+          {activeId != null && (
+            <Button
+              variant="neutral"
+              size="sm"
+              className="inline-flex h-7 items-center justify-center"
+              onClick={() => setShowArchived(true)}
+            >
+              archived
+            </Button>
+          )}
           {activeBoard && (
             <Button
               variant="neutral"
-              size="icon"
+              size="sm"
+              className="inline-flex h-7 w-7 items-center justify-center"
               onClick={() => setShowSettings(true)}
               aria-label="Board settings"
               title="Board settings"
@@ -84,17 +92,16 @@ export default function App() {
               <CogIcon />
             </Button>
           )}
-          {activeId != null && (
-            <Button variant="neutral" size="sm" onClick={() => setShowArchived(true)}>
-              archived
-            </Button>
-          )}
-          <CreateBoardForm
-            onCreated={(b) => {
-              qc.invalidateQueries({ queryKey: queryKeys.boards });
-              setActiveId(b.id);
-            }}
-          />
+          <Button
+            variant="neutral"
+            size="sm"
+            className="inline-flex h-7 w-7 items-center justify-center"
+            onClick={() => setShowAppSettings(true)}
+            aria-label="App settings"
+            title="App settings"
+          >
+            <MenuIcon />
+          </Button>
         </div>
       </header>
       {activeId != null && streamStatus === "error" && (

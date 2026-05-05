@@ -1,0 +1,11 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "Kanban" [level=1] [ref=e5]
+    - combobox [ref=e6]:
+      - option "— select board —" [selected]
+    - generic [ref=e7]:
+      - button "App settings" [ref=e8]:
+        - img [ref=e9]
+      - button "+ new board" [ref=e13]
+  - main [ref=e14]:
+    - paragraph [ref=e15]: No board selected.
