@@ -493,7 +493,7 @@ export function SessionPane({
               aria-label={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
               title={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
             >
-              {syncMut.isPending ? <Spinner /> : <DownloadIcon />}
+              {syncMut.isPending ? <Spinner /> : <PullIcon />}
             </Button>
           ) : (
             <Button
@@ -516,7 +516,7 @@ export function SessionPane({
                 aria-label="sync"
                 title={`update from ${baseBranch}`}
               >
-                {syncMut.isPending ? <Spinner /> : <DownloadIcon />}
+                {syncMut.isPending ? <Spinner /> : <PullIcon />}
               </Button>
             ) : (
               <Button
@@ -752,12 +752,16 @@ export function SessionPane({
   );
 }
 
-function DownloadIcon() {
+function PullIcon() {
   return (
     <svg {...iconProps()}>
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
+      <circle cx="6" cy="4" r="2" />
+      <line x1="6" y1="6" x2="6" y2="18" />
+      <circle cx="6" cy="20" r="2" fill="currentColor" />
+      <circle cx="18" cy="20" r="2" fill="currentColor" />
+      <line x1="18" y1="18" x2="18" y2="8" />
+      <path d="M 18 8 Q 18 4 13 4" fill="none" />
+      <polyline points="13 1 10 4 13 7" />
     </svg>
   );
 }
