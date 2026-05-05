@@ -27,6 +27,7 @@ ALLOWED_DOMAINS=(
     "api.anthropic.com"
     "api-staging.anthropic.com"
     "files.anthropic.com"
+    "mcp.vanta.com"
     "sentry.io"
     "update.code.visualstudio.com"
     "proxy.golang.org"
