@@ -238,14 +238,23 @@ func (b *sessionPTY) register(ws *websocket.Conn) error {
 		_ = old.Close()
 	}
 	b.client = ws
-	snap := b.buf.Snapshot()
-	if len(snap) > 0 {
-		if err := ws.WriteMessage(websocket.BinaryMessage, snap); err != nil {
-			b.client = nil
-			return err
-		}
+	if err := ws.WriteMessage(websocket.BinaryMessage, replayPayload(b.buf.Snapshot())); err != nil {
+		b.client = nil
+		return err
 	}
 	return nil
+}
+
+// replayPayload is the first frame sent to a newly-attached client: a
+// terminal Reset to Initial State (RIS, ESC c) followed by the raw PTY
+// snapshot. The reset gives the receiving terminal a known parser/mode/cursor
+// state before replay; without it, a snapshot that begins mid-escape-sequence
+// or carries over alt-screen state can leave visible artifacts on screen
+// (the kind users would otherwise clear with Ctrl+L).
+func replayPayload(snap []byte) []byte {
+	out := make([]byte, 0, len(snap)+2)
+	out = append(out, 0x1b, 'c')
+	return append(out, snap...)
 }
 
 // unregister clears ws as the active client, but only if it still matches —

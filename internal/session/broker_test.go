@@ -57,3 +57,19 @@ func TestRingBuffer_Empty(t *testing.T) {
 		t.Fatalf("got %q want empty", got)
 	}
 }
+
+func TestReplayPayload_PrependsResetWithSnapshot(t *testing.T) {
+	got := replayPayload([]byte("hello"))
+	want := []byte("\x1bchello")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestReplayPayload_EmptySnapshotStillResets(t *testing.T) {
+	got := replayPayload(nil)
+	want := []byte("\x1bc")
+	if !bytes.Equal(got, want) {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
