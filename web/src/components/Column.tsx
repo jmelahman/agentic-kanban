@@ -37,7 +37,7 @@ export function Column(props: {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{props.column.name}</h2>
         <span className="text-xs text-fg-muted">{props.tickets.length}</span>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
+      <div className="-mx-0.5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 py-0.5">
         {props.tickets
           .slice()
           .sort((a, b) => a.position - b.position)
