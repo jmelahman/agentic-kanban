@@ -76,6 +76,7 @@ func Root() *cobra.Command {
 	var configPath string
 	var portRangeStart int
 	var portRangeEnd int
+	var inMemory bool
 
 	cmd := &cobra.Command{
 		Use:     "kanban",
@@ -90,7 +91,7 @@ func Root() *cobra.Command {
 			if err := applyConfigPath(configPath); err != nil {
 				return err
 			}
-			return run(addr, dataDir, worktreesDir, portRangeStart, portRangeEnd)
+			return run(addr, dataDir, worktreesDir, portRangeStart, portRangeEnd, inMemory)
 		},
 	}
 	serve.Flags().StringVar(&addr, "addr", ":7474", "HTTP listen address")
@@ -99,6 +100,7 @@ func Root() *cobra.Command {
 	serve.Flags().StringVar(&configPath, "config", "", "Override user-level kanban config path (default: $KANBAN_CONFIG or $XDG_CONFIG_HOME/kanban/config.toml)")
 	serve.Flags().IntVar(&portRangeStart, "port-range-start", 13000, "First host port available for proxy allocation")
 	serve.Flags().IntVar(&portRangeEnd, "port-range-end", 13099, "Last host port available for proxy allocation (inclusive)")
+	serve.Flags().BoolVar(&inMemory, "in-memory", false, "Use an ephemeral in-memory SQLite database; all data is discarded on shutdown")
 
 	cmd.AddCommand(serve)
 
@@ -140,13 +142,18 @@ func applyConfigPath(p string) error {
 	return os.Setenv("KANBAN_CONFIG", abs)
 }
 
-func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd int) error {
+func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd int, inMemory bool) error {
 	cfg, err := config.Load(dataDirOverride, worktreesDirOverride, portStart, portEnd)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	store, err := db.Open(cfg.DBPath())
+	dbPath := cfg.DBPath()
+	if inMemory {
+		log.Printf("WARNING: --in-memory set; using ephemeral SQLite, all data is lost on shutdown")
+		dbPath = ":memory:"
+	}
+	store, err := db.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}

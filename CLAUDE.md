@@ -35,6 +35,21 @@ until curl -sf -m 1 http://localhost:7474/api/boards >/dev/null \
    && curl -sf -m 1 http://localhost:5173/ >/dev/null; do sleep 2; done
 ```
 
+## Reproducing fresh-install issues
+
+Boot a clean instance with no on-disk DB:
+
+```bash
+wgo run . serve --in-memory
+```
+
+The server logs `WARNING: --in-memory set` at startup and uses an ephemeral
+SQLite database (shared cache, single connection) for the lifetime of the
+process. Each launch starts from zero, and shutting the process down
+discards everything — including any boards or tickets the UI created.
+Frontend (`:5173`) and Playwright MCP (`browser_navigate
+http://localhost:5173/`) work as usual.
+
 ## Tests / typecheck
 
 - Go: `go test ./...`

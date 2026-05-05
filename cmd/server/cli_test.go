@@ -128,11 +128,11 @@ func newKanbanCLITestServer(t *testing.T) (*httptest.Server, *db.Store, *db.Boar
 	t.Cleanup(srv.Close)
 
 	board := &db.Board{
-		Name:           "CLI Board",
-		Slug:           "cli-board",
-		SourceRepoPath: repoPath,
-		WorktreeRoot:   filepath.Join(dir, "worktrees", "cli"),
-		BaseBranch:     "main",
+		Name:         "CLI Board",
+		Slug:         "cli-board",
+		RepoPath:     repoPath,
+		WorktreeRoot: filepath.Join(dir, "worktrees", "cli"),
+		BaseBranch:   "main",
 	}
 	if err := store.CreateBoard(context.Background(), board); err != nil {
 		t.Fatal(err)

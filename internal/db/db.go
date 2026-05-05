@@ -19,14 +19,29 @@ type Store struct {
 	db *sql.DB
 }
 
+// Open opens a Store backed by a SQLite database at path, applies the embedded
+// schema, and runs idempotent migrations. The sentinel path ":memory:" opens
+// a process-local in-memory database (shared cache so the connection pool sees
+// one DB) and skips on-disk file setup; data is discarded when Close is called.
 func Open(path string) (*Store, error) {
-	if err := config.MakeFileAll(path); err != nil {
-		return nil, fmt.Errorf("ensure db file: %w", err)
+	var dsn string
+	if path == ":memory:" {
+		dsn = "file::memory:?cache=shared&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)"
+	} else {
+		if err := config.MakeFileAll(path); err != nil {
+			return nil, fmt.Errorf("ensure db file: %w", err)
+		}
+		dsn = fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", path)
 	}
-	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)", path)
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	if path == ":memory:" {
+		// Pin to a single connection so the shared in-memory DB isn't dropped
+		// when the pool churns; modernc/sqlite tears the DB down once the last
+		// connection closes.
+		db.SetMaxOpenConns(1)
 	}
 	if _, err := db.Exec(schemaSQL); err != nil {
 		_ = db.Close()
