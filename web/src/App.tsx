@@ -124,7 +124,9 @@ export default function App() {
         {activeId != null ? (
           <Board boardId={activeId} />
         ) : noBoards ? (
-          <p className="p-4 text-sm text-fg-muted">No boards yet — click “+ new board” above to create one.</p>
+          <div className="flex h-full items-center justify-center p-4 text-sm text-fg-muted">
+            No board selected.
+          </div>
         ) : null}
       </main>
       {activeId != null && showArchived && (
