@@ -14,16 +14,28 @@ export const ACTIONS: Action[] = [
     defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "PageUp" },
   },
   {
-    id: "board.next",
-    label: "Next board",
+    id: "ticket.prev",
+    label: "Previous ticket",
     group: "Navigation",
-    defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "ArrowRight" },
+    defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "ArrowUp" },
   },
   {
-    id: "board.prev",
-    label: "Previous board",
+    id: "ticket.next",
+    label: "Next ticket",
+    group: "Navigation",
+    defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "ArrowDown" },
+  },
+  {
+    id: "column.prev",
+    label: "Previous column",
     group: "Navigation",
     defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "ArrowLeft" },
+  },
+  {
+    id: "column.next",
+    label: "Next column",
+    group: "Navigation",
+    defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "ArrowRight" },
   },
 ];
 

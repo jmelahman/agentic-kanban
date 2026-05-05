@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
+import { useShortcut } from "@/keys/useShortcut";
 import { Column } from "./Column";
 import { PtyTerminal } from "./PtyTerminal";
 import { SessionPane } from "./SessionPane";
@@ -23,6 +24,49 @@ import { TicketDragPreview } from "./Ticket";
 // flow) because the websocket would race the container spawn and the failed
 // handshake leaves a stray "[disconnected]" line in the terminal.
 const ATTACHABLE = new Set(["idle", "working", "awaiting_perm"]);
+
+type Direction = "up" | "down" | "left" | "right";
+
+function nextTicketId(
+  direction: Direction,
+  activeId: number | null,
+  columns: { id: number }[],
+  tickets: TicketType[],
+): number | null {
+  if (columns.length === 0) return activeId;
+  const byCol = new Map<number, TicketType[]>();
+  for (const c of columns) {
+    byCol.set(
+      c.id,
+      tickets.filter((t) => t.column_id === c.id).sort((a, b) => a.position - b.position),
+    );
+  }
+  if (activeId == null) {
+    for (const c of columns) {
+      const list = byCol.get(c.id)!;
+      if (list.length > 0) return list[0].id;
+    }
+    return null;
+  }
+  const active = tickets.find((t) => t.id === activeId);
+  if (!active) return activeId;
+  const colIdx = columns.findIndex((c) => c.id === active.column_id);
+  if (colIdx === -1) return activeId;
+  const list = byCol.get(active.column_id)!;
+  const pos = list.findIndex((t) => t.id === activeId);
+  if (direction === "up" || direction === "down") {
+    const next = list[pos + (direction === "down" ? 1 : -1)];
+    return next?.id ?? activeId;
+  }
+  const delta = direction === "right" ? 1 : -1;
+  for (let i = colIdx + delta; i >= 0 && i < columns.length; i += delta) {
+    const candidates = byCol.get(columns[i].id)!;
+    if (candidates.length === 0) continue;
+    const targetIdx = Math.min(pos, candidates.length - 1);
+    return candidates[targetIdx].id;
+  }
+  return activeId;
+}
 
 function reorderTickets(
   tickets: TicketType[],
@@ -92,6 +136,20 @@ export function Board({ boardId }: { boardId: number }) {
       });
     }
   }, [shellSlot, activeSessionId]);
+
+  const navColumns = stateQ.data?.columns ?? [];
+  const navTickets = stateQ.data?.tickets ?? [];
+  const moveSelection = useCallback(
+    (direction: Direction) => {
+      const next = nextTicketId(direction, activeTicket, navColumns, navTickets);
+      if (next != null) setActiveTicket(next);
+    },
+    [activeTicket, navColumns, navTickets],
+  );
+  useShortcut("ticket.prev", () => moveSelection("up"));
+  useShortcut("ticket.next", () => moveSelection("down"));
+  useShortcut("column.prev", () => moveSelection("left"));
+  useShortcut("column.next", () => moveSelection("right"));
 
   if (stateQ.isLoading) return <p className="p-4 text-sm text-fg-muted">Loading…</p>;
   if (!stateQ.data) return <p className="p-4 text-sm text-danger">No data.</p>;

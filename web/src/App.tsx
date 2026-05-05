@@ -12,7 +12,6 @@ import { useAccent } from "@/hooks/useAccent";
 import { useContrast } from "@/hooks/useContrast";
 import { useThemeMode } from "@/hooks/useThemeMode";
 import { CogIcon, MenuIcon } from "@/icons";
-import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
 export default function App() {
@@ -41,18 +40,6 @@ export default function App() {
   useEffect(() => {
     if (activeId != null) writeActiveBoardId(activeId);
   }, [activeId]);
-
-  const boards = boardsQ.data;
-  const canCycleBoards = (boards?.length ?? 0) > 1;
-  const cycleBoard = (delta: 1 | -1) => {
-    if (!boards || boards.length < 2) return;
-    const idx = boards.findIndex((b) => b.id === activeId);
-    const start = idx === -1 ? 0 : idx;
-    const next = boards[(start + delta + boards.length) % boards.length];
-    setActiveId(next.id);
-  };
-  useShortcut("board.next", () => cycleBoard(1), { enabled: canCycleBoards });
-  useShortcut("board.prev", () => cycleBoard(-1), { enabled: canCycleBoards });
 
   useEffect(() => {
     if (activeId == null) return;
