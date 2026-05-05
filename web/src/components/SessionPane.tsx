@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   api,
   BoardState,
@@ -23,8 +23,6 @@ const MIN_HEIGHT = 200;
 const MAX_HEIGHT = 1200;
 const DEFAULT_HEIGHT = 360;
 const HEIGHT_STORAGE_KEY = "sessionPane.height";
-// Below this pane width, sync/merge buttons collapse to icon-only.
-const COMPACT_WIDTH = 680;
 
 function loadInitialSize(
   key: string,
@@ -115,6 +113,9 @@ export function SessionPane({
   );
   const [resizing, setResizing] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [compact, setCompact] = useState(false);
+  const headerRef = useRef<HTMLDivElement | null>(null);
+  const headerGhostRef = useRef<HTMLDivElement | null>(null);
   const autoStartedRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -302,6 +303,32 @@ export function SessionPane({
     },
   });
 
+  useLayoutEffect(() => {
+    if (ticketId == null) return;
+    const header = headerRef.current;
+    const ghost = headerGhostRef.current;
+    if (!header || !ghost) return;
+    let raf: number | null = null;
+    const measure = () => {
+      raf = null;
+      const h = headerRef.current;
+      const g = headerGhostRef.current;
+      if (!h || !g) return;
+      setCompact(g.scrollWidth > h.clientWidth);
+    };
+    const schedule = () => {
+      if (raf == null) raf = requestAnimationFrame(measure);
+    };
+    measure();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(header);
+    ro.observe(ghost);
+    return () => {
+      ro.disconnect();
+      if (raf != null) cancelAnimationFrame(raf);
+    };
+  }, [ticketId]);
+
   if (ticketId == null) return null;
   const mergeStrategies = enabledMergeStrategies(mergeConfig);
   const syncStrategies = enabledSyncStrategies(syncConfig);
@@ -309,7 +336,6 @@ export function SessionPane({
   const isRunning =
     status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
-  const compact = !fullscreen && !isHorizontal && width < COMPACT_WIDTH;
 
   const paneClass = fullscreen
     ? "fixed inset-0 z-40 flex flex-col bg-bg"
@@ -321,6 +347,290 @@ export function SessionPane({
     : isHorizontal
       ? { height: `${height}px`, flex: `0 0 ${height}px` }
       : { width: `${width}px`, flex: `0 0 ${width}px` };
+
+  const renderHeaderContent = ({
+    compact,
+    interactive,
+  }: {
+    compact: boolean;
+    interactive: boolean;
+  }): ReactNode => (
+    <>
+      <span className="font-medium">Ticket #{ticketId}</span>
+      <span className="text-fg-muted">{session?.branch_name}</span>
+      {session?.pr_number != null && session.pr_url && (
+        <a
+          href={session.pr_url}
+          target="_blank"
+          rel="noreferrer"
+          className={`hover:underline ${
+            session.pr_state
+              ? (PR_STATE_COLOR[session.pr_state as PRState] ??
+                "text-fg-muted")
+              : "text-fg-muted"
+          }`}
+          title={session.pr_state ? `PR ${session.pr_state}` : "pull request"}
+        >
+          #{session.pr_number}
+        </a>
+      )}
+      <div className="ml-auto flex gap-2">
+        {!session &&
+          (compact ? (
+            <Button
+              variant="primary"
+              size="icon"
+              onClick={() => ensureMut.mutate()}
+              disabled={ensureMut.isPending}
+              aria-label="create session"
+              title="create session"
+            >
+              {ensureMut.isPending ? <Spinner /> : <PlusIcon />}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => ensureMut.mutate()}
+              pending={ensureMut.isPending}
+              idleLabel="create session"
+              pendingLabel="creating session…"
+            />
+          ))}
+        {canStart &&
+          (compact ? (
+            <Button
+              variant="primary"
+              size="icon"
+              onClick={() => startMut.mutate(session.id)}
+              disabled={startMut.isPending || status === "starting"}
+              aria-label="start"
+              title="start"
+            >
+              {startMut.isPending || status === "starting" ? (
+                <Spinner />
+              ) : (
+                <PlayIcon />
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              onClick={() => startMut.mutate(session.id)}
+              pending={startMut.isPending || status === "starting"}
+              idleLabel="start"
+              pendingLabel="starting…"
+            />
+          ))}
+        {session &&
+          isRunning &&
+          (compact ? (
+            <Button
+              variant="secondary"
+              size="icon"
+              onClick={() => stopMut.mutate()}
+              disabled={stopMut.isPending || status === "stopping"}
+              aria-label="stop"
+              title="stop"
+            >
+              {stopMut.isPending || status === "stopping" ? (
+                <Spinner />
+              ) : (
+                <StopIcon />
+              )}
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              onClick={() => stopMut.mutate()}
+              pending={stopMut.isPending || status === "stopping"}
+              idleLabel="stop"
+              pendingLabel="stopping…"
+            />
+          ))}
+        {session &&
+          syncStrategies.length === 1 &&
+          (compact ? (
+            <Button
+              variant="neutral"
+              size="icon"
+              onClick={() => syncMut.mutate(syncStrategies[0])}
+              disabled={syncMut.isPending}
+              aria-label={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+              title={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+            >
+              {syncMut.isPending ? <Spinner /> : <SyncIcon />}
+            </Button>
+          ) : (
+            <Button
+              variant="neutral"
+              onClick={() => syncMut.mutate(syncStrategies[0])}
+              pending={syncMut.isPending}
+              idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+              pendingLabel="syncing…"
+              title={`update from ${baseBranch}`}
+            />
+          ))}
+        {session && syncStrategies.length > 1 && (
+          <div className="relative" ref={interactive ? syncMenuRef : undefined}>
+            {compact ? (
+              <Button
+                variant="neutral"
+                size="icon"
+                onClick={() => setSyncMenuOpen((v) => !v)}
+                disabled={syncMut.isPending}
+                aria-label="sync"
+                title={`update from ${baseBranch}`}
+              >
+                {syncMut.isPending ? <Spinner /> : <SyncIcon />}
+              </Button>
+            ) : (
+              <Button
+                variant="neutral"
+                onClick={() => setSyncMenuOpen((v) => !v)}
+                pending={syncMut.isPending}
+                idleLabel="sync ▾"
+                pendingLabel="syncing…"
+                title={`update from ${baseBranch}`}
+              />
+            )}
+            {interactive && syncMenuOpen && (
+              <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-border bg-surface p-1 text-xs shadow-lg">
+                {syncStrategies.map((s) => (
+                  <Button
+                    key={s}
+                    variant="ghost"
+                    className="block w-full text-left"
+                    onClick={() => syncMut.mutate(s)}
+                  >
+                    {SYNC_STRATEGY_LABELS[s]}{" "}
+                    <span className="font-mono">{baseBranch}</span>
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {session &&
+          mergeStrategies.length === 1 &&
+          (compact ? (
+            <Button
+              variant="neutral"
+              size="icon"
+              onClick={() => mergeMut.mutate(mergeStrategies[0])}
+              disabled={mergeMut.isPending}
+              aria-label={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+              title={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+            >
+              {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
+            </Button>
+          ) : (
+            <Button
+              variant="neutral"
+              onClick={() => mergeMut.mutate(mergeStrategies[0])}
+              pending={mergeMut.isPending}
+              idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+              pendingLabel="merging…"
+              title={`integrate into ${baseBranch}`}
+            />
+          ))}
+        {session && mergeStrategies.length > 1 && (
+          <div
+            className="relative"
+            ref={interactive ? mergeMenuRef : undefined}
+          >
+            {compact ? (
+              <Button
+                variant="neutral"
+                size="icon"
+                onClick={() => setMergeMenuOpen((v) => !v)}
+                disabled={mergeMut.isPending}
+                aria-label="merge"
+                title={`integrate into ${baseBranch}`}
+              >
+                {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
+              </Button>
+            ) : (
+              <Button
+                variant="neutral"
+                onClick={() => setMergeMenuOpen((v) => !v)}
+                pending={mergeMut.isPending}
+                idleLabel="merge ▾"
+                pendingLabel="merging…"
+                title={`integrate into ${baseBranch}`}
+              />
+            )}
+            {interactive && mergeMenuOpen && (
+              <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-border bg-surface p-1 text-xs shadow-lg">
+                {mergeStrategies.map((s) => (
+                  <Button
+                    key={s}
+                    variant="ghost"
+                    className="block w-full text-left"
+                    onClick={() => mergeMut.mutate(s)}
+                  >
+                    {MERGE_STRATEGY_LABELS[s]}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {compact ? (
+          <Button
+            variant="neutral"
+            size="icon"
+            onClick={() => archiveMut.mutate()}
+            disabled={archiveMut.isPending}
+            aria-label="archive"
+            title="archive"
+          >
+            {archiveMut.isPending ? <Spinner /> : <ArchiveIcon />}
+          </Button>
+        ) : (
+          <Button
+            variant="neutral"
+            onClick={() => archiveMut.mutate()}
+            pending={archiveMut.isPending}
+            idleLabel="archive"
+            pendingLabel="archiving…"
+          />
+        )}
+        {compact ? (
+          <Button
+            variant="primary"
+            size="icon"
+            onClick={() => doneMut.mutate()}
+            disabled={doneMut.isPending}
+            aria-label="done"
+            title="mark as done"
+          >
+            {doneMut.isPending ? <Spinner /> : <CheckIcon />}
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            onClick={() => doneMut.mutate()}
+            pending={doneMut.isPending}
+            idleLabel="done"
+            pendingLabel="finishing…"
+            title="mark as done"
+          />
+        )}
+        <Button
+          variant="neutral"
+          size="icon"
+          onClick={() => setFullscreen((v) => !v)}
+          aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+        >
+          {fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+        </Button>
+        <Button variant="neutral" size="icon" onClick={onClose}>
+          ✕
+        </Button>
+      </div>
+    </>
+  );
 
   return (
     <aside className={paneClass} style={paneStyle}>
@@ -346,277 +656,18 @@ export function SessionPane({
           }
         />
       )}
-      <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm">
-        <span className="font-medium">Ticket #{ticketId}</span>
-        <span className="text-fg-muted">{session?.branch_name}</span>
-        {session?.pr_number != null && session.pr_url && (
-          <a
-            href={session.pr_url}
-            target="_blank"
-            rel="noreferrer"
-            className={`hover:underline ${
-              session.pr_state
-                ? (PR_STATE_COLOR[session.pr_state as PRState] ??
-                  "text-fg-muted")
-                : "text-fg-muted"
-            }`}
-            title={session.pr_state ? `PR ${session.pr_state}` : "pull request"}
-          >
-            #{session.pr_number}
-          </a>
-        )}
-        <div className="ml-auto flex gap-2">
-          {!session &&
-            (compact ? (
-              <Button
-                variant="primary"
-                size="icon"
-                onClick={() => ensureMut.mutate()}
-                disabled={ensureMut.isPending}
-                aria-label="create session"
-                title="create session"
-              >
-                {ensureMut.isPending ? <Spinner /> : <PlusIcon />}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                onClick={() => ensureMut.mutate()}
-                pending={ensureMut.isPending}
-                idleLabel="create session"
-                pendingLabel="creating session…"
-              />
-            ))}
-          {canStart &&
-            (compact ? (
-              <Button
-                variant="primary"
-                size="icon"
-                onClick={() => startMut.mutate(session.id)}
-                disabled={startMut.isPending || status === "starting"}
-                aria-label="start"
-                title="start"
-              >
-                {startMut.isPending || status === "starting" ? (
-                  <Spinner />
-                ) : (
-                  <PlayIcon />
-                )}
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                onClick={() => startMut.mutate(session.id)}
-                pending={startMut.isPending || status === "starting"}
-                idleLabel="start"
-                pendingLabel="starting…"
-              />
-            ))}
-          {session &&
-            isRunning &&
-            (compact ? (
-              <Button
-                variant="secondary"
-                size="icon"
-                onClick={() => stopMut.mutate()}
-                disabled={stopMut.isPending || status === "stopping"}
-                aria-label="stop"
-                title="stop"
-              >
-                {stopMut.isPending || status === "stopping" ? (
-                  <Spinner />
-                ) : (
-                  <StopIcon />
-                )}
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                onClick={() => stopMut.mutate()}
-                pending={stopMut.isPending || status === "stopping"}
-                idleLabel="stop"
-                pendingLabel="stopping…"
-              />
-            ))}
-          {session &&
-            syncStrategies.length === 1 &&
-            (compact ? (
-              <Button
-                variant="neutral"
-                size="icon"
-                onClick={() => syncMut.mutate(syncStrategies[0])}
-                disabled={syncMut.isPending}
-                aria-label={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
-                title={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
-              >
-                {syncMut.isPending ? <Spinner /> : <SyncIcon />}
-              </Button>
-            ) : (
-              <Button
-                variant="neutral"
-                onClick={() => syncMut.mutate(syncStrategies[0])}
-                pending={syncMut.isPending}
-                idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
-                pendingLabel="syncing…"
-                title={`update from ${baseBranch}`}
-              />
-            ))}
-          {session && syncStrategies.length > 1 && (
-            <div className="relative" ref={syncMenuRef}>
-              {compact ? (
-                <Button
-                  variant="neutral"
-                  size="icon"
-                  onClick={() => setSyncMenuOpen((v) => !v)}
-                  disabled={syncMut.isPending}
-                  aria-label="sync"
-                  title={`update from ${baseBranch}`}
-                >
-                  {syncMut.isPending ? <Spinner /> : <SyncIcon />}
-                </Button>
-              ) : (
-                <Button
-                  variant="neutral"
-                  onClick={() => setSyncMenuOpen((v) => !v)}
-                  pending={syncMut.isPending}
-                  idleLabel="sync ▾"
-                  pendingLabel="syncing…"
-                  title={`update from ${baseBranch}`}
-                />
-              )}
-              {syncMenuOpen && (
-                <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-border bg-surface p-1 text-xs shadow-lg">
-                  {syncStrategies.map((s) => (
-                    <Button
-                      key={s}
-                      variant="ghost"
-                      className="block w-full text-left"
-                      onClick={() => syncMut.mutate(s)}
-                    >
-                      {SYNC_STRATEGY_LABELS[s]}{" "}
-                      <span className="font-mono">{baseBranch}</span>
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {session &&
-            mergeStrategies.length === 1 &&
-            (compact ? (
-              <Button
-                variant="neutral"
-                size="icon"
-                onClick={() => mergeMut.mutate(mergeStrategies[0])}
-                disabled={mergeMut.isPending}
-                aria-label={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
-                title={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
-              >
-                {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
-              </Button>
-            ) : (
-              <Button
-                variant="neutral"
-                onClick={() => mergeMut.mutate(mergeStrategies[0])}
-                pending={mergeMut.isPending}
-                idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
-                pendingLabel="merging…"
-                title={`integrate into ${baseBranch}`}
-              />
-            ))}
-          {session && mergeStrategies.length > 1 && (
-            <div className="relative" ref={mergeMenuRef}>
-              {compact ? (
-                <Button
-                  variant="neutral"
-                  size="icon"
-                  onClick={() => setMergeMenuOpen((v) => !v)}
-                  disabled={mergeMut.isPending}
-                  aria-label="merge"
-                  title={`integrate into ${baseBranch}`}
-                >
-                  {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
-                </Button>
-              ) : (
-                <Button
-                  variant="neutral"
-                  onClick={() => setMergeMenuOpen((v) => !v)}
-                  pending={mergeMut.isPending}
-                  idleLabel="merge ▾"
-                  pendingLabel="merging…"
-                  title={`integrate into ${baseBranch}`}
-                />
-              )}
-              {mergeMenuOpen && (
-                <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-border bg-surface p-1 text-xs shadow-lg">
-                  {mergeStrategies.map((s) => (
-                    <Button
-                      key={s}
-                      variant="ghost"
-                      className="block w-full text-left"
-                      onClick={() => mergeMut.mutate(s)}
-                    >
-                      {MERGE_STRATEGY_LABELS[s]}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-          {compact ? (
-            <Button
-              variant="neutral"
-              size="icon"
-              onClick={() => archiveMut.mutate()}
-              disabled={archiveMut.isPending}
-              aria-label="archive"
-              title="archive"
-            >
-              {archiveMut.isPending ? <Spinner /> : <ArchiveIcon />}
-            </Button>
-          ) : (
-            <Button
-              variant="neutral"
-              onClick={() => archiveMut.mutate()}
-              pending={archiveMut.isPending}
-              idleLabel="archive"
-              pendingLabel="archiving…"
-            />
-          )}
-          {compact ? (
-            <Button
-              variant="primary"
-              size="icon"
-              onClick={() => doneMut.mutate()}
-              disabled={doneMut.isPending}
-              aria-label="done"
-              title="mark as done"
-            >
-              {doneMut.isPending ? <Spinner /> : <CheckIcon />}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={() => doneMut.mutate()}
-              pending={doneMut.isPending}
-              idleLabel="done"
-              pendingLabel="finishing…"
-              title="mark as done"
-            />
-          )}
-          <Button
-            variant="neutral"
-            size="icon"
-            onClick={() => setFullscreen((v) => !v)}
-            aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-            title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
-          >
-            {fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
-          </Button>
-          <Button variant="neutral" size="icon" onClick={onClose}>
-            ✕
-          </Button>
-        </div>
+      <div
+        ref={headerRef}
+        className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm"
+      >
+        {renderHeaderContent({ compact, interactive: true })}
+      </div>
+      <div
+        ref={headerGhostRef}
+        aria-hidden
+        className="pointer-events-none invisible absolute left-0 top-0 flex items-center gap-2 whitespace-nowrap px-3 py-2 text-sm"
+      >
+        {renderHeaderContent({ compact: false, interactive: false })}
       </div>
       <div className="flex border-b border-border text-sm">
         <Tab
