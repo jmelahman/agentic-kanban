@@ -7,7 +7,7 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY web/ ./
 RUN npm run build
 
-FROM golang:1.26.2@sha256:b54cbf583d390341599d7bcbc062425c081105cc5ef6d170ced98ef9d047c716 AS go
+FROM --platform=$BUILDPLATFORM golang:1.26.2@sha256:b54cbf583d390341599d7bcbc062425c081105cc5ef6d170ced98ef9d047c716 AS go
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -18,7 +18,9 @@ COPY --from=web /web/dist ./web/dist
 # the Go-side fallback so an unannotated `docker build` still produces a
 # self-describing "dev" binary.
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux go build -tags embed -trimpath \
+ARG TARGETOS
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags embed -trimpath \
       -ldflags="-s -w -X github.com/jmelahman/kanban/cmd/server.version=${VERSION}" \
       -o /out/kanban .
 
