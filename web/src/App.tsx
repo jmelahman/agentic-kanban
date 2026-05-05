@@ -27,6 +27,7 @@ export default function App() {
   const [showAppSettings, setShowAppSettings] = useState(false);
 
   const activeBoard = activeId != null ? boardsQ.data?.find((b) => b.id === activeId) ?? null : null;
+  const noBoards = boardsQ.data?.length === 0;
 
   useEffect(() => {
     if (activeId == null && boardsQ.data && boardsQ.data.length > 0) {
@@ -120,7 +121,11 @@ export default function App() {
         </div>
       )}
       <main className="min-h-0 flex-1 overflow-hidden">
-        {activeId != null ? <Board boardId={activeId} /> : <p className="p-4 text-sm text-fg-muted">No board selected.</p>}
+        {activeId != null ? (
+          <Board boardId={activeId} />
+        ) : noBoards ? (
+          <p className="p-4 text-sm text-fg-muted">No boards yet — click “+ new board” above to create one.</p>
+        ) : null}
       </main>
       {activeId != null && showArchived && (
         <ArchivedDrawer open boardId={activeId} onClose={() => setShowArchived(false)} />
