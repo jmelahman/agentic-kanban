@@ -14,7 +14,13 @@ type Common = {
   busy?: boolean;
 };
 
-export function Modal({ open, onClose, title, children, busy = false }: Common) {
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  busy = false,
+}: Common) {
   return (
     <DialogShell open={open} onClose={onClose} busy={busy} flavor="modal">
       <div className="relative w-[520px] max-w-[calc(100vw-2rem)] rounded border border-border bg-bg shadow-lg">
@@ -25,7 +31,13 @@ export function Modal({ open, onClose, title, children, busy = false }: Common) 
   );
 }
 
-export function Drawer({ open, onClose, title, children, busy = false }: Common) {
+export function Drawer({
+  open,
+  onClose,
+  title,
+  children,
+  busy = false,
+}: Common) {
   return (
     <DialogShell open={open} onClose={onClose} busy={busy} flavor="drawer">
       <aside className="flex w-[480px] flex-col border-l border-border bg-bg">
@@ -61,9 +73,15 @@ function DialogShell({
       : "fixed inset-0 z-40 flex";
   const backdrop =
     flavor === "modal" ? (
-      <div className="absolute inset-0 bg-black/50" onClick={busy ? undefined : onClose} />
+      <div
+        className="absolute inset-0 bg-black/50"
+        onClick={busy ? undefined : onClose}
+      />
     ) : (
-      <div className="flex-1 bg-black/50" onClick={busy ? undefined : onClose} />
+      <div
+        className="flex-1 bg-black/50"
+        onClick={busy ? undefined : onClose}
+      />
     );
 
   return createPortal(
@@ -75,9 +93,17 @@ function DialogShell({
   );
 }
 
-function DialogHeader({ title, onClose, busy }: { title: string; onClose: () => void; busy: boolean }) {
+function DialogHeader({
+  title,
+  onClose,
+  busy,
+}: {
+  title: string;
+  onClose: () => void;
+  busy: boolean;
+}) {
   return (
-    <header className="flex items-center justify-between border-b border-border px-4 py-2">
+    <header className="flex items-center justify-between border-b border-border px-3 py-2">
       <h2 className="text-sm font-semibold">{title}</h2>
       <Button
         variant="neutral"
