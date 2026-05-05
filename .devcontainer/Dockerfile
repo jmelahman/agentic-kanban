@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   socat \
   openssh-client \
   gh \
+  git-delta \
   && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
   && apt-get install -y nodejs \
   && install -m 0755 -d /etc/apt/keyrings \
