@@ -28,8 +28,12 @@ CREATE TABLE IF NOT EXISTS tickets (
   position INTEGER NOT NULL,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   archived_at INTEGER,
+  fingerprint TEXT,
   UNIQUE(board_id, slug)
 );
+CREATE INDEX IF NOT EXISTS idx_tickets_fingerprint
+  ON tickets(board_id, fingerprint)
+  WHERE fingerprint IS NOT NULL AND archived_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY,

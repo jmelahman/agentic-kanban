@@ -36,6 +36,53 @@ func writeProject(t *testing.T, contents string) string {
 	return dir
 }
 
+func TestLoad_ErrorsSectionAbsentDefaults(t *testing.T) {
+	withUserConfig(t, "")
+	repo := writeProject(t, "")
+	f := Load(repo)
+	if f.Errors != nil {
+		t.Fatalf("Errors should be nil when no config sets it; got %+v", f.Errors)
+	}
+}
+
+func TestLoad_ErrorsSectionEnabled(t *testing.T) {
+	withUserConfig(t, "")
+	repo := writeProject(t, `[errors]
+enabled = true
+board_name = "Bug Tracker"
+`)
+	f := Load(repo)
+	if f.Errors == nil {
+		t.Fatal("Errors section missing")
+	}
+	if f.Errors.Enabled == nil || !*f.Errors.Enabled {
+		t.Errorf("enabled = %v; want true", f.Errors.Enabled)
+	}
+	if f.Errors.BoardName == nil || *f.Errors.BoardName != "Bug Tracker" {
+		t.Errorf("board_name = %v; want \"Bug Tracker\"", f.Errors.BoardName)
+	}
+}
+
+func TestLoad_ErrorsSectionUserOverridesProject(t *testing.T) {
+	withUserConfig(t, `[errors]
+enabled = false
+`)
+	repo := writeProject(t, `[errors]
+enabled = true
+board_name = "ProjectErrors"
+`)
+	f := Load(repo)
+	if f.Errors == nil {
+		t.Fatal("Errors section missing")
+	}
+	if f.Errors.Enabled == nil || *f.Errors.Enabled {
+		t.Errorf("enabled = %v; want false (user override)", f.Errors.Enabled)
+	}
+	if f.Errors.BoardName == nil || *f.Errors.BoardName != "ProjectErrors" {
+		t.Errorf("board_name = %v; want project value preserved", f.Errors.BoardName)
+	}
+}
+
 func TestLoad_UserOverridesProject_Sync(t *testing.T) {
 	withUserConfig(t, `[sync]
 allow_rebase = false

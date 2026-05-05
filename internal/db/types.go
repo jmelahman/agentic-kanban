@@ -20,15 +20,16 @@ type Column struct {
 }
 
 type Ticket struct {
-	ID         int64  `json:"id"`
-	BoardID    int64  `json:"board_id"`
-	ColumnID   int64  `json:"column_id"`
-	Title      string `json:"title"`
-	Slug       string `json:"slug"`
-	Body       string `json:"body"`
-	Position   int    `json:"position"`
-	CreatedAt  int64  `json:"created_at"`
-	ArchivedAt *int64 `json:"archived_at,omitempty"`
+	ID          int64  `json:"id"`
+	BoardID     int64  `json:"board_id"`
+	ColumnID    int64  `json:"column_id"`
+	Title       string `json:"title"`
+	Slug        string `json:"slug"`
+	Body        string `json:"body"`
+	Position    int    `json:"position"`
+	CreatedAt   int64  `json:"created_at"`
+	ArchivedAt  *int64 `json:"archived_at,omitempty"`
+	Fingerprint string `json:"-"`
 }
 
 type Session struct {

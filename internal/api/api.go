@@ -6,6 +6,7 @@ import (
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
+	"github.com/jmelahman/kanban/internal/errreport"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/session"
 	"github.com/jmelahman/kanban/internal/tasks"
@@ -26,6 +27,7 @@ type Deps struct {
 	Config   *config.Config
 	Bus      *EventBus
 	Build    BuildInfo
+	Reporter *errreport.Reporter
 }
 
 // NewMux assembles the HTTP routes and embedded frontend.
@@ -47,6 +49,7 @@ func NewMux(d Deps) http.Handler {
 		tasks:    taskRunner,
 		bus:      bus,
 		build:    d.Build,
+		reporter: d.Reporter,
 	}
 
 	mux.HandleFunc("GET /api/health", h.health)
@@ -89,6 +92,8 @@ func NewMux(d Deps) http.Handler {
 
 	mux.HandleFunc("/ws/sessions/{id}/pty", h.wsPTY)
 	mux.HandleFunc("/ws/sessions/{id}/shell", h.wsShell)
+
+	mux.HandleFunc("POST /api/errors", h.reportFrontendError)
 
 	mux.HandleFunc("GET /api/settings", h.getSettings)
 	mux.HandleFunc("PATCH /api/settings", h.updateSettings)

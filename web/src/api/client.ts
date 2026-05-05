@@ -203,6 +203,42 @@ export type SubscribeOptions = {
   onStatus?: (status: "open" | "error" | "closed") => void;
 };
 
+// postError reports a frontend exception to the backend, which may file a
+// kanban ticket if error reporting is enabled in `.kanban.toml`. Always
+// best-effort: failures are silently swallowed, and a single in-flight call
+// blocks re-entry so one capture site can never spiral into a loop.
+//
+// Uses raw fetch (not request<T>) so an HTTP error here can't throw into the
+// React Query global onError and re-trigger this function.
+let reportingError = false;
+export async function postError(p: {
+  message: string;
+  stack?: string;
+  source: string;
+  url?: string;
+  user_agent?: string;
+}): Promise<void> {
+  if (reportingError) return;
+  reportingError = true;
+  try {
+    await fetch("/api/errors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: p.message,
+        stack: p.stack ?? "",
+        source: p.source,
+        url: p.url ?? (typeof window !== "undefined" ? window.location.href : ""),
+        user_agent: p.user_agent ?? (typeof navigator !== "undefined" ? navigator.userAgent : ""),
+      }),
+    });
+  } catch {
+    // never toast, never recurse
+  } finally {
+    reportingError = false;
+  }
+}
+
 export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => void {
   const es = new EventSource(`/api/boards/${boardId}/events`);
   const handler = (e: MessageEvent) => {

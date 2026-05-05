@@ -52,7 +52,7 @@ func (h *handlers) boardEvents(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		httpError(w, fmt.Errorf("streaming unsupported"), 500)
+		h.httpError(w, fmt.Errorf("streaming unsupported"), 500)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")

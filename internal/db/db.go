@@ -63,6 +63,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN pr_number INTEGER`,
 		`ALTER TABLE sessions ADD COLUMN pr_url TEXT`,
 		`ALTER TABLE boards ADD COLUMN branch_prefix TEXT`,
+		`ALTER TABLE tickets ADD COLUMN fingerprint TEXT`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {
@@ -71,6 +72,11 @@ func migrate(db *sql.DB) error {
 			}
 			return fmt.Errorf("%s: %w", s, err)
 		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tickets_fingerprint
+		ON tickets(board_id, fingerprint)
+		WHERE fingerprint IS NOT NULL AND archived_at IS NULL`); err != nil {
+		return fmt.Errorf("create idx_tickets_fingerprint: %w", err)
 	}
 	return nil
 }

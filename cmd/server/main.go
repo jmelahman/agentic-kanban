@@ -21,6 +21,7 @@ import (
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
+	"github.com/jmelahman/kanban/internal/errreport"
 	"github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/mcp"
@@ -200,6 +201,12 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 
 	bus := api.NewEventBus()
 
+	errCfg := errreport.ResolveConfig("")
+	reporter := errreport.New(store, errCfg)
+	if errCfg.Enabled {
+		log.Printf("error-reporting enabled, board=%q", errCfg.BoardName)
+	}
+
 	mux := api.NewMux(api.Deps{
 		Store:    store,
 		Docker:   dockerClient,
@@ -207,7 +214,8 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 		Hooks:    hookRunner,
 		Config:   cfg,
 		Bus:      bus,
-		Build: api.BuildInfo(Build()),
+		Build:    api.BuildInfo(Build()),
+		Reporter: reporter,
 	})
 
 	pollerCtx, pollerCancel := context.WithCancel(context.Background())
@@ -216,7 +224,7 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           logRequests(mux),
+		Handler:           recoverPanics(reporter, logRequests(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -275,6 +283,29 @@ func buildAPIBase(selfName, addr string) string {
 		host = "host.docker.internal"
 	}
 	return fmt.Sprintf("http://%s:%s", host, port)
+}
+
+// recoverPanics is the outermost middleware. It catches panics from any
+// downstream handler so the process survives, logs the trace, files a ticket
+// via the reporter (no-op when disabled), and writes a 500 response. The
+// panic-survival behavior is unconditional; only ticket creation is gated by
+// the reporter being enabled.
+func recoverPanics(reporter *errreport.Reporter, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			rec := recover()
+			if rec == nil {
+				return
+			}
+			stack := string(debug.Stack())
+			log.Printf("panic recovered: %v\n%s", rec, stack)
+			reporter.Report(r.Context(), "panic",
+				fmt.Sprintf("panic: %v", rec), stack,
+				map[string]string{"path": r.URL.Path, "method": r.Method})
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 func logRequests(h http.Handler) http.Handler {

@@ -13,6 +13,17 @@ var ErrNotFound = errors.New("not found")
 // Boards
 
 func (s *Store) CreateBoard(ctx context.Context, b *Board) error {
+	if err := s.CreateBoardRaw(ctx, b); err != nil {
+		return err
+	}
+	return s.createDefaultColumns(ctx, b.ID)
+}
+
+// CreateBoardRaw inserts a board row without seeding the default
+// Backlog/In Progress/Review/Done columns. Callers are responsible for
+// installing whatever column layout they need afterwards. Used by
+// errreport to bootstrap an Errors board with its own three-column flow.
+func (s *Store) CreateBoardRaw(ctx context.Context, b *Board) error {
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO boards (name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		b.Name, b.Slug, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch, nullIfEmpty(b.BranchPrefix),
@@ -25,7 +36,25 @@ func (s *Store) CreateBoard(ctx context.Context, b *Board) error {
 		return err
 	}
 	b.ID = id
-	return s.createDefaultColumns(ctx, id)
+	return nil
+}
+
+// CreateColumn inserts a single column at the given position. Used by
+// errreport to install its custom New/Investigating/Resolved layout.
+func (s *Store) CreateColumn(ctx context.Context, c *Column) error {
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO columns (board_id, name, position) VALUES (?, ?, ?)`,
+		c.BoardID, c.Name, c.Position,
+	)
+	if err != nil {
+		return err
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+	c.ID = id
+	return nil
 }
 
 func (s *Store) createDefaultColumns(ctx context.Context, boardID int64) error {
@@ -171,8 +200,8 @@ func (s *Store) CreateTicket(ctx context.Context, t *Ticket) error {
 			t.Slug = fmt.Sprintf("%s-%d", baseSlug, attempt)
 		}
 		res, err := s.db.ExecContext(ctx,
-			`INSERT INTO tickets (board_id, column_id, title, slug, body, position) VALUES (?, ?, ?, ?, ?, ?)`,
-			t.BoardID, t.ColumnID, t.Title, t.Slug, t.Body, t.Position,
+			`INSERT INTO tickets (board_id, column_id, title, slug, body, position, fingerprint) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			t.BoardID, t.ColumnID, t.Title, t.Slug, t.Body, t.Position, nullIfEmpty(t.Fingerprint),
 		)
 		if err != nil {
 			if strings.Contains(err.Error(), "tickets.board_id, tickets.slug") {
@@ -221,6 +250,33 @@ func (s *Store) GetTicket(ctx context.Context, id int64) (*Ticket, error) {
 	if err != nil {
 		return nil, err
 	}
+	return &t, nil
+}
+
+// FindOpenTicketByFingerprint returns the open (non-archived) ticket on
+// boardID whose fingerprint matches, or ErrNotFound if none exists. Used by
+// errreport for dedup: a recurring error updates the existing ticket rather
+// than filing a new one.
+func (s *Store) FindOpenTicketByFingerprint(ctx context.Context, boardID int64, fingerprint string) (*Ticket, error) {
+	if fingerprint == "" {
+		return nil, ErrNotFound
+	}
+	var t Ticket
+	var fp sql.NullString
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at, fingerprint
+		 FROM tickets
+		 WHERE board_id=? AND fingerprint=? AND archived_at IS NULL
+		 LIMIT 1`,
+		boardID, fingerprint,
+	).Scan(&t.ID, &t.BoardID, &t.ColumnID, &t.Title, &t.Slug, &t.Body, &t.Position, &t.CreatedAt, &t.ArchivedAt, &fp)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	t.Fingerprint = fp.String
 	return &t, nil
 }
 

@@ -26,6 +26,7 @@ type File struct {
 	Worktrees    *WorktreesSection    `toml:"worktrees"`
 	Branches     *BranchesSection     `toml:"branches"`
 	Devcontainer *DevcontainerSection `toml:"devcontainer"`
+	Errors       *ErrorsSection       `toml:"errors"`
 	Tasks        []TaskEntry          `toml:"task"`
 }
 
@@ -42,6 +43,14 @@ type WorktreesSection struct {
 // branch name. Per-board overrides in the boards table take precedence.
 type BranchesSection struct {
 	Prefix *string `toml:"prefix"`
+}
+
+// ErrorsSection toggles the in-process error-to-ticket reporter. Disabled by
+// default — only developers maintaining the app typically want application
+// errors mixed into their kanban boards.
+type ErrorsSection struct {
+	Enabled   *bool   `toml:"enabled"`
+	BoardName *string `toml:"board_name"`
 }
 
 type SyncSection struct {
@@ -144,6 +153,7 @@ func merge(project, user File) File {
 	out.Worktrees = mergeWorktrees(project.Worktrees, user.Worktrees)
 	out.Branches = mergeBranches(project.Branches, user.Branches)
 	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
+	out.Errors = mergeErrors(project.Errors, user.Errors)
 	out.Tasks = mergeTasks(project.Tasks, user.Tasks)
 
 	return out
@@ -173,6 +183,26 @@ func mergeBranches(p, u *BranchesSection) *BranchesSection {
 	}
 	if u != nil && u.Prefix != nil {
 		out.Prefix = u.Prefix
+	}
+	return &out
+}
+
+func mergeErrors(p, u *ErrorsSection) *ErrorsSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := ErrorsSection{}
+	if p != nil {
+		out.Enabled = p.Enabled
+		out.BoardName = p.BoardName
+	}
+	if u != nil {
+		if u.Enabled != nil {
+			out.Enabled = u.Enabled
+		}
+		if u.BoardName != nil {
+			out.BoardName = u.BoardName
+		}
 	}
 	return &out
 }

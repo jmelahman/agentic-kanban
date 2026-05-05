@@ -13,6 +13,7 @@ import (
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
+	"github.com/jmelahman/kanban/internal/errreport"
 	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
@@ -29,6 +30,7 @@ type handlers struct {
 	tasks    *tasks.Runner
 	bus      *EventBus
 	build    BuildInfo
+	reporter *errreport.Reporter
 }
 
 func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +59,7 @@ type createBoardReq struct {
 func (h *handlers) listBoards(w http.ResponseWriter, r *http.Request) {
 	boards, err := h.store.ListBoards(r.Context())
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	writeJSON(w, 200, boards)
@@ -66,18 +68,18 @@ func (h *handlers) listBoards(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 	var req createBoardReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	req.RepoPath = strings.TrimSpace(req.RepoPath)
 	req.MountPath = strings.TrimSpace(req.MountPath)
 	if req.Name == "" {
-		httpError(w, fmt.Errorf("name required"), 400)
+		h.httpError(w, fmt.Errorf("name required"), 400)
 		return
 	}
 	if req.RepoPath == "" && req.MountPath == "" {
-		httpError(w, fmt.Errorf("at least one of repo_path or mount_path required"), 400)
+		h.httpError(w, fmt.Errorf("at least one of repo_path or mount_path required"), 400)
 		return
 	}
 	if req.BaseBranch == "" {
@@ -97,10 +99,10 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.store.CreateBoard(r.Context(), board); err != nil {
 		if isUniqueViolation(err) {
-			httpError(w, fmt.Errorf("a board named %q already exists", req.Name), http.StatusConflict)
+			h.httpError(w, fmt.Errorf("a board named %q already exists", req.Name), http.StatusConflict)
 			return
 		}
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	writeJSON(w, 201, board)
@@ -119,18 +121,18 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	board, err := h.store.GetBoard(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	var req updateBoardReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	if req.Name != nil {
 		name := strings.TrimSpace(*req.Name)
 		if name == "" {
-			httpError(w, fmt.Errorf("name cannot be empty"), 400)
+			h.httpError(w, fmt.Errorf("name cannot be empty"), 400)
 			return
 		}
 		board.Name = name
@@ -142,7 +144,7 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 		board.MountPath = strings.TrimSpace(*req.MountPath)
 	}
 	if board.RepoPath == "" && board.MountPath == "" {
-		httpError(w, fmt.Errorf("at least one of repo_path or mount_path required"), 400)
+		h.httpError(w, fmt.Errorf("at least one of repo_path or mount_path required"), 400)
 		return
 	}
 	if req.WorktreeRoot != nil {
@@ -151,7 +153,7 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 	if req.BaseBranch != nil {
 		base := strings.TrimSpace(*req.BaseBranch)
 		if base == "" {
-			httpError(w, fmt.Errorf("base_branch cannot be empty"), 400)
+			h.httpError(w, fmt.Errorf("base_branch cannot be empty"), 400)
 			return
 		}
 		board.BaseBranch = base
@@ -160,7 +162,7 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 		board.BranchPrefix = strings.TrimSpace(*req.BranchPrefix)
 	}
 	if err := h.store.UpdateBoard(r.Context(), board); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	writeJSON(w, 200, board)
@@ -169,12 +171,12 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) deleteBoard(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	if _, err := h.store.GetBoard(r.Context(), id); err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	sessions, err := h.store.ListSessionsByBoard(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	for _, sess := range sessions {
@@ -183,7 +185,7 @@ func (h *handlers) deleteBoard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.store.DeleteBoard(r.Context(), id); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	w.WriteHeader(204)
@@ -193,7 +195,7 @@ func (h *handlers) getBoard(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	board, err := h.store.GetBoard(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	writeJSON(w, 200, board)
@@ -212,22 +214,22 @@ func (h *handlers) boardState(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	board, err := h.store.GetBoard(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	cols, err := h.store.ListColumns(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	tickets, err := h.store.ListTickets(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	sessions, err := h.store.ListSessionsByBoard(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	writeJSON(w, 200, boardStateResp{
@@ -252,21 +254,21 @@ type createTicketReq struct {
 func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 	board, err := h.resolveBoardIdent(r.Context(), r.PathValue("id"))
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	var req createTicketReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	if req.Title == "" {
-		httpError(w, fmt.Errorf("title required"), 400)
+		h.httpError(w, fmt.Errorf("title required"), 400)
 		return
 	}
 	columnID, err := h.resolveColumn(r.Context(), board.ID, req.ColumnID, req.Column)
 	if err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	t := &db.Ticket{
@@ -277,7 +279,7 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 		Body:     req.Body,
 	}
 	if err := h.store.CreateTicket(r.Context(), t); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	h.bus.Publish(board.ID, "ticket_created", t)
@@ -297,18 +299,18 @@ func (h *handlers) updateTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	var req updateTicketReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	if req.Title != nil {
 		title := strings.TrimSpace(*req.Title)
 		if title == "" {
-			httpError(w, fmt.Errorf("title cannot be empty"), 400)
+			h.httpError(w, fmt.Errorf("title cannot be empty"), 400)
 			return
 		}
 		t.Title = title
@@ -317,7 +319,7 @@ func (h *handlers) updateTicket(w http.ResponseWriter, r *http.Request) {
 		t.Body = *req.Body
 	}
 	if err := h.store.UpdateTicket(r.Context(), t); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	h.bus.Publish(t.BoardID, "ticket_updated", t)
@@ -384,11 +386,11 @@ func (h *handlers) moveTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	var req moveTicketReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	if err := h.store.MoveTicket(r.Context(), id, req.ColumnID, req.Position); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	t, _ := h.store.GetTicket(r.Context(), id)
@@ -402,14 +404,14 @@ func (h *handlers) archiveTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
 		_ = h.sessions.Stop(r.Context(), sess.ID)
 	}
 	if err := h.store.ArchiveTicket(r.Context(), id); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	h.bus.Publish(t.BoardID, "ticket_archived", t)
@@ -426,15 +428,15 @@ func (h *handlers) unarchiveTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	if t.ArchivedAt == nil {
-		httpError(w, fmt.Errorf("ticket is not archived"), 400)
+		h.httpError(w, fmt.Errorf("ticket is not archived"), 400)
 		return
 	}
 	if err := h.store.UnarchiveTicket(r.Context(), id); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	updated, _ := h.store.GetTicket(r.Context(), id)
@@ -448,7 +450,7 @@ func (h *handlers) listArchivedTickets(w http.ResponseWriter, r *http.Request) {
 	boardID := pathID(r, "id")
 	tickets, err := h.store.ListArchivedTickets(r.Context(), boardID)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	writeJSON(w, 200, tickets)
@@ -458,18 +460,18 @@ func (h *handlers) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	if t.ArchivedAt == nil {
-		httpError(w, fmt.Errorf("ticket must be archived before deletion"), 400)
+		h.httpError(w, fmt.Errorf("ticket must be archived before deletion"), 400)
 		return
 	}
 	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
 		_ = h.sessions.Destroy(r.Context(), sess.ID)
 	}
 	if err := h.store.DeleteTicket(r.Context(), id); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	h.bus.Publish(t.BoardID, "ticket_deleted", t)
@@ -484,7 +486,7 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	var req syncTicketReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	if req.Strategy == "" {
@@ -493,30 +495,30 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 	switch req.Strategy {
 	case "rebase", "merge":
 	default:
-		httpError(w, fmt.Errorf("strategy must be rebase or merge"), 400)
+		h.httpError(w, fmt.Errorf("strategy must be rebase or merge"), 400)
 		return
 	}
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	board, err := h.store.GetBoard(r.Context(), t.BoardID)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	if !loadSyncConfig(board.RepoPath).allows(req.Strategy) {
-		httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
+		h.httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
 		return
 	}
 	sess, err := h.store.GetSessionByTicket(r.Context(), id)
 	if err != nil || sess == nil {
-		httpError(w, fmt.Errorf("no session for ticket"), 404)
+		h.httpError(w, fmt.Errorf("no session for ticket"), 404)
 		return
 	}
 	if err := h.sessions.Sync(r.Context(), sess.ID, req.Strategy); err != nil {
-		httpError(w, err, 409)
+		h.httpError(w, err, 409)
 		return
 	}
 	h.bus.Publish(t.BoardID, "session_updated", sess)
@@ -531,36 +533,36 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	var req mergeTicketReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	switch req.Strategy {
 	case "merge-commit", "squash", "rebase":
 	default:
-		httpError(w, fmt.Errorf("strategy must be merge-commit, squash, or rebase"), 400)
+		h.httpError(w, fmt.Errorf("strategy must be merge-commit, squash, or rebase"), 400)
 		return
 	}
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	board, err := h.store.GetBoard(r.Context(), t.BoardID)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	if !loadMergeConfig(board.RepoPath).allows(req.Strategy) {
-		httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
+		h.httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
 		return
 	}
 	sess, err := h.store.GetSessionByTicket(r.Context(), id)
 	if err != nil || sess == nil {
-		httpError(w, fmt.Errorf("no session for ticket"), 404)
+		h.httpError(w, fmt.Errorf("no session for ticket"), 404)
 		return
 	}
 	if err := h.sessions.Merge(r.Context(), sess.ID, req.Strategy); err != nil {
-		httpError(w, err, 409)
+		h.httpError(w, err, 409)
 		return
 	}
 	w.WriteHeader(204)
@@ -570,12 +572,12 @@ func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	t, err := h.store.GetTicket(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	cols, err := h.store.ListColumns(r.Context(), t.BoardID)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	var doneCol *db.Column
@@ -586,7 +588,7 @@ func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if doneCol == nil {
-		httpError(w, fmt.Errorf("board has no Done column"), 409)
+		h.httpError(w, fmt.Errorf("board has no Done column"), 409)
 		return
 	}
 	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
@@ -596,11 +598,11 @@ func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	maxPos, err := h.store.MaxTicketPosition(r.Context(), doneCol.ID)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	if err := h.store.MoveTicket(r.Context(), t.ID, doneCol.ID, maxPos+1); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	if updated, _ := h.store.GetTicket(r.Context(), id); updated != nil {
@@ -615,17 +617,17 @@ func (h *handlers) ensureSession(w http.ResponseWriter, r *http.Request) {
 	ticketID := pathID(r, "id")
 	t, err := h.store.GetTicket(r.Context(), ticketID)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	board, err := h.store.GetBoard(r.Context(), t.BoardID)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	sess, err := h.sessions.Ensure(r.Context(), board, t)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	h.bus.Publish(board.ID, "session_updated", sess)
@@ -636,7 +638,7 @@ func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.sessions.Start(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
@@ -649,7 +651,7 @@ func (h *handlers) restartSession(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.sessions.Restart(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
@@ -661,7 +663,7 @@ func (h *handlers) restartSession(w http.ResponseWriter, r *http.Request) {
 func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	if err := h.sessions.Stop(r.Context(), id); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	sess, _ := h.store.GetSession(r.Context(), id)
@@ -685,7 +687,7 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	var req updateSessionStatusReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	var hookEvent string
@@ -697,16 +699,16 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	case db.SessionStatusAwaitingPerm:
 		hookEvent = hooks.EventSessionAwaitingPerm
 	default:
-		httpError(w, fmt.Errorf("status must be working, idle, or awaiting_perm"), 400)
+		h.httpError(w, fmt.Errorf("status must be working, idle, or awaiting_perm"), 400)
 		return
 	}
 	sess, err := h.store.GetSession(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	if err := h.store.UpdateSessionStatus(r.Context(), id, req.Status); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	sess.Status = req.Status
@@ -742,7 +744,7 @@ func (h *handlers) discoverTasks(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.store.GetSession(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	found, warnings, _ := tasks.Discover(sess.WorktreePath)
@@ -765,7 +767,7 @@ func (h *handlers) listTaskRuns(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	runs, err := h.store.ListTaskRuns(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	writeJSON(w, 200, runs)
@@ -779,17 +781,17 @@ func (h *handlers) createTaskRun(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.store.GetSession(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	var req createTaskRunReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	found, _, err := tasks.Discover(sess.WorktreePath)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	var task tasks.VSCodeTask
@@ -800,12 +802,12 @@ func (h *handlers) createTaskRun(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if task.Label == "" {
-		httpError(w, fmt.Errorf("task %q not found", req.Label), 404)
+		h.httpError(w, fmt.Errorf("task %q not found", req.Label), 404)
 		return
 	}
 	tr, err := h.tasks.Start(r.Context(), sess, task)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 
@@ -820,16 +822,16 @@ func (h *handlers) stopTaskRun(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	tr, err := h.store.GetTaskRun(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	sess, err := h.store.GetSession(r.Context(), tr.SessionID)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	if err := h.tasks.Stop(r.Context(), sess, tr); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	w.WriteHeader(204)
@@ -839,7 +841,7 @@ func (h *handlers) taskRunOutput(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		httpError(w, fmt.Errorf("streaming unsupported"), 500)
+		h.httpError(w, fmt.Errorf("streaming unsupported"), 500)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -871,7 +873,7 @@ func (h *handlers) listPorts(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	ports, err := h.store.ListPorts(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	writeJSON(w, 200, ports)
@@ -886,20 +888,20 @@ func (h *handlers) createPort(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.store.GetSession(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	var req createPortReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	if req.ContainerPort <= 0 {
-		httpError(w, fmt.Errorf("container_port required"), 400)
+		h.httpError(w, fmt.Errorf("container_port required"), 400)
 		return
 	}
 	if err := h.ensurePortProxy(r.Context(), sess, req.Label, req.ContainerPort); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	ports, _ := h.store.ListPorts(r.Context(), id)
@@ -910,7 +912,7 @@ func (h *handlers) deletePort(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	ports, err := h.store.ListAllActivePorts(r.Context())
 	if err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	for _, p := range ports {
@@ -920,7 +922,7 @@ func (h *handlers) deletePort(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if err := h.store.DeletePort(r.Context(), id); err != nil {
-		httpError(w, err, 500)
+		h.httpError(w, err, 500)
 		return
 	}
 	w.WriteHeader(204)
@@ -987,7 +989,7 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.store.GetSession(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	repoPath := ""
@@ -1002,7 +1004,7 @@ func (h *handlers) wsShell(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	sess, err := h.store.GetSession(r.Context(), id)
 	if err != nil {
-		httpError(w, err, 404)
+		h.httpError(w, err, 404)
 		return
 	}
 	_ = h.sessions.AttachShell(r.Context(), sess, w, r, "/workspace")
@@ -1038,28 +1040,28 @@ func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
 		WorktreesRoot *string `json:"worktrees_root"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httpError(w, err, 400)
+		h.httpError(w, err, 400)
 		return
 	}
 	if req.Harness != nil {
 		id := *req.Harness
 		if id != "" && !harness.IsKnown(id) {
-			httpError(w, fmt.Errorf("unknown harness %q", id), 400)
+			h.httpError(w, fmt.Errorf("unknown harness %q", id), 400)
 			return
 		}
 		if err := harness.WriteUserHarness(id); err != nil {
-			httpError(w, err, 500)
+			h.httpError(w, err, 500)
 			return
 		}
 	}
 	if req.WorktreesRoot != nil {
 		if h.config.HasWorktreesDirOverride() {
-			httpError(w, fmt.Errorf("worktrees root is locked by --worktrees-dir or $KANBAN_WORKTREES_DIR"), http.StatusConflict)
+			h.httpError(w, fmt.Errorf("worktrees root is locked by --worktrees-dir or $KANBAN_WORKTREES_DIR"), http.StatusConflict)
 			return
 		}
 		root := strings.TrimSpace(*req.WorktreesRoot)
 		if err := kanbantoml.WriteUserWorktreesRoot(root); err != nil {
-			httpError(w, err, 500)
+			h.httpError(w, err, 500)
 			return
 		}
 	}
@@ -1092,9 +1094,45 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func httpError(w http.ResponseWriter, err error, code int) {
+// httpError writes a JSON error response and, for 5xx codes, files a kanban
+// ticket via the reporter (a no-op when the reporter is disabled or nil).
+// 4xx codes are user/client errors and are not reported.
+func (h *handlers) httpError(w http.ResponseWriter, err error, code int) {
 	log.Printf("http %d: %v", code, err)
 	writeJSON(w, code, map[string]string{"error": err.Error()})
+	if code >= 500 && h.reporter != nil {
+		h.reporter.Capture(context.Background(), "http", err)
+	}
+}
+
+type reportFrontendErrorReq struct {
+	Message   string `json:"message"`
+	Stack     string `json:"stack"`
+	Source    string `json:"source"`
+	URL       string `json:"url"`
+	UserAgent string `json:"user_agent"`
+}
+
+// reportFrontendError accepts error reports from the React app's
+// ErrorBoundary and global React Query onError. Always returns 204; when the
+// reporter is disabled (the default), this endpoint silently absorbs reports.
+func (h *handlers) reportFrontendError(w http.ResponseWriter, r *http.Request) {
+	var req reportFrontendErrorReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if h.reporter != nil && req.Message != "" {
+		source := strings.TrimSpace(req.Source)
+		if source == "" {
+			source = "frontend"
+		}
+		h.reporter.Report(r.Context(), source, req.Message, req.Stack, map[string]string{
+			"url":        req.URL,
+			"user_agent": req.UserAgent,
+		})
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func isUniqueViolation(err error) bool {
