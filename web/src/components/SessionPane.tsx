@@ -569,9 +569,8 @@ export function SessionPane({
             />
           )}
           <Button
-            variant="ghost"
+            variant="neutral"
             size="icon"
-            className="hover:bg-surface-2 hover:text-fg"
             onClick={() => setFullscreen((v) => !v)}
             aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
             title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}

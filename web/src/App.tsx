@@ -55,7 +55,7 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-4 border-b border-border px-4 py-2">
+      <header className="flex items-center gap-4 border-b border-border px-3 py-2">
         <h1 className="text-lg font-semibold">Kanban</h1>
         <select
           className="rounded bg-surface px-2 py-1 text-sm"

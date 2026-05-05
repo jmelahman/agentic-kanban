@@ -1,5 +1,6 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { XIcon } from "@/icons";
 import { useEscapeClose } from "../hooks/useEscapeClose";
 import { Button } from "./Button";
 
@@ -79,13 +80,13 @@ function DialogHeader({ title, onClose, busy }: { title: string; onClose: () => 
     <header className="flex items-center justify-between border-b border-border px-4 py-2">
       <h2 className="text-sm font-semibold">{title}</h2>
       <Button
-        variant="ghost"
+        variant="neutral"
         size="icon"
         onClick={onClose}
         disabled={busy}
         aria-label="Close"
       >
-        ✕
+        <XIcon />
       </Button>
     </header>
   );

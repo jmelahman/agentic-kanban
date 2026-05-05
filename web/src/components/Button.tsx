@@ -27,7 +27,7 @@ const SIZES: Record<Size, string> = {
   sm: "px-2 py-0.5 text-xs",
   md: "px-2 py-1",
   lg: "px-3 py-1",
-  icon: "p-1",
+  icon: "inline-flex h-7 w-7 items-center justify-center",
 };
 
 export function Button({
