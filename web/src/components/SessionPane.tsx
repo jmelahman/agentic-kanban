@@ -1,6 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, BoardState, MergeConfig, PRState, Session, SyncConfig } from "@/api/client";
+import {
+  api,
+  BoardState,
+  MergeConfig,
+  PRState,
+  Session,
+  SyncConfig,
+} from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
@@ -19,8 +26,14 @@ const HEIGHT_STORAGE_KEY = "sessionPane.height";
 // Below this pane width, sync/merge buttons collapse to icon-only.
 const COMPACT_WIDTH = 680;
 
-function loadInitialSize(key: string, fallback: number, min: number, max: number): number {
-  const raw = typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
+function loadInitialSize(
+  key: string,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
+  const raw =
+    typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
   const n = raw ? Number(raw) : NaN;
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
@@ -137,8 +150,14 @@ export function SessionPane({
     };
     const onMove = (e: MouseEvent) => {
       nextSize = isHorizontal
-        ? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, window.innerHeight - e.clientY))
-        : Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - e.clientX));
+        ? Math.min(
+            MAX_HEIGHT,
+            Math.max(MIN_HEIGHT, window.innerHeight - e.clientY),
+          )
+        : Math.min(
+            MAX_WIDTH,
+            Math.max(MIN_WIDTH, window.innerWidth - e.clientX),
+          );
       if (pending == null) pending = requestAnimationFrame(apply);
     };
     const onUp = () => setResizing(false);
@@ -170,7 +189,8 @@ export function SessionPane({
   useEffect(() => {
     if (!syncMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (!syncMenuRef.current?.contains(e.target as Node)) setSyncMenuOpen(false);
+      if (!syncMenuRef.current?.contains(e.target as Node))
+        setSyncMenuOpen(false);
     };
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
@@ -179,7 +199,8 @@ export function SessionPane({
   useEffect(() => {
     if (!mergeMenuOpen) return;
     const handler = (e: MouseEvent) => {
-      if (!mergeMenuRef.current?.contains(e.target as Node)) setMergeMenuOpen(false);
+      if (!mergeMenuRef.current?.contains(e.target as Node))
+        setMergeMenuOpen(false);
     };
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
@@ -192,7 +213,9 @@ export function SessionPane({
     if (!prev) return { prev };
     qc.setQueryData<BoardState>(boardKey, {
       ...prev,
-      sessions: prev.sessions.map((s) => (s.id === sessionId ? { ...s, status } : s)),
+      sessions: prev.sessions.map((s) =>
+        s.id === sessionId ? { ...s, status } : s,
+      ),
     });
     return { prev };
   };
@@ -223,7 +246,8 @@ export function SessionPane({
   }, [ticketId, session, ensureMut]);
   const stopMut = useMutation({
     mutationFn: () => api.stopSession(session!.id),
-    onMutate: () => (session ? optimisticStatus(session.id, "stopping") : { prev: undefined }),
+    onMutate: () =>
+      session ? optimisticStatus(session.id, "stopping") : { prev: undefined },
     onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
@@ -259,7 +283,8 @@ export function SessionPane({
     },
   });
   const mergeMut = useMutation({
-    mutationFn: (strategy: MergeStrategy) => api.mergeTicket(ticketId!, strategy),
+    mutationFn: (strategy: MergeStrategy) =>
+      api.mergeTicket(ticketId!, strategy),
     onSuccess: (_data, strategy) => {
       setMergeMenuOpen(false);
       toast.push("success", `${strategy} into ${baseBranch} succeeded`);
@@ -281,7 +306,8 @@ export function SessionPane({
   const mergeStrategies = enabledMergeStrategies(mergeConfig);
   const syncStrategies = enabledSyncStrategies(syncConfig);
   const status = session?.status;
-  const isRunning = status && !["stopped", "error", "stopping"].includes(status);
+  const isRunning =
+    status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
   const compact = !fullscreen && !isHorizontal && width < COMPACT_WIDTH;
 
@@ -329,7 +355,10 @@ export function SessionPane({
             target="_blank"
             rel="noreferrer"
             className={`hover:underline ${
-              session.pr_state ? PR_STATE_COLOR[session.pr_state as PRState] ?? "text-fg-muted" : "text-fg-muted"
+              session.pr_state
+                ? (PR_STATE_COLOR[session.pr_state as PRState] ??
+                  "text-fg-muted")
+                : "text-fg-muted"
             }`}
             title={session.pr_state ? `PR ${session.pr_state}` : "pull request"}
           >
@@ -337,8 +366,8 @@ export function SessionPane({
           </a>
         )}
         <div className="ml-auto flex gap-2">
-          {!session && (
-            compact ? (
+          {!session &&
+            (compact ? (
               <Button
                 variant="primary"
                 size="icon"
@@ -357,10 +386,9 @@ export function SessionPane({
                 idleLabel="create session"
                 pendingLabel="creating session…"
               />
-            )
-          )}
-          {canStart && (
-            compact ? (
+            ))}
+          {canStart &&
+            (compact ? (
               <Button
                 variant="primary"
                 size="icon"
@@ -369,7 +397,11 @@ export function SessionPane({
                 aria-label="start"
                 title="start"
               >
-                {startMut.isPending || status === "starting" ? <Spinner /> : <PlayIcon />}
+                {startMut.isPending || status === "starting" ? (
+                  <Spinner />
+                ) : (
+                  <PlayIcon />
+                )}
               </Button>
             ) : (
               <Button
@@ -379,10 +411,10 @@ export function SessionPane({
                 idleLabel="start"
                 pendingLabel="starting…"
               />
-            )
-          )}
-          {session && isRunning && (
-            compact ? (
+            ))}
+          {session &&
+            isRunning &&
+            (compact ? (
               <Button
                 variant="secondary"
                 size="icon"
@@ -391,7 +423,11 @@ export function SessionPane({
                 aria-label="stop"
                 title="stop"
               >
-                {stopMut.isPending || status === "stopping" ? <Spinner /> : <StopIcon />}
+                {stopMut.isPending || status === "stopping" ? (
+                  <Spinner />
+                ) : (
+                  <StopIcon />
+                )}
               </Button>
             ) : (
               <Button
@@ -401,10 +437,10 @@ export function SessionPane({
                 idleLabel="stop"
                 pendingLabel="stopping…"
               />
-            )
-          )}
-          {session && syncStrategies.length === 1 && (
-            compact ? (
+            ))}
+          {session &&
+            syncStrategies.length === 1 &&
+            (compact ? (
               <Button
                 variant="neutral"
                 size="icon"
@@ -424,8 +460,7 @@ export function SessionPane({
                 pendingLabel="syncing…"
                 title={`update from ${baseBranch}`}
               />
-            )
-          )}
+            ))}
           {session && syncStrategies.length > 1 && (
             <div className="relative" ref={syncMenuRef}>
               {compact ? (
@@ -458,15 +493,17 @@ export function SessionPane({
                       className="block w-full text-left"
                       onClick={() => syncMut.mutate(s)}
                     >
-                      {SYNC_STRATEGY_LABELS[s]} <span className="font-mono">{baseBranch}</span>
+                      {SYNC_STRATEGY_LABELS[s]}{" "}
+                      <span className="font-mono">{baseBranch}</span>
                     </Button>
                   ))}
                 </div>
               )}
             </div>
           )}
-          {session && mergeStrategies.length === 1 && (
-            compact ? (
+          {session &&
+            mergeStrategies.length === 1 &&
+            (compact ? (
               <Button
                 variant="neutral"
                 size="icon"
@@ -486,8 +523,7 @@ export function SessionPane({
                 pendingLabel="merging…"
                 title={`integrate into ${baseBranch}`}
               />
-            )
-          )}
+            ))}
           {session && mergeStrategies.length > 1 && (
             <div className="relative" ref={mergeMenuRef}>
               {compact ? (
@@ -577,15 +613,27 @@ export function SessionPane({
           >
             {fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button variant="neutral" size="icon" onClick={onClose}>
             ✕
           </Button>
         </div>
       </div>
       <div className="flex border-b border-border text-sm">
-        <Tab active={tab === "agent"} onClick={() => setTab("agent")} label="agent" />
-        <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="shell" />
-        <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
+        <Tab
+          active={tab === "agent"}
+          onClick={() => setTab("agent")}
+          label="agent"
+        />
+        <Tab
+          active={tab === "shell"}
+          onClick={() => setTab("shell")}
+          label="shell"
+        />
+        <Tab
+          active={tab === "tasks"}
+          onClick={() => setTab("tasks")}
+          label="tasks"
+        />
       </div>
       <div className="min-h-0 flex-1 bg-bg">
         {tab === "agent" && (
@@ -593,7 +641,9 @@ export function SessionPane({
             {session && isRunning ? (
               <div ref={onAgentSlot} className="h-full w-full" />
             ) : (
-              <p className="p-4 text-sm text-fg-muted">Start the session to attach the agent.</p>
+              <p className="p-4 text-sm text-fg-muted">
+                Start the session to attach the agent.
+              </p>
             )}
           </div>
         )}
@@ -602,11 +652,15 @@ export function SessionPane({
             {session && isRunning ? (
               <div ref={onShellSlot} className="h-full w-full" />
             ) : (
-              <p className="p-4 text-sm text-fg-muted">Start the session to attach a shell.</p>
+              <p className="p-4 text-sm text-fg-muted">
+                Start the session to attach a shell.
+              </p>
             )}
           </div>
         )}
-        {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
+        {tab === "tasks" && session && (
+          <TasksPanel session={session} boardId={boardId} />
+        )}
       </div>
     </aside>
   );
@@ -692,7 +746,15 @@ function CheckIcon() {
   );
 }
 
-function Tab({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
+function Tab({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
   return (
     <button
       onClick={onClick}
