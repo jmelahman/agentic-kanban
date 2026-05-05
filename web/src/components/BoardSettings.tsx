@@ -93,27 +93,27 @@ export function BoardSettings({
         }}
       >
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Name</span>
+          <span className="text-xs text-fg-muted">Name</span>
           <input
-            className="rounded bg-zinc-900 px-2 py-1"
+            className="rounded bg-surface px-2 py-1"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Repository path</span>
+          <span className="text-xs text-fg-muted">Repository path</span>
           <input
-            className="rounded bg-zinc-900 px-2 py-1 font-mono"
+            className="rounded bg-surface px-2 py-1 font-mono"
             placeholder="/host/path/to/repo (optional)"
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Mount path</span>
+          <span className="text-xs text-fg-muted">Mount path</span>
           <input
-            className="rounded bg-zinc-900 px-2 py-1 font-mono"
+            className="rounded bg-surface px-2 py-1 font-mono"
             placeholder="host directory mounted into the container (defaults to repository)"
             value={mount}
             onChange={(e) => setMount(e.target.value)}
@@ -121,9 +121,9 @@ export function BoardSettings({
         </label>
         {hasRepo && (
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Base branch</span>
+            <span className="text-xs text-fg-muted">Base branch</span>
             <input
-              className="rounded bg-zinc-900 px-2 py-1"
+              className="rounded bg-surface px-2 py-1"
               value={base}
               onChange={(e) => setBase(e.target.value)}
               required
@@ -132,9 +132,9 @@ export function BoardSettings({
         )}
         {hasRepo && (
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Worktree root</span>
+            <span className="text-xs text-fg-muted">Worktree root</span>
             <input
-              className="rounded bg-zinc-900 px-2 py-1 font-mono"
+              className="rounded bg-surface px-2 py-1 font-mono"
               placeholder="parent directory for this board's worktrees"
               value={worktreeRoot}
               onChange={(e) => setWorktreeRoot(e.target.value)}
@@ -149,7 +149,7 @@ export function BoardSettings({
             )}
           </label>
         )}
-        <div className="flex flex-col gap-1 text-xs text-zinc-500">
+        <div className="flex flex-col gap-1 text-xs text-fg-muted">
           <span>slug: <span className="font-mono">{board.slug}</span></span>
         </div>
         <div className="mt-2 flex items-center justify-end gap-2">
@@ -172,9 +172,9 @@ export function BoardSettings({
           />
         </div>
       </form>
-      <div className="border-t border-zinc-800 p-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-red-400">Danger zone</h3>
-        <p className="mt-1 text-xs text-zinc-400">
+      <div className="border-t border-border p-4">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-danger">Danger zone</h3>
+        <p className="mt-1 text-xs text-fg-muted">
           Deletes this board, all its tickets, and stops/destroys every running session
           (containers, worktrees, and branches).
         </p>

@@ -43,9 +43,9 @@ export function ArchivedDrawer({
   return (
     <Drawer open={open} onClose={onClose} title="Archived tickets">
       <div className="flex-1 overflow-y-auto p-3">
-        {archivedQ.isLoading && <p className="text-sm text-zinc-400">Loading…</p>}
+        {archivedQ.isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
         {archivedQ.data && archivedQ.data.length === 0 && (
-          <p className="text-sm text-zinc-400">No archived tickets.</p>
+          <p className="text-sm text-fg-muted">No archived tickets.</p>
         )}
         <ul className="flex flex-col gap-2">
           {(archivedQ.data ?? []).map((t) => (
@@ -88,12 +88,12 @@ function ArchivedRow({
   const archivedAt = ticket.archived_at ? new Date(ticket.archived_at * 1000).toLocaleString() : "";
   const busy = deletePending || unarchivePending;
   return (
-    <li className="rounded border border-zinc-800 bg-zinc-900 p-2 text-sm">
+    <li className="rounded border border-border bg-surface p-2 text-sm">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="font-medium">{ticket.title}</div>
-          <div className="truncate font-mono text-xs text-zinc-500">{ticket.slug}</div>
-          {archivedAt && <div className="text-xs text-zinc-500">archived {archivedAt}</div>}
+          <div className="truncate font-mono text-xs text-fg-muted">{ticket.slug}</div>
+          {archivedAt && <div className="text-xs text-fg-muted">archived {archivedAt}</div>}
         </div>
         <div className="flex shrink-0 gap-1">
           <Button

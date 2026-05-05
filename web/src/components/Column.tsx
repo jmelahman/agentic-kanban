@@ -31,11 +31,11 @@ export function Column(props: {
   return (
     <div
       ref={setNodeRef}
-      className={`flex h-full min-w-72 flex-1 flex-col gap-2 overflow-hidden rounded border border-zinc-800 bg-zinc-900 p-2 ${isOver ? "ring-2 ring-red-600" : ""}`}
+      className={`flex h-full min-w-72 flex-1 flex-col gap-2 overflow-hidden rounded border border-border bg-surface p-2 ${isOver ? "ring-2 ring-accent-600" : ""}`}
     >
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">{props.column.name}</h2>
-        <span className="text-xs text-zinc-500">{props.tickets.length}</span>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{props.column.name}</h2>
+        <span className="text-xs text-fg-muted">{props.tickets.length}</span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto">
         {props.tickets
@@ -60,7 +60,7 @@ export function Column(props: {
         >
           <input
             autoFocus
-            className="rounded bg-zinc-800 px-2 py-1 text-sm"
+            className="rounded bg-surface-2 px-2 py-1 text-sm"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="ticket title"

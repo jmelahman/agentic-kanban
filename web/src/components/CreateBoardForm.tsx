@@ -58,9 +58,9 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
           }}
         >
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Name</span>
+            <span className="text-xs text-fg-muted">Name</span>
             <input
-              className="rounded bg-zinc-900 px-2 py-1"
+              className="rounded bg-surface px-2 py-1"
               placeholder="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -69,18 +69,18 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Repository path</span>
+            <span className="text-xs text-fg-muted">Repository path</span>
             <input
-              className="rounded bg-zinc-900 px-2 py-1"
+              className="rounded bg-surface px-2 py-1"
               placeholder="/host/path/to/repo (optional)"
               value={repo}
               onChange={(e) => setRepo(e.target.value)}
             />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-xs text-zinc-400">Mount path</span>
+            <span className="text-xs text-fg-muted">Mount path</span>
             <input
-              className="rounded bg-zinc-900 px-2 py-1"
+              className="rounded bg-surface px-2 py-1"
               placeholder="host directory mounted into the container (defaults to repository)"
               value={mount}
               onChange={(e) => setMount(e.target.value)}
@@ -88,9 +88,9 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
           </label>
           {hasRepo && (
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-zinc-400">Base branch</span>
+              <span className="text-xs text-fg-muted">Base branch</span>
               <input
-                className="rounded bg-zinc-900 px-2 py-1"
+                className="rounded bg-surface px-2 py-1"
                 placeholder="base branch"
                 value={base}
                 onChange={(e) => setBase(e.target.value)}
@@ -98,7 +98,7 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
             </label>
           )}
           {!hasRepo && !hasMount && (
-            <p className="text-xs text-zinc-500">Provide at least a repository path or a mount path.</p>
+            <p className="text-xs text-fg-muted">Provide at least a repository path or a mount path.</p>
           )}
           <div className="mt-2 flex items-center justify-end gap-2">
             <Button

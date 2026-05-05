@@ -16,7 +16,7 @@ type Common = {
 export function Modal({ open, onClose, title, children, busy = false }: Common) {
   return (
     <DialogShell open={open} onClose={onClose} busy={busy} flavor="modal">
-      <div className="relative w-[520px] max-w-[calc(100vw-2rem)] rounded border border-zinc-800 bg-zinc-950 shadow-lg">
+      <div className="relative w-[520px] max-w-[calc(100vw-2rem)] rounded border border-border bg-bg shadow-lg">
         <DialogHeader title={title} onClose={onClose} busy={busy} />
         {children}
       </div>
@@ -27,7 +27,7 @@ export function Modal({ open, onClose, title, children, busy = false }: Common) 
 export function Drawer({ open, onClose, title, children, busy = false }: Common) {
   return (
     <DialogShell open={open} onClose={onClose} busy={busy} flavor="drawer">
-      <aside className="flex w-[480px] flex-col border-l border-zinc-800 bg-zinc-950">
+      <aside className="flex w-[480px] flex-col border-l border-border bg-bg">
         <DialogHeader title={title} onClose={onClose} busy={busy} />
         {children}
       </aside>
@@ -76,7 +76,7 @@ function DialogShell({
 
 function DialogHeader({ title, onClose, busy }: { title: string; onClose: () => void; busy: boolean }) {
   return (
-    <header className="flex items-center justify-between border-b border-zinc-800 px-4 py-2">
+    <header className="flex items-center justify-between border-b border-border px-4 py-2">
       <h2 className="text-sm font-semibold">{title}</h2>
       <Button
         variant="ghost"

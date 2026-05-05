@@ -286,10 +286,10 @@ export function SessionPane({
   const compact = !fullscreen && !isHorizontal && width < COMPACT_WIDTH;
 
   const paneClass = fullscreen
-    ? "fixed inset-0 z-40 flex flex-col bg-zinc-950"
+    ? "fixed inset-0 z-40 flex flex-col bg-bg"
     : isHorizontal
-      ? "relative flex flex-col border-t border-zinc-800 bg-zinc-950"
-      : "relative flex flex-col border-l border-zinc-800 bg-zinc-950";
+      ? "relative flex flex-col border-t border-border bg-bg"
+      : "relative flex flex-col border-l border-border bg-bg";
   const paneStyle = fullscreen
     ? undefined
     : isHorizontal
@@ -311,25 +311,25 @@ export function SessionPane({
           }
           className={
             isHorizontal
-              ? `absolute left-0 top-0 z-20 h-1 w-full -translate-y-1/2 cursor-row-resize hover:bg-red-500/40 ${
-                  resizing ? "bg-red-500/60" : ""
+              ? `absolute left-0 top-0 z-20 h-1 w-full -translate-y-1/2 cursor-row-resize hover:bg-accent-500/40 ${
+                  resizing ? "bg-accent-500/60" : ""
                 }`
-              : `absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-red-500/40 ${
-                  resizing ? "bg-red-500/60" : ""
+              : `absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-accent-500/40 ${
+                  resizing ? "bg-accent-500/60" : ""
                 }`
           }
         />
       )}
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-2 text-sm">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-sm">
         <span className="font-medium">Ticket #{ticketId}</span>
-        <span className="text-zinc-400">{session?.branch_name}</span>
+        <span className="text-fg-muted">{session?.branch_name}</span>
         {session?.pr_number != null && session.pr_url && (
           <a
             href={session.pr_url}
             target="_blank"
             rel="noreferrer"
             className={`hover:underline ${
-              session.pr_state ? PR_STATE_COLOR[session.pr_state as PRState] ?? "text-zinc-400" : "text-zinc-400"
+              session.pr_state ? PR_STATE_COLOR[session.pr_state as PRState] ?? "text-fg-muted" : "text-fg-muted"
             }`}
             title={session.pr_state ? `PR ${session.pr_state}` : "pull request"}
           >
@@ -450,7 +450,7 @@ export function SessionPane({
                 />
               )}
               {syncMenuOpen && (
-                <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
+                <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-border bg-surface p-1 text-xs shadow-lg">
                   {syncStrategies.map((s) => (
                     <Button
                       key={s}
@@ -512,7 +512,7 @@ export function SessionPane({
                 />
               )}
               {mergeMenuOpen && (
-                <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-zinc-700 bg-zinc-900 p-1 text-xs shadow-lg">
+                <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-border bg-surface p-1 text-xs shadow-lg">
                   {mergeStrategies.map((s) => (
                     <Button
                       key={s}
@@ -571,7 +571,7 @@ export function SessionPane({
           <Button
             variant="ghost"
             size="icon"
-            className="hover:bg-zinc-800 hover:text-zinc-200"
+            className="hover:bg-surface-2 hover:text-fg"
             onClick={() => setFullscreen((v) => !v)}
             aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
             title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
@@ -583,18 +583,18 @@ export function SessionPane({
           </Button>
         </div>
       </div>
-      <div className="flex border-b border-zinc-800 text-sm">
+      <div className="flex border-b border-border text-sm">
         <Tab active={tab === "agent"} onClick={() => setTab("agent")} label="agent" />
         <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="shell" />
         <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
       </div>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 bg-bg">
         {tab === "agent" && (
           <div className="h-full">
             {session && isRunning ? (
               <div ref={onAgentSlot} className="h-full w-full" />
             ) : (
-              <p className="p-4 text-sm text-zinc-400">Start the session to attach the agent.</p>
+              <p className="p-4 text-sm text-fg-muted">Start the session to attach the agent.</p>
             )}
           </div>
         )}
@@ -603,7 +603,7 @@ export function SessionPane({
             {session && isRunning ? (
               <div ref={onShellSlot} className="h-full w-full" />
             ) : (
-              <p className="p-4 text-sm text-zinc-400">Start the session to attach a shell.</p>
+              <p className="p-4 text-sm text-fg-muted">Start the session to attach a shell.</p>
             )}
           </div>
         )}
@@ -697,7 +697,7 @@ function Tab({ active, onClick, label }: { active: boolean; onClick: () => void;
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-2 transition-colors duration-150 ${active ? "border-b-2 border-red-500 text-zinc-100" : "text-zinc-400 hover:text-zinc-200"}`}
+      className={`px-3 py-2 transition-colors duration-150 ${active ? "border-b-2 border-accent-500 text-fg" : "text-fg-muted hover:text-fg"}`}
     >
       {label}
     </button>

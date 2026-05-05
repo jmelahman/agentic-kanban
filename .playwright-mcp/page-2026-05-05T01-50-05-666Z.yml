@@ -1,0 +1,125 @@
+- generic [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - heading "Kanban" [level=1] [ref=e5]
+      - combobox [ref=e6]:
+        - option "— select board —"
+        - option "Onyx" [selected]
+        - option "Kanban"
+        - option "Internal Tools"
+        - option "Code"
+      - generic [ref=e7]:
+        - button "App settings" [active] [ref=e8]:
+          - img [ref=e9]
+        - button "Board settings" [ref=e16]:
+          - img [ref=e17]
+        - button "archived" [ref=e20]
+        - button "+ new board" [ref=e13]
+    - main [ref=e14]:
+      - generic [ref=e21]:
+        - generic [ref=e22]:
+          - generic [ref=e23]:
+            - generic [ref=e24]:
+              - heading "Backlog" [level=2] [ref=e25]
+              - generic [ref=e26]: "0"
+            - button "+ add ticket" [ref=e28]
+          - generic [ref=e29]:
+            - generic [ref=e30]:
+              - heading "In Progress" [level=2] [ref=e31]
+              - generic [ref=e32]: "2"
+            - generic [ref=e33]:
+              - button "Demo for bo awaiting_perm" [ref=e34] [cursor=pointer]:
+                - generic [ref=e35]:
+                  - generic [ref=e36]: Demo for bo
+                  - generic [ref=e37]: awaiting_perm
+              - button "new ticket with pi idle" [ref=e38] [cursor=pointer]:
+                - generic [ref=e39]:
+                  - generic [ref=e40]: new ticket with pi
+                  - generic [ref=e41]: idle
+            - button "+ add ticket" [ref=e42]
+          - generic [ref=e43]:
+            - generic [ref=e44]:
+              - heading "Review" [level=2] [ref=e45]
+              - generic [ref=e46]: "1"
+            - button "Upgrade litellm to latest awaiting_perm" [ref=e48] [cursor=pointer]:
+              - generic [ref=e49]:
+                - generic [ref=e50]: Upgrade litellm to latest
+                - generic [ref=e51]: awaiting_perm
+            - button "+ add ticket" [ref=e52]
+          - generic [ref=e53]:
+            - generic [ref=e54]:
+              - heading "Done" [level=2] [ref=e55]
+              - generic [ref=e56]: "3"
+            - generic [ref=e57]:
+              - 'button "Ensure we use `uv pip install --freeze` stopped" [ref=e58] [cursor=pointer]':
+                - generic [ref=e59]:
+                  - generic [ref=e60]: "Ensure we use `uv pip install --freeze`"
+                  - generic [ref=e61]: stopped
+              - 'button "chore(deps): pip install with `--no-deps` stopped" [ref=e62] [cursor=pointer]':
+                - generic [ref=e63]:
+                  - generic [ref=e64]: "chore(deps): pip install with `--no-deps`"
+                  - generic [ref=e65]: stopped
+              - 'button "chore(format): fix whitespace in backend/onyx/utils/playwright_fetch.py stopped" [ref=e66] [cursor=pointer]':
+                - generic [ref=e67]:
+                  - generic [ref=e68]: "chore(format): fix whitespace in backend/onyx/utils/playwright_fetch.py"
+                  - generic [ref=e69]: stopped
+            - button "+ add ticket" [ref=e70]
+        - status [ref=e71]
+  - generic:
+    - textbox "Terminal input":
+      - textbox "Terminal input"
+    - textbox "Terminal input":
+      - textbox "Terminal input"
+    - textbox "Terminal input":
+      - textbox "Terminal input"
+  - dialog [ref=e72]:
+    - generic [ref=e74]:
+      - banner [ref=e75]:
+        - heading "Settings" [level=2] [ref=e76]
+        - button "Close" [ref=e77]: ✕
+      - generic [ref=e78]:
+        - generic [ref=e79]:
+          - generic [ref=e80]: Agent harness
+          - combobox "Agent harness Saved to ~/.config/kanban/config.toml. Takes effect on the next session attach; running terminals keep their current process. Leave unset to fall back to the repo's .kanban.toml or the default." [ref=e81]:
+            - option "— use project / default —"
+            - option "Claude Code" [selected]
+            - option "pi (Pi Labs / Ollama)"
+          - generic [ref=e82]: Saved to ~/.config/kanban/config.toml. Takes effect on the next session attach; running terminals keep their current process. Leave unset to fall back to the repo's .kanban.toml or the default.
+        - generic [ref=e83]:
+          - generic [ref=e84]: Worktrees directory
+          - textbox "Worktrees directory Parent directory for new boards' worktrees. Leave empty to use the default. Supports ~ for your home directory. Existing boards keep their stored worktree_root." [ref=e85]:
+            - /placeholder: /home/jamison/code/
+            - text: /home/jamison/code/
+          - generic [ref=e86]: Parent directory for new boards' worktrees. Leave empty to use the default. Supports ~ for your home directory. Existing boards keep their stored worktree_root.
+        - generic [ref=e87]:
+          - generic [ref=e88]: Terminal position
+          - combobox "Terminal position" [ref=e89]:
+            - option "vertical (right side)" [selected]
+            - option "horizontal (bottom)"
+        - group "Appearance" [ref=e90]:
+          - generic [ref=e91]: Appearance
+          - generic [ref=e92]:
+            - generic [ref=e93]: Theme
+            - radiogroup [ref=e94]:
+              - radio "System" [checked] [ref=e95]
+              - radio "Light" [ref=e96]
+              - radio "Dark" [ref=e97]
+          - generic [ref=e98]:
+            - checkbox "High contrast" [ref=e99]
+            - generic [ref=e100]: High contrast
+          - generic [ref=e101]:
+            - generic [ref=e102]: Accent
+            - generic [ref=e103]:
+              - button "Red" [pressed] [ref=e104]
+              - button "Orange" [ref=e105]
+              - button "Amber" [ref=e106]
+              - button "Green" [ref=e107]
+              - button "Teal" [ref=e108]
+              - button "Blue" [ref=e109]
+              - button "Indigo" [ref=e110]
+              - button "Purple" [ref=e111]
+              - button "Pink" [ref=e112]
+        - generic [ref=e113]:
+          - button "cancel" [ref=e114]
+          - button "save" [disabled] [ref=e115]
+      - contentinfo [ref=e116]: v0.0.4-22-g6d62813

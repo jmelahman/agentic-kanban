@@ -46,7 +46,7 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
   }, [warnings, toast]);
 
   if (session.status === "stopped") {
-    return <p className="p-4 text-sm text-zinc-400">Start the session to discover tasks.</p>;
+    return <p className="p-4 text-sm text-fg-muted">Start the session to discover tasks.</p>;
   }
 
   const tasks = tasksQ.data?.tasks ?? [];
@@ -57,23 +57,23 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
   return (
     <div className="flex h-full flex-col gap-3 overflow-y-auto p-3 text-sm [scrollbar-gutter:stable]">
       <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Detected tasks</h3>
-        {tasks.length === 0 && <p className="text-zinc-500">No .vscode/tasks.json or launch.json detected.</p>}
+        <h3 className="mb-2 text-xs uppercase tracking-wide text-fg-muted">Detected tasks</h3>
+        {tasks.length === 0 && <p className="text-fg-muted">No .vscode/tasks.json or launch.json detected.</p>}
         <ul className="flex flex-col gap-1">
           {tasks.map((t) => {
             const port = t.has_port ? portByContainer.get(t.container_port!) : undefined;
             return (
-              <li key={t.label} className="flex items-center justify-between rounded bg-zinc-900 px-2 py-1">
+              <li key={t.label} className="flex items-center justify-between rounded bg-surface px-2 py-1">
                 <div>
                   <div className="font-medium">{t.label}</div>
-                  <div className="text-xs text-zinc-500">{t.command} {t.args?.join(" ")}</div>
+                  <div className="text-xs text-fg-muted">{t.command} {t.args?.join(" ")}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   {t.has_port && (
-                    <span className="text-xs text-zinc-400">
+                    <span className="text-xs text-fg-muted">
                       :{t.container_port}
                       {port && (
-                        <a className="ml-1 text-red-400" href={`http://localhost:${port.host_port}`} target="_blank" rel="noreferrer">
+                        <a className="ml-1 text-accent-500" href={`http://localhost:${port.host_port}`} target="_blank" rel="noreferrer">
                           → :{port.host_port}
                         </a>
                       )}
@@ -93,15 +93,15 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
           })}
         </ul>
       </section>
-      <section>
-        <h3 className="mb-2 text-xs uppercase tracking-wide text-zinc-400">Runs</h3>
+      <section className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+        <h3 className="mb-2 text-xs uppercase tracking-wide text-fg-muted">Runs</h3>
         <ul className="flex flex-col gap-1">
           {runs.map((r) => (
-            <li key={r.id} className="rounded bg-zinc-900 p-2">
+            <li key={r.id} className="rounded bg-surface p-2">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">{r.task_label}</div>
-                  <div className="text-xs text-zinc-500">{r.status}{r.exit_code != null ? ` (exit ${r.exit_code})` : ""}</div>
+                  <div className="text-xs text-fg-muted">{r.status}{r.exit_code != null ? ` (exit ${r.exit_code})` : ""}</div>
                 </div>
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setOpenOutputId(openOutputId === r.id ? null : r.id)}>
@@ -157,7 +157,7 @@ function TaskOutput({ runId }: { runId: number }) {
           {copied ? "copied" : "copy"}
         </Button>
       </div>
-      <pre ref={ref} className="max-h-64 overflow-y-auto rounded bg-black p-2 text-xs leading-tight text-zinc-200 [scrollbar-gutter:stable]">
+      <pre ref={ref} className="max-h-64 overflow-y-auto rounded bg-bg p-2 text-xs leading-tight text-fg [scrollbar-gutter:stable]">
         {lines.join("\n")}
       </pre>
     </div>

@@ -8,10 +8,16 @@ import { Board } from "@/components/Board";
 import { BoardSettings } from "@/components/BoardSettings";
 import { Button } from "@/components/Button";
 import { CreateBoardForm } from "@/components/CreateBoardForm";
+import { useAccent } from "@/hooks/useAccent";
+import { useContrast } from "@/hooks/useContrast";
+import { useThemeMode } from "@/hooks/useThemeMode";
 import { CogIcon, MenuIcon } from "@/icons";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
 export default function App() {
+  useThemeMode();
+  useContrast();
+  useAccent();
   const qc = useQueryClient();
   const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -49,10 +55,10 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center gap-4 border-b border-zinc-800 px-4 py-2">
+      <header className="flex items-center gap-4 border-b border-border px-4 py-2">
         <h1 className="text-lg font-semibold">Kanban</h1>
         <select
-          className="rounded bg-zinc-900 px-2 py-1 text-sm"
+          className="rounded bg-surface px-2 py-1 text-sm"
           value={activeId ?? ""}
           onChange={(e) => setActiveId(Number(e.target.value))}
         >
@@ -110,7 +116,7 @@ export default function App() {
         </div>
       )}
       <main className="min-h-0 flex-1 overflow-hidden">
-        {activeId != null ? <Board boardId={activeId} /> : <p className="p-4 text-sm text-zinc-400">No board selected.</p>}
+        {activeId != null ? <Board boardId={activeId} /> : <p className="p-4 text-sm text-fg-muted">No board selected.</p>}
       </main>
       {activeId != null && (
         <ArchivedDrawer open={showArchived} boardId={activeId} onClose={() => setShowArchived(false)} />

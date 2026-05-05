@@ -61,8 +61,8 @@ function ToastViewport({ toasts, dismiss }: { toasts: Toast[]; dismiss: (id: num
 }
 
 const kindStyles: Record<ToastKind, string> = {
-  error: "border-red-700 bg-red-950/95 text-red-100",
-  info: "border-zinc-700 bg-zinc-900/95 text-zinc-100",
+  error: "border-danger-border bg-danger-bg text-danger",
+  info: "border-border bg-surface text-fg",
   success: "border-emerald-700 bg-emerald-950/95 text-emerald-100",
 };
 

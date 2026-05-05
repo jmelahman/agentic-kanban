@@ -15,12 +15,12 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
 const BASE = "rounded transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-red-700 text-white hover:bg-red-600",
-  secondary: "bg-zinc-700 text-white hover:bg-zinc-600",
-  neutral: "bg-zinc-800 text-zinc-300 hover:bg-zinc-700",
-  danger: "bg-red-900/60 text-red-100 hover:bg-red-800",
-  ghost: "text-zinc-400 hover:text-zinc-100",
-  dashed: "border border-dashed border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:border-zinc-600",
+  primary: "bg-accent-700 text-white hover:bg-accent-600",
+  secondary: "bg-surface-3 text-fg hover:bg-surface-4",
+  neutral: "bg-surface-2 text-fg hover:bg-surface-3",
+  danger: "bg-danger-bg text-danger hover:bg-danger-border hover:text-fg",
+  ghost: "text-fg-muted hover:text-fg",
+  dashed: "border border-dashed border-border text-fg-muted hover:bg-surface-2 hover:border-fg-muted",
 };
 
 const SIZES: Record<Size, string> = {

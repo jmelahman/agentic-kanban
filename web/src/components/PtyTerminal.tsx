@@ -1,7 +1,16 @@
 import { useEffect, useRef } from "react";
-import { init, Terminal, FitAddon } from "ghostty-web";
+import { init, Terminal, FitAddon, ITheme } from "ghostty-web";
+import { APPEARANCE_EVENT } from "@/hooks/useThemeMode";
 
 const ghosttyReady = init();
+
+function getTerminalTheme(): ITheme {
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    background: cs.getPropertyValue("--color-bg").trim(),
+    foreground: cs.getPropertyValue("--color-fg").trim(),
+  };
+}
 
 type Props = {
   sessionId: number;
@@ -29,7 +38,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
       const term = new Terminal({
         fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
         fontSize: 13,
-        theme: { background: "#09090b" },
+        theme: getTerminalTheme(),
       });
       const fit = new FitAddon();
       fitRef.current = fit;
@@ -74,9 +83,15 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
       const observer = new ResizeObserver(scheduleFit);
       observer.observe(host);
 
+      const onAppearance = () => {
+        term.options.theme = getTerminalTheme();
+      };
+      window.addEventListener(APPEARANCE_EVENT, onAppearance);
+
       cleanup = () => {
         if (fitTimer != null) clearTimeout(fitTimer);
         observer.disconnect();
+        window.removeEventListener(APPEARANCE_EVENT, onAppearance);
         dataDisp.dispose();
         resizeDisp.dispose();
         ws.close();

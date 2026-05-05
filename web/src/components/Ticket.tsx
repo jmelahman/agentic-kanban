@@ -5,13 +5,13 @@ import { api, Session, Ticket as TicketType } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 
 const STATUS_COLOR: Record<string, string> = {
-  stopped: "text-zinc-500",
+  stopped: "text-fg-muted",
   starting: "text-amber-400",
   stopping: "text-amber-400",
   idle: "text-emerald-400",
   working: "text-sky-400",
   awaiting_perm: "text-yellow-400",
-  error: "text-red-400",
+  error: "text-danger",
 };
 
 function TicketCard({
@@ -40,7 +40,7 @@ function TicketCard({
   titleSlot?: React.ReactNode;
 }) {
   const status = session?.status ?? "stopped";
-  const interactiveCls = interactive ? "cursor-pointer hover:bg-zinc-700" : "";
+  const interactiveCls = interactive ? "cursor-pointer hover:bg-surface-3" : "";
   return (
     <div
       ref={innerRef}
@@ -49,13 +49,13 @@ function TicketCard({
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       data-ticket-card="true"
-      className={`rounded bg-zinc-800 p-2 text-sm transition-colors duration-150 ${interactiveCls} ${active ? "ring-2 ring-red-500" : ""} ${className ?? ""}`}
+      className={`rounded bg-surface-2 p-2 text-sm transition-colors duration-150 ${interactiveCls} ${active ? "ring-2 ring-accent-500" : ""} ${className ?? ""}`}
     >
       <div className="flex items-center justify-between gap-2">
         {titleSlot ?? <span className="font-medium">{ticket.title}</span>}
-        <span className={`text-xs ${STATUS_COLOR[status] ?? "text-zinc-500"}`}>{status}</span>
+        <span className={`text-xs ${STATUS_COLOR[status] ?? "text-fg-muted"}`}>{status}</span>
       </div>
-      {ticket.body && <p className="mt-1 text-xs text-zinc-400 line-clamp-2">{ticket.body}</p>}
+      {ticket.body && <p className="mt-1 text-xs text-fg-muted line-clamp-2">{ticket.body}</p>}
     </div>
   );
 }
@@ -144,7 +144,7 @@ export function Ticket({
             }}
             onBlur={submit}
             disabled={renameMut.isPending}
-            className="min-w-0 flex-1 rounded bg-zinc-900 px-1 py-0.5 text-sm font-medium outline-none ring-1 ring-zinc-700 focus:ring-red-500"
+            className="min-w-0 flex-1 rounded bg-surface px-1 py-0.5 text-sm font-medium outline-none ring-1 ring-border focus:ring-accent-500"
           />
         ) : undefined
       }
@@ -166,7 +166,7 @@ export function TicketDragPreview({
       ticket={ticket}
       session={session}
       active={active}
-      className="shadow-2xl ring-1 ring-zinc-700"
+      className="shadow-2xl ring-1 ring-border"
     />
   );
 }

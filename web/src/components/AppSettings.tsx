@@ -2,6 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { ACCENTS, Accent, setAccent, useAccent } from "@/hooks/useAccent";
+import { Contrast, setContrast, useContrast } from "@/hooks/useContrast";
+import {
+  setThemeMode,
+  ThemeMode,
+  useThemeMode,
+} from "@/hooks/useThemeMode";
 import {
   setTerminalOrientation,
   TerminalOrientation,
@@ -10,6 +17,18 @@ import {
 import { useToast } from "@/toast";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
+
+const ACCENT_LABELS: Record<Accent, string> = {
+  red: "Red",
+  orange: "Orange",
+  amber: "Amber",
+  green: "Green",
+  teal: "Teal",
+  blue: "Blue",
+  indigo: "Indigo",
+  purple: "Purple",
+  pink: "Pink",
+};
 
 export function AppSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
@@ -22,6 +41,9 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
   const [worktreesRoot, setWorktreesRoot] = useState<string>("");
   const savedOrientation = useTerminalOrientation();
   const [orientation, setOrientation] = useState<TerminalOrientation>(savedOrientation);
+  const { mode } = useThemeMode();
+  const contrast = useContrast();
+  const accent = useAccent();
 
   useEffect(() => {
     if (settingsQ.data) {
@@ -75,9 +97,9 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
         }}
       >
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Agent harness</span>
+          <span className="text-xs text-fg-muted">Agent harness</span>
           <select
-            className="rounded bg-zinc-900 px-2 py-1"
+            className="rounded bg-surface px-2 py-1"
             value={harness}
             onChange={(e) => setHarness(e.target.value)}
             disabled={settingsQ.isLoading || harnessesQ.isLoading}
@@ -89,7 +111,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
               </option>
             ))}
           </select>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-fg-muted">
             Saved to <span className="font-mono">~/.config/kanban/config.toml</span>. Takes
             effect on the next session attach; running terminals keep their current process.
             Leave unset to fall back to the repo's <span className="font-mono">.kanban.toml</span>
@@ -97,17 +119,17 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
           </span>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Worktrees directory</span>
+          <span className="text-xs text-fg-muted">Worktrees directory</span>
           <input
             type="text"
-            className="rounded bg-zinc-900 px-2 py-1 font-mono disabled:opacity-50"
+            className="rounded bg-surface px-2 py-1 font-mono disabled:opacity-50"
             value={worktreesRoot}
             placeholder={worktreesResolved || "~/.local/share/kanban/worktrees"}
             onChange={(e) => setWorktreesRoot(e.target.value)}
             disabled={settingsQ.isLoading || worktreesLocked}
             spellCheck={false}
           />
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-fg-muted">
             Parent directory for new boards' worktrees. Leave empty to use the
             default. Supports <span className="font-mono">~</span> for your
             home directory. Existing boards keep their stored
@@ -123,9 +145,9 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
           </span>
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-zinc-400">Terminal position</span>
+          <span className="text-xs text-fg-muted">Terminal position</span>
           <select
-            className="rounded bg-zinc-900 px-2 py-1"
+            className="rounded bg-surface px-2 py-1"
             value={orientation}
             onChange={(e) => setOrientation(e.target.value as TerminalOrientation)}
           >
@@ -133,6 +155,27 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
             <option value="horizontal">horizontal (bottom)</option>
           </select>
         </label>
+        <fieldset className="flex flex-col gap-2 border-t border-border pt-3">
+          <legend className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+            Appearance
+          </legend>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-fg-muted">Theme</span>
+            <ThemeModeToggle value={mode} onChange={setThemeMode} />
+          </div>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={contrast === "high"}
+              onChange={(e) => setContrast(e.target.checked ? "high" : ("normal" as Contrast))}
+            />
+            <span>High contrast</span>
+          </label>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs text-fg-muted">Accent</span>
+            <AccentSwatches value={accent} onChange={setAccent} />
+          </div>
+        </fieldset>
         <div className="mt-2 flex items-center justify-end gap-2">
           <Button
             type="button"
@@ -153,9 +196,74 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
           />
         </div>
       </form>
-      <footer className="border-t border-zinc-800 px-4 py-2 font-mono text-[11px] text-zinc-500">
+      <footer className="border-t border-border px-4 py-2 font-mono text-[11px] text-fg-muted">
         {versionQ.data?.version ?? "…"}
       </footer>
     </Modal>
+  );
+}
+
+function ThemeModeToggle({
+  value,
+  onChange,
+}: {
+  value: ThemeMode;
+  onChange: (v: ThemeMode) => void;
+}) {
+  const opts: { v: ThemeMode; label: string }[] = [
+    { v: "system", label: "System" },
+    { v: "light", label: "Light" },
+    { v: "dark", label: "Dark" },
+  ];
+  return (
+    <div role="radiogroup" className="inline-flex w-fit overflow-hidden rounded border border-border">
+      {opts.map((o, i) => {
+        const active = o.v === value;
+        return (
+          <button
+            key={o.v}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            onClick={() => onChange(o.v)}
+            className={`px-3 py-1 text-sm transition-colors duration-150 ${
+              i > 0 ? "border-l border-border" : ""
+            } ${
+              active
+                ? "bg-accent-700 text-white"
+                : "bg-surface text-fg hover:bg-surface-2"
+            }`}
+          >
+            {o.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function AccentSwatches({ value, onChange }: { value: Accent; onChange: (v: Accent) => void }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {ACCENTS.map((a) => {
+        const active = a === value;
+        return (
+          <button
+            key={a}
+            type="button"
+            data-accent-swatch={a}
+            aria-label={ACCENT_LABELS[a]}
+            aria-pressed={active}
+            title={ACCENT_LABELS[a]}
+            onClick={() => onChange(a)}
+            data-accent={a}
+            className={`h-7 w-7 rounded-full border border-border transition-transform duration-150 hover:scale-110 ${
+              active ? "ring-2 ring-fg ring-offset-2 ring-offset-surface" : ""
+            }`}
+            style={{ backgroundColor: "var(--color-accent-700)" }}
+          />
+        );
+      })}
+    </div>
   );
 }

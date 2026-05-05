@@ -60,8 +60,8 @@ export function Board({ boardId }: { boardId: number }) {
     }
   }, [shellSlot, activeSessionId]);
 
-  if (stateQ.isLoading) return <p className="p-4 text-sm text-zinc-400">Loading…</p>;
-  if (!stateQ.data) return <p className="p-4 text-sm text-red-400">No data.</p>;
+  if (stateQ.isLoading) return <p className="p-4 text-sm text-fg-muted">Loading…</p>;
+  if (!stateQ.data) return <p className="p-4 text-sm text-danger">No data.</p>;
 
   const { board, columns, tickets, merge_config, sync_config } = stateQ.data;
 
