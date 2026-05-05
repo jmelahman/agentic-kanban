@@ -27,6 +27,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
     let cleanup: (() => void) | null = null;
 
     const host = document.createElement("div");
+    host.dataset.terminal = "true";
     host.style.height = "100%";
     host.style.width = "100%";
     hostRef.current = host;

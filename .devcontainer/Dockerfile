@@ -15,7 +15,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   fzf \
   ripgrep \
   fd-find \
-  ncurses-term \
   neovim \
   socat \
   openssh-client \

@@ -134,7 +134,17 @@ export function SessionPane({
   useEffect(() => {
     if (!fullscreen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFullscreen(false);
+      if (e.key !== "Escape") return;
+      // Let Escape reach the embedded terminal when it has focus.
+      const target = e.target as Element | null;
+      const active = document.activeElement;
+      if (
+        target?.closest?.("[data-terminal]") ||
+        active?.closest?.("[data-terminal]")
+      ) {
+        return;
+      }
+      setFullscreen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
