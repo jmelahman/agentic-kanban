@@ -900,7 +900,7 @@ function Tab({
   return (
     <button
       onClick={onClick}
-      className={`px-3 py-2 transition-colors duration-150 ${active ? "border-b-2 border-accent-500 text-fg" : "text-fg-muted hover:text-fg"}`}
+      className={`px-3 py-2 border-b-2 transition-colors duration-150 ${active ? "border-accent-500 text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}
     >
       {label}
     </button>
