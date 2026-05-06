@@ -1,9 +1,10 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
-import { Drawer } from "./Modal";
+import { Drawer, Modal } from "./Modal";
 
 export function ArchivedDrawer({
   open,
@@ -16,6 +17,7 @@ export function ArchivedDrawer({
 }) {
   const qc = useQueryClient();
   const { push } = useToast();
+  const [confirmTicket, setConfirmTicket] = useState<Ticket | null>(null);
   const archivedQ = useQuery({
     queryKey: queryKeys.archived(boardId),
     queryFn: () => api.listArchivedTickets(boardId),
@@ -28,6 +30,7 @@ export function ArchivedDrawer({
       qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
       qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
       push("success", "Ticket and its resources deleted.");
+      setConfirmTicket(null);
     },
   });
 
@@ -40,35 +43,71 @@ export function ArchivedDrawer({
     },
   });
 
+  const confirmPending =
+    confirmTicket !== null &&
+    deleteMut.isPending &&
+    deleteMut.variables === confirmTicket.id;
+
   return (
-    <Drawer open={open} onClose={onClose} title="Archived tickets">
-      <div className="flex-1 overflow-y-auto p-3">
-        {archivedQ.isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
-        {archivedQ.data && archivedQ.data.length === 0 && (
-          <p className="text-sm text-fg-muted">No archived tickets.</p>
+    <>
+      <Drawer open={open} onClose={onClose} title="Archived tickets">
+        <div className="flex-1 overflow-y-auto p-3">
+          {archivedQ.isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
+          {archivedQ.data && archivedQ.data.length === 0 && (
+            <p className="text-sm text-fg-muted">No archived tickets.</p>
+          )}
+          <ul className="flex flex-col gap-2">
+            {(archivedQ.data ?? []).map((t) => (
+              <ArchivedRow
+                key={t.id}
+                ticket={t}
+                deletePending={deleteMut.isPending && deleteMut.variables === t.id}
+                unarchivePending={unarchiveMut.isPending && unarchiveMut.variables === t.id}
+                onUnarchive={() => unarchiveMut.mutate(t.id)}
+                onDelete={() => setConfirmTicket(t)}
+              />
+            ))}
+          </ul>
+        </div>
+      </Drawer>
+      <Modal
+        open={confirmTicket !== null}
+        onClose={() => setConfirmTicket(null)}
+        title="Permanently delete ticket?"
+        busy={confirmPending}
+      >
+        {confirmTicket && (
+          <div className="p-4">
+            <p className="text-sm">
+              Permanently delete <span className="font-medium">"{confirmTicket.title}"</span>?
+            </p>
+            <p className="mt-2 text-xs text-fg-muted">
+              This stops the container, removes the worktree, and deletes the branch.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setConfirmTicket(null)}
+                disabled={confirmPending}
+              >
+                cancel
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                size="lg"
+                onClick={() => deleteMut.mutate(confirmTicket.id)}
+                disabled={confirmPending}
+                pending={confirmPending}
+                idleLabel="delete"
+                pendingLabel="deleting…"
+              />
+            </div>
+          </div>
         )}
-        <ul className="flex flex-col gap-2">
-          {(archivedQ.data ?? []).map((t) => (
-            <ArchivedRow
-              key={t.id}
-              ticket={t}
-              deletePending={deleteMut.isPending && deleteMut.variables === t.id}
-              unarchivePending={unarchiveMut.isPending && unarchiveMut.variables === t.id}
-              onUnarchive={() => unarchiveMut.mutate(t.id)}
-              onDelete={() => {
-                if (
-                  window.confirm(
-                    `Permanently delete "${t.title}"?\n\nThis stops the container, removes the worktree, and deletes the branch.`,
-                  )
-                ) {
-                  deleteMut.mutate(t.id);
-                }
-              }}
-            />
-          ))}
-        </ul>
-      </div>
-    </Drawer>
+      </Modal>
+    </>
   );
 }
 

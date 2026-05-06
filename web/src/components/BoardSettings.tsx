@@ -25,6 +25,7 @@ export function BoardSettings({
   const [worktreeRoot, setWorktreeRoot] = useState(board.worktree_root);
   const [base, setBase] = useState(board.base_branch);
   const [branchPrefix, setBranchPrefix] = useState(board.branch_prefix);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     setName(board.name);
@@ -207,20 +208,48 @@ export function BoardSettings({
           size="lg"
           className="mt-2 text-xs"
           disabled={busy}
-          onClick={() => {
-            if (
-              window.confirm(
-                `Permanently delete board "${board.name}"?\n\nThis stops all containers, removes worktrees, deletes branches, and removes every ticket.`,
-              )
-            ) {
-              deleteMut.mutate();
-            }
-          }}
+          onClick={() => setConfirmDelete(true)}
           pending={deleteMut.isPending}
           idleLabel="delete board"
           pendingLabel="deleting…"
         />
       </div>
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Permanently delete board?"
+        busy={deleteMut.isPending}
+      >
+        <div className="p-4">
+          <p className="text-sm">
+            Permanently delete board <span className="font-medium">"{board.name}"</span>?
+          </p>
+          <p className="mt-2 text-xs text-fg-muted">
+            This stops all containers, removes worktrees, deletes branches, and removes
+            every ticket.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmDelete(false)}
+              disabled={deleteMut.isPending}
+            >
+              cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="lg"
+              onClick={() => deleteMut.mutate()}
+              disabled={deleteMut.isPending}
+              pending={deleteMut.isPending}
+              idleLabel="delete board"
+              pendingLabel="deleting…"
+            />
+          </div>
+        </div>
+      </Modal>
     </Modal>
   );
 }
