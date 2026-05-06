@@ -301,6 +301,7 @@ func fingerprintSlug(fp string) string {
 // slugify mirrors the api package's slugify; duplicated here to avoid a
 // circular import (api → errreport already exists for ticket creation).
 func slugify(s string) string {
+	const maxLen = 80
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
 	prevDash := false
@@ -320,6 +321,9 @@ func slugify(s string) string {
 		}
 	}
 	out := strings.TrimRight(b.String(), "-")
+	if len(out) > maxLen {
+		out = strings.TrimRight(out[:maxLen], "-")
+	}
 	if out == "" {
 		out = "errors"
 	}

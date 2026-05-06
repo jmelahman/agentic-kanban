@@ -1139,6 +1139,11 @@ func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
+// slugMaxLen caps slugified output so that branch names built as
+// "<prefix>/<board-slug>/<ticket-slug>" stay under GitHub's ~244-char
+// branch-name limit even with the longest expected prefix.
+const slugMaxLen = 80
+
 func slugify(s string) string {
 	s = strings.ToLower(strings.TrimSpace(s))
 	var b strings.Builder
@@ -1159,6 +1164,9 @@ func slugify(s string) string {
 		}
 	}
 	out := strings.TrimRight(b.String(), "-")
+	if len(out) > slugMaxLen {
+		out = strings.TrimRight(out[:slugMaxLen], "-")
+	}
 	if out == "" {
 		out = "x"
 	}
