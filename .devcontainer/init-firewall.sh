@@ -35,6 +35,9 @@ ALLOWED_DOMAINS=(
     "proxy.golang.org"
     "sum.golang.org"
     "storage.googleapis.com"
+    "static.rust-lang.org"
+    "index.crates.io"
+    "static.crates.io"
 )
 
 for domain in "${ALLOWED_DOMAINS[@]}"; do

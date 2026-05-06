@@ -58,6 +58,7 @@ The container starts with a default-deny firewall (`init-firewall.sh`) that only
 - Sentry
 - VS Code update servers
 - Go module proxy (`proxy.golang.org`, `sum.golang.org`, `storage.googleapis.com`)
+- Rust toolchain + crates registry (`static.rust-lang.org`, `index.crates.io`, `static.crates.io`) — needed for prek to build ripsecrets
 - Subnets of attached Docker networks (so sibling containers are reachable)
 
 This requires the `NET_ADMIN` and `NET_RAW` capabilities, which are added via `runArgs` in `devcontainer.json`.
