@@ -14,9 +14,10 @@ import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
 import { TerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { useShortcut } from "@/keys/useShortcut";
 import { Button, Spinner } from "./Button";
+import { InfoPanel } from "./InfoPanel";
 import { TasksPanel } from "./TasksPanel";
 
-const TAB_ORDER = ["agent", "shell", "tasks"] as const;
+const TAB_ORDER = ["agent", "shell", "tasks", "info"] as const;
 type TabId = (typeof TAB_ORDER)[number];
 
 const MIN_WIDTH = 320;
@@ -748,6 +749,11 @@ export function SessionPane({
           onClick={() => setTab("tasks")}
           label="tasks"
         />
+        <Tab
+          active={tab === "info"}
+          onClick={() => setTab("info")}
+          label="info"
+        />
       </div>
       <div className="min-h-0 flex-1 bg-bg">
         {tab === "agent" && (
@@ -775,6 +781,14 @@ export function SessionPane({
         {tab === "tasks" && session && (
           <TasksPanel session={session} boardId={boardId} />
         )}
+        {tab === "info" &&
+          (session ? (
+            <InfoPanel session={session} />
+          ) : (
+            <p className="p-4 text-sm text-fg-muted">
+              Create a session to see its info.
+            </p>
+          ))}
       </div>
     </aside>
   );
