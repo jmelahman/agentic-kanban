@@ -78,4 +78,7 @@ RUN chmod 644 /etc/ssh/ssh_known_hosts
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 RUN chmod 755 /usr/local/bin/init-firewall.sh
 
+RUN echo '[ -f ~/.zshrc.host ] && . ~/.zshrc.host' > /root/.zshrc \
+ && chmod 644 /root/.zshrc
+
 USER dev
