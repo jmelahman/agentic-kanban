@@ -17,7 +17,6 @@ import {
 import { queryKeys } from "@/api/keys";
 import {
   activeTicketStore,
-  BoardStructure,
   sessionStore,
   useActiveTicketId,
   useSession,
@@ -302,33 +301,11 @@ export function SessionPane({
       if (session) rollbackStatus(session.id, ctx?.prev ?? null);
     },
   });
-  // ticketId is passed via mutate variable — `onClose()` below clears
-  // activeTicketStore synchronously, which re-renders this component before
-  // `mutationFn` runs. A closure-captured `ticketId` would read the new
-  // (null) render and POST `/tickets/null/archive`.
   const archiveMut = useMutation({
-    mutationFn: (id: number) => api.archiveTicket(id),
-    onMutate: (id: number) => {
-      const prev = qc.getQueryData<BoardStructure>(boardKey);
-      if (prev) {
-        const ticketIdsByColumn: Record<number, number[]> = {};
-        for (const [k, ids] of Object.entries(prev.ticketIdsByColumn)) {
-          ticketIdsByColumn[Number(k)] = ids.filter((tid) => tid !== id);
-        }
-        const sessionIdByTicket = { ...prev.sessionIdByTicket };
-        delete sessionIdByTicket[id];
-        qc.setQueryData<BoardStructure>(boardKey, {
-          ...prev,
-          ticketIdsByColumn,
-          sessionIdByTicket,
-        });
-      }
+    mutationFn: () => api.archiveTicket(ticketId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: boardKey });
       onClose();
-      return { prev };
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
     },
   });
   const syncMut = useMutation({
@@ -661,7 +638,7 @@ export function SessionPane({
           <Button
             variant="neutral"
             size="icon"
-            onClick={() => ticketId != null && archiveMut.mutate(ticketId)}
+            onClick={() => ticketId != null && archiveMut.mutate()}
             disabled={archiveMut.isPending}
             aria-label="archive"
             title="archive"
@@ -671,7 +648,7 @@ export function SessionPane({
         ) : (
           <Button
             variant="neutral"
-            onClick={() => ticketId != null && archiveMut.mutate(ticketId)}
+            onClick={() => ticketId != null && archiveMut.mutate()}
             pending={archiveMut.isPending}
             idleLabel="archive"
             pendingLabel="archiving…"
