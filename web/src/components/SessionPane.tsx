@@ -742,7 +742,7 @@ export function SessionPane({
         <Tab
           active={tab === "shell"}
           onClick={() => setTab("shell")}
-          label="shell"
+          label="terminal"
         />
         <Tab
           active={tab === "tasks"}
