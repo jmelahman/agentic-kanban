@@ -21,6 +21,7 @@ type Props = {
 export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
+  const termRef = useRef<Terminal | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,9 +44,11 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
       });
       const fit = new FitAddon();
       fitRef.current = fit;
+      termRef.current = term;
       term.loadAddon(fit);
       term.open(host);
       fit.fit();
+      if (host.parentElement !== getOffscreenContainer()) term.focus();
 
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const path = kind === "shell" ? "shell" : "pty";
@@ -106,6 +109,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
       host.remove();
       hostRef.current = null;
       fitRef.current = null;
+      termRef.current = null;
     };
   }, [sessionId, kind]);
 
@@ -116,6 +120,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
     if (host.parentElement !== target) {
       target.appendChild(host);
       fitRef.current?.fit();
+      if (mountTarget) termRef.current?.focus();
     }
   }, [mountTarget]);
 
