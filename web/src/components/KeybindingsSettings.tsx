@@ -16,10 +16,7 @@ export function KeybindingsSettings() {
   }
 
   return (
-    <fieldset className="flex flex-col gap-2 border-t border-border pt-3">
-      <legend className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
-        Keyboard shortcuts
-      </legend>
+    <fieldset className="flex flex-col gap-2">
       {[...groups.entries()].map(([group, list]) => (
         <div key={group} className="flex flex-col gap-1.5">
           <div className="text-xs text-fg-muted">{group}</div>

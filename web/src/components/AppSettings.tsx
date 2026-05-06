@@ -31,6 +31,8 @@ const ACCENT_LABELS: Record<Accent, string> = {
   pink: "Pink",
 };
 
+type SettingsTab = "general" | "appearance" | "shortcuts";
+
 export function AppSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const { push } = useToast();
@@ -38,6 +40,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
   const harnessesQ = useQuery({ queryKey: queryKeys.harnesses, queryFn: api.listHarnesses, enabled: open });
   const versionQ = useQuery({ queryKey: queryKeys.version, queryFn: api.getVersion, staleTime: Infinity, enabled: open });
 
+  const [tab, setTab] = useState<SettingsTab>("general");
   const [harness, setHarness] = useState<string>("");
   const [worktreesRoot, setWorktreesRoot] = useState<string>("");
   const savedOrientation = useTerminalOrientation();
@@ -54,7 +57,10 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
   }, [settingsQ.data]);
 
   useEffect(() => {
-    if (open) setOrientation(savedOrientation);
+    if (open) {
+      setOrientation(savedOrientation);
+      setTab("general");
+    }
     // Re-sync the form to the persisted value each time the modal opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -89,96 +95,104 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
 
   return (
     <Modal open={open} onClose={onClose} title="Settings" busy={busy}>
+      <div className="flex border-b border-border text-sm">
+        <Tab active={tab === "general"} onClick={() => setTab("general")} label="general" />
+        <Tab active={tab === "appearance"} onClick={() => setTab("appearance")} label="appearance" />
+        <Tab active={tab === "shortcuts"} onClick={() => setTab("shortcuts")} label="shortcuts" />
+      </div>
       <form
-        className="flex flex-col gap-3 p-4 text-sm"
+        className="flex min-h-[420px] flex-col gap-3 p-4 text-sm"
         onSubmit={(e) => {
           e.preventDefault();
           if (!dirty) return;
           updateMut.mutate();
         }}
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Agent harness</span>
-          <select
-            className="rounded bg-surface px-2 py-1"
-            value={harness}
-            onChange={(e) => setHarness(e.target.value)}
-            disabled={settingsQ.isLoading || harnessesQ.isLoading}
-          >
-            <option value="">— use project / default —</option>
-            {harnesses.map((h) => (
-              <option key={h.id} value={h.id}>
-                {h.label}
-              </option>
-            ))}
-          </select>
-          <span className="text-xs text-fg-muted">
-            Saved to <span className="font-mono">~/.config/kanban/config.toml</span>. Takes
-            effect on the next session attach; running terminals keep their current process.
-            Leave unset to fall back to the repo's <span className="font-mono">.kanban.toml</span>
-            {" "}or the default.
-          </span>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Worktrees directory</span>
-          <input
-            type="text"
-            className="rounded bg-surface px-2 py-1 font-mono disabled:opacity-50"
-            value={worktreesRoot}
-            placeholder={worktreesResolved || "~/.local/share/kanban/worktrees"}
-            onChange={(e) => setWorktreesRoot(e.target.value)}
-            disabled={settingsQ.isLoading || worktreesLocked}
-            spellCheck={false}
-          />
-          <span className="text-xs text-fg-muted">
-            Parent directory for new boards' worktrees. Leave empty to use the
-            default. Supports <span className="font-mono">~</span> for your
-            home directory. Existing boards keep their stored
-            {" "}<span className="font-mono">worktree_root</span>.
-            {worktreesLocked && (
-              <>
-                {" "}Currently locked by{" "}
-                <span className="font-mono">--worktrees-dir</span> or{" "}
-                <span className="font-mono">$KANBAN_WORKTREES_DIR</span>:{" "}
-                <span className="font-mono">{worktreesResolved}</span>.
-              </>
-            )}
-          </span>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Terminal position</span>
-          <select
-            className="rounded bg-surface px-2 py-1"
-            value={orientation}
-            onChange={(e) => setOrientation(e.target.value as TerminalOrientation)}
-          >
-            <option value="vertical">vertical (right side)</option>
-            <option value="horizontal">horizontal (bottom)</option>
-          </select>
-        </label>
-        <fieldset className="flex flex-col gap-2 border-t border-border pt-3">
-          <legend className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
-            Appearance
-          </legend>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Theme</span>
-            <ThemeModeToggle value={mode} onChange={setThemeMode} />
-          </div>
-          <label className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={contrast === "high"}
-              onChange={(e) => setContrast(e.target.checked ? "high" : ("normal" as Contrast))}
-            />
-            <span>High contrast</span>
-          </label>
-          <div className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Accent</span>
-            <AccentSwatches value={accent} onChange={setAccent} />
-          </div>
-        </fieldset>
-        <KeybindingsSettings />
-        <div className="mt-2 flex items-center justify-end gap-2">
+        {tab === "general" && (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Agent harness</span>
+              <select
+                className="rounded bg-surface px-2 py-1"
+                value={harness}
+                onChange={(e) => setHarness(e.target.value)}
+                disabled={settingsQ.isLoading || harnessesQ.isLoading}
+              >
+                <option value="">— use project / default —</option>
+                {harnesses.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs text-fg-muted">
+                Saved to <span className="font-mono">~/.config/kanban/config.toml</span>. Takes
+                effect on the next session attach; running terminals keep their current process.
+                Leave unset to fall back to the repo's <span className="font-mono">.kanban.toml</span>
+                {" "}or the default.
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Worktrees directory</span>
+              <input
+                type="text"
+                className="rounded bg-surface px-2 py-1 font-mono disabled:opacity-50"
+                value={worktreesRoot}
+                placeholder={worktreesResolved || "~/.local/share/kanban/worktrees"}
+                onChange={(e) => setWorktreesRoot(e.target.value)}
+                disabled={settingsQ.isLoading || worktreesLocked}
+                spellCheck={false}
+              />
+              <span className="text-xs text-fg-muted">
+                Parent directory for new boards' worktrees. Leave empty to use the
+                default. Supports <span className="font-mono">~</span> for your
+                home directory. Existing boards keep their stored
+                {" "}<span className="font-mono">worktree_root</span>.
+                {worktreesLocked && (
+                  <>
+                    {" "}Currently locked by{" "}
+                    <span className="font-mono">--worktrees-dir</span> or{" "}
+                    <span className="font-mono">$KANBAN_WORKTREES_DIR</span>:{" "}
+                    <span className="font-mono">{worktreesResolved}</span>.
+                  </>
+                )}
+              </span>
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Terminal position</span>
+              <select
+                className="rounded bg-surface px-2 py-1"
+                value={orientation}
+                onChange={(e) => setOrientation(e.target.value as TerminalOrientation)}
+              >
+                <option value="vertical">vertical (right side)</option>
+                <option value="horizontal">horizontal (bottom)</option>
+              </select>
+            </label>
+          </>
+        )}
+        {tab === "appearance" && (
+          <fieldset className="flex flex-col gap-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Theme</span>
+              <ThemeModeToggle value={mode} onChange={setThemeMode} />
+            </div>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={contrast === "high"}
+                onChange={(e) => setContrast(e.target.checked ? "high" : ("normal" as Contrast))}
+              />
+              <span>High contrast</span>
+            </label>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Accent</span>
+              <AccentSwatches value={accent} onChange={setAccent} />
+            </div>
+          </fieldset>
+        )}
+        {tab === "shortcuts" && <KeybindingsSettings />}
+        <div className="mt-auto flex items-center justify-end gap-2">
           <Button
             type="button"
             variant="ghost"
@@ -202,6 +216,26 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
         {versionQ.data?.version ?? "…"}
       </footer>
     </Modal>
+  );
+}
+
+function Tab({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-2 border-b-2 transition-colors duration-150 ${active ? "border-accent-500 text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}
+    >
+      {label}
+    </button>
   );
 }
 
