@@ -31,9 +31,6 @@ CREATE TABLE IF NOT EXISTS tickets (
   fingerprint TEXT,
   UNIQUE(board_id, slug)
 );
-CREATE INDEX IF NOT EXISTS idx_tickets_fingerprint
-  ON tickets(board_id, fingerprint)
-  WHERE fingerprint IS NOT NULL AND archived_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY,
