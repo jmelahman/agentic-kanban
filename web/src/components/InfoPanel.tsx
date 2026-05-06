@@ -1,8 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
-import { ReactNode, useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ReactNode, useEffect, useRef, useState } from "react";
 import { api, PR_STATE_COLOR, PRState, Session } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-import { useTicket } from "@/store";
+import { ticketStore, useTicket } from "@/store";
 
 export function InfoPanel({ session }: { session: Session }) {
   const ticket = useTicket(session.ticket_id);
@@ -16,11 +16,7 @@ export function InfoPanel({ session }: { session: Session }) {
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-3 text-sm [scrollbar-gutter:stable]">
       <Section title="Description">
-        {ticket?.body ? (
-          <p className="whitespace-pre-wrap break-words">{ticket.body}</p>
-        ) : (
-          <Muted>No description.</Muted>
-        )}
+        <DescriptionEditor ticketId={session.ticket_id} body={ticket?.body ?? ""} />
       </Section>
 
       <Section title="Session">
@@ -125,6 +121,97 @@ export function InfoPanel({ session }: { session: Session }) {
       </Section>
     </div>
   );
+}
+
+function DescriptionEditor({
+  ticketId,
+  body,
+}: {
+  ticketId: number;
+  body: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(body);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const saveMut = useMutation({
+    mutationFn: (next: string) => api.updateTicket(ticketId, { body: next }),
+    onSuccess: (updated) => {
+      ticketStore.set(updated.id, updated);
+      setEditing(false);
+    },
+  });
+
+  useEffect(() => {
+    if (!editing) return;
+    setDraft(body);
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      autosize(el);
+    });
+  }, [editing, body]);
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="-mx-1 rounded px-1 py-0.5 text-left hover:bg-surface"
+        title="Click to edit"
+      >
+        {body ? (
+          <p className="whitespace-pre-wrap break-words">{body}</p>
+        ) : (
+          <Muted>No description. Click to add.</Muted>
+        )}
+      </button>
+    );
+  }
+
+  const submit = () => {
+    if (draft === body) {
+      setEditing(false);
+      return;
+    }
+    saveMut.mutate(draft);
+  };
+
+  return (
+    <div className="flex flex-col gap-1">
+      <textarea
+        ref={textareaRef}
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          autosize(e.currentTarget);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            setEditing(false);
+          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        onBlur={submit}
+        disabled={saveMut.isPending}
+        placeholder="Add a description…"
+        className="min-h-[6rem] w-full resize-none rounded bg-surface px-2 py-1 outline-none ring-1 ring-border focus:ring-accent-500"
+      />
+      <p className="text-xs text-fg-muted">
+        ⌘/Ctrl + Enter to save · Esc to cancel
+      </p>
+    </div>
+  );
+}
+
+function autosize(el: HTMLTextAreaElement) {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
 }
 
 function Section({
