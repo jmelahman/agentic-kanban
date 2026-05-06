@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -66,8 +67,8 @@ func (h *handlers) listBoards(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
-	var req createBoardReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[createBoardReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -124,8 +125,8 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	var req updateBoardReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[updateBoardReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -257,8 +258,8 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	var req createTicketReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[createTicketReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -302,8 +303,8 @@ func (h *handlers) updateTicket(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	var req updateTicketReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[updateTicketReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -384,8 +385,8 @@ type moveTicketReq struct {
 
 func (h *handlers) moveTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	var req moveTicketReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[moveTicketReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -484,8 +485,8 @@ type syncTicketReq struct {
 
 func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	var req syncTicketReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[syncTicketReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -531,8 +532,8 @@ type mergeTicketReq struct {
 
 func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	var req mergeTicketReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[mergeTicketReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -575,20 +576,13 @@ func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	cols, err := h.store.ListColumns(r.Context(), t.BoardID)
+	doneCol, err := h.store.FindColumnByName(r.Context(), t.BoardID, "Done")
 	if err != nil {
-		h.httpError(w, err, 500)
-		return
-	}
-	var doneCol *db.Column
-	for i := range cols {
-		if cols[i].Name == "Done" {
-			doneCol = &cols[i]
-			break
+		if errors.Is(err, db.ErrNotFound) {
+			h.httpError(w, fmt.Errorf("board has no Done column"), 409)
+			return
 		}
-	}
-	if doneCol == nil {
-		h.httpError(w, fmt.Errorf("board has no Done column"), 409)
+		h.httpError(w, err, 500)
 		return
 	}
 	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
@@ -641,9 +635,7 @@ func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
-		h.bus.Publish(t.BoardID, "session_updated", sess)
-	}
+	h.publishSessionUpdated(r.Context(), sess)
 	writeJSON(w, 200, sess)
 }
 
@@ -654,9 +646,7 @@ func (h *handlers) restartSession(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
-		h.bus.Publish(t.BoardID, "session_updated", sess)
-	}
+	h.publishSessionUpdated(r.Context(), sess)
 	writeJSON(w, 200, sess)
 }
 
@@ -666,13 +656,24 @@ func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	sess, _ := h.store.GetSession(r.Context(), id)
-	if sess != nil {
-		if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
-			h.bus.Publish(t.BoardID, "session_updated", sess)
-		}
+	if sess, _ := h.store.GetSession(r.Context(), id); sess != nil {
+		h.publishSessionUpdated(r.Context(), sess)
 	}
 	w.WriteHeader(204)
+}
+
+// publishSessionUpdated emits a "session_updated" event on the board's
+// channel. Best-effort: silently no-ops if the ticket lookup fails so
+// callers can use it as a fire-and-forget after any session mutation.
+func (h *handlers) publishSessionUpdated(ctx context.Context, sess *db.Session) {
+	if sess == nil {
+		return
+	}
+	t, err := h.store.GetTicket(ctx, sess.TicketID)
+	if err != nil || t == nil {
+		return
+	}
+	h.bus.Publish(t.BoardID, "session_updated", sess)
 }
 
 type updateSessionStatusReq struct {
@@ -685,8 +686,8 @@ type updateSessionStatusReq struct {
 // rejected here.
 func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	var req updateSessionStatusReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[updateSessionStatusReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -712,14 +713,10 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sess.Status = req.Status
-	t, _ := h.store.GetTicket(r.Context(), sess.TicketID)
-	if t != nil {
+	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
 		h.bus.Publish(t.BoardID, "session_updated", sess)
-		var boardID *int64
-		if board, _ := h.store.GetBoard(r.Context(), t.BoardID); board != nil {
-			boardID = &board.ID
-		}
-		h.hooks.Fire(boardID, hookEvent, map[string]string{
+		boardID := t.BoardID
+		h.hooks.Fire(&boardID, hookEvent, map[string]string{
 			"session_id": fmt.Sprintf("%d", sess.ID),
 			"ticket_id":  fmt.Sprintf("%d", sess.TicketID),
 		})
@@ -784,8 +781,8 @@ func (h *handlers) createTaskRun(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	var req createTaskRunReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[createTaskRunReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -891,8 +888,8 @@ func (h *handlers) createPort(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	var req createPortReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[createPortReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -910,16 +907,8 @@ func (h *handlers) createPort(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) deletePort(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	ports, err := h.store.ListAllActivePorts(r.Context())
-	if err != nil {
-		h.httpError(w, err, 500)
-		return
-	}
-	for _, p := range ports {
-		if p.ID == id {
-			h.sessions.Proxies().Close(p.HostPort)
-			break
-		}
+	if p, err := h.store.GetPort(r.Context(), id); err == nil && p.ProxyActive {
+		h.sessions.Proxies().Close(p.HostPort)
 	}
 	if err := h.store.DeletePort(r.Context(), id); err != nil {
 		h.httpError(w, err, 500)
@@ -1034,12 +1023,14 @@ func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, h.settingsResponse())
 }
 
+type updateSettingsReq struct {
+	Harness       *string `json:"harness"`
+	WorktreesRoot *string `json:"worktrees_root"`
+}
+
 func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Harness       *string `json:"harness"`
-		WorktreesRoot *string `json:"worktrees_root"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[updateSettingsReq](r)
+	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
@@ -1088,6 +1079,15 @@ func pathID(r *http.Request, name string) int64 {
 	return id
 }
 
+// decodeBody is the single funnel for JSON request bodies. Centralizing it
+// keeps any future hardening (size limits, content-type checks, strict
+// field validation) in one place rather than 12 handlers.
+func decodeBody[T any](r *http.Request) (T, error) {
+	var v T
+	err := json.NewDecoder(r.Body).Decode(&v)
+	return v, err
+}
+
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
@@ -1117,8 +1117,8 @@ type reportFrontendErrorReq struct {
 // ErrorBoundary and global React Query onError. Always returns 204; when the
 // reporter is disabled (the default), this endpoint silently absorbs reports.
 func (h *handlers) reportFrontendError(w http.ResponseWriter, r *http.Request) {
-	var req reportFrontendErrorReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	req, err := decodeBody[reportFrontendErrorReq](r)
+	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}

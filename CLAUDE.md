@@ -55,6 +55,22 @@ http://localhost:5173/`) work as usual.
 - Go: `go test ./...`
 - Frontend types: `cd web && npm run typecheck`
 
+## Perf benchmark
+
+`internal/db/perfbench_test.go` is a build-tagged comparison of hot DB
+queries with vs. without the `idx_*` indexes from `schema.sql`. It seeds
+an in-memory SQLite at n=100/1000/5000 tickets, times each query, drops
+the indexes, re-times, and prints a speedup table.
+
+```bash
+go test -tags=perfbench -run TestPerfReport -v ./internal/db/
+```
+
+The `perfbench` build tag keeps it out of the default `go test ./...`.
+Use it to validate future schema/query changes — a regression on the
+`MaxPosition` or `ListArchived` rows is the canary (those are 30–95×
+faster with indexes at n≥1000; everything else is a wash on small tables).
+
 ## Driving the UI with Playwright MCP
 
 `.mcp.json` registers `@playwright/mcp --headless --isolated`. Use the

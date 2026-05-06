@@ -77,3 +77,14 @@ CREATE TABLE IF NOT EXISTS hook_configs (
   command TEXT NOT NULL,
   enabled INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE INDEX IF NOT EXISTS idx_tickets_column_pos
+  ON tickets(column_id, position) WHERE archived_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_tickets_board_archived
+  ON tickets(board_id, archived_at);
+CREATE INDEX IF NOT EXISTS idx_task_runs_session
+  ON task_runs(session_id, id DESC);
+CREATE INDEX IF NOT EXISTS idx_hook_configs_event
+  ON hook_configs(event, enabled, board_id);
+CREATE INDEX IF NOT EXISTS idx_port_alloc_session
+  ON port_allocations(session_id);

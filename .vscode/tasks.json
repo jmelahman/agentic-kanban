@@ -11,6 +11,15 @@
       }
     },
     {
+      "label": "Run Perf Benchmark",
+      "type": "shell",
+      "command": "go",
+      "args": ["test", "-tags=perfbench", "-run", "TestPerfReport", "-v", "./internal/db/"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "Kanban Backend",
       "type": "shell",
       "command": "wgo",
