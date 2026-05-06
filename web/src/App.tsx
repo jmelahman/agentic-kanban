@@ -17,6 +17,7 @@ import { useAccent } from "@/hooks/useAccent";
 import { useContrast } from "@/hooks/useContrast";
 import { useThemeMode } from "@/hooks/useThemeMode";
 import { CogIcon, MenuIcon } from "@/icons";
+import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
 export default function App() {
@@ -48,6 +49,17 @@ export default function App() {
     // ticket-id from board A doesn't leak into board B's pane.
     activeTicketStore.set(null);
   }, [activeId]);
+
+  const cycleBoard = (delta: 1 | -1) => {
+    const boards = boardsQ.data;
+    if (!boards || boards.length < 2) return;
+    const idx = boards.findIndex((b) => b.id === activeId);
+    if (idx < 0) return;
+    const next = (idx + delta + boards.length) % boards.length;
+    setActiveId(boards[next].id);
+  };
+  useShortcut("board.next", () => cycleBoard(1));
+  useShortcut("board.prev", () => cycleBoard(-1));
 
   useEffect(() => {
     if (activeId == null) return;
