@@ -143,7 +143,9 @@ export function SessionPane({
       const target = e.target as Element | null;
       if (!target?.closest("[data-board-area]")) return;
       // Ticket clicks switch the active ticket themselves; skip close to avoid a flicker.
-      if (target.closest("[data-ticket-card]")) return;
+      // Add-ticket clicks open the inline form in the column; closing the panel here
+      // would be a surprising side effect of starting to create a ticket.
+      if (target.closest("[data-ticket-card], [data-ticket-add]")) return;
       onClose();
     };
     window.addEventListener("mousedown", handler);

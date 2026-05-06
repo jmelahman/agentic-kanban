@@ -62,6 +62,7 @@ export function Column(props: {
       </div>
       {adding ? (
         <form
+          data-ticket-add
           onSubmit={(e) => {
             e.preventDefault();
             if (title.trim() && !createMut.isPending) createMut.mutate();
@@ -95,7 +96,7 @@ export function Column(props: {
           </div>
         </form>
       ) : (
-        <Button variant="dashed" className="text-xs" onClick={() => setAdding(true)}>
+        <Button data-ticket-add variant="dashed" className="text-xs" onClick={() => setAdding(true)}>
           + add ticket
         </Button>
       )}
