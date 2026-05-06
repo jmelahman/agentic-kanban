@@ -2,8 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
 import { api, PR_STATE_COLOR, PRState, Session } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { useTicket } from "@/store";
 
 export function InfoPanel({ session }: { session: Session }) {
+  const ticket = useTicket(session.ticket_id);
   const portsQ = useQuery({
     queryKey: queryKeys.ports(session.id),
     queryFn: () => api.listPorts(session.id),
@@ -13,6 +15,14 @@ export function InfoPanel({ session }: { session: Session }) {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-3 text-sm [scrollbar-gutter:stable]">
+      <Section title="Description">
+        {ticket?.body ? (
+          <p className="whitespace-pre-wrap break-words">{ticket.body}</p>
+        ) : (
+          <Muted>No description.</Muted>
+        )}
+      </Section>
+
       <Section title="Session">
         <Row label="Status" value={<StatusValue status={session.status} />} />
         <Row label="Session ID" value={<Mono>{session.id}</Mono>} />
