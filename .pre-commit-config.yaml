@@ -1,0 +1,39 @@
+default_install_hook_types:
+  - pre-commit
+  - post-checkout
+  - post-merge
+  - post-rewrite
+repos:
+  # See https://prek.j178.dev/builtin/#2-explicit-builtin-repository
+  - repo: builtin
+    hooks:
+      - id: check-added-large-files
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-json
+      - id: check-symlinks
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: fix-byte-order-marker
+      - id: trailing-whitespace
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 569ddf04117761eb74cef7afb5143bbb96fcdfbb # frozen: 0.9.15
+    hooks:
+      - id: uv-sync
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: a443f344ff32813837fa49f7aa6cbc478d770e62 # frozen: v1.7.9
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/sirwart/ripsecrets
+    rev: 7d94620933e79b8acaa0cd9e60e9864b07673d86 # frozen: v0.1.11
+    hooks:
+      - id: ripsecrets
+        args:
+          - --strict-ignore
+          - --additional-pattern
+          - ^sk-[A-Za-z0-9_\-]{20,}$
