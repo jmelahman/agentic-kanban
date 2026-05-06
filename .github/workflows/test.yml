@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
-      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.work.sum
@@ -41,7 +41,7 @@ jobs:
       - uses: daaku/gh-action-apt-install@92eea4f84f90c895b544aaec6ae21839127c84e5
         with:
           packages: libasound2-dev
-      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: go.work.sum
