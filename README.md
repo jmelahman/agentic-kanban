@@ -1,5 +1,6 @@
 # Agentic Kanban
 
+[![Test status](https://github.com/jmelahman/agentic-kanban/actions/workflows/test.yml/badge.svg)](https://github.com/jmelahman/agentic-kanban/actions)
 [![Deploy Status](https://github.com/jmelahman/agentic-kanban/actions/workflows/release.yml/badge.svg)](https://github.com/jmelahman/agentic-kanban/actions)
 [![Go Reference](https://pkg.go.dev/badge/github.com/jmelahman/agentic-kanban.svg)](https://pkg.go.dev/github.com/jmelahman/agentic-kanban)
 [![PyPI](https://img.shields.io/pypi/v/agentic-kanban.svg)](https://pypi.org/project/agentic-kanban/)
