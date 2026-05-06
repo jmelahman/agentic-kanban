@@ -10,6 +10,7 @@ import {
 import {
   api,
   MergeConfig,
+  PR_STATE_COLOR,
   PRState,
   SyncConfig,
 } from "@/api/client";
@@ -23,10 +24,12 @@ import {
 } from "@/store";
 import { useToast } from "@/toast";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
+import { useClickOutside } from "@/hooks/useClickOutside";
 import { TerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { useShortcut } from "@/keys/useShortcut";
 import { Button, Spinner } from "./Button";
 import { InfoPanel } from "./InfoPanel";
+import { Tab } from "./Tab";
 import { TasksPanel } from "./TasksPanel";
 
 const TAB_ORDER = ["agent", "shell", "tasks", "info"] as const;
@@ -75,13 +78,6 @@ type SyncStrategy = "rebase" | "merge";
 const SYNC_STRATEGY_LABELS: Record<SyncStrategy, string> = {
   rebase: "rebase from",
   merge: "merge from",
-};
-
-const PR_STATE_COLOR: Record<PRState, string> = {
-  draft: "text-zinc-400",
-  open: "text-emerald-400",
-  merged: "text-purple-400",
-  closed: "text-red-400",
 };
 
 function enabledSyncStrategies(cfg: SyncConfig): SyncStrategy[] {
@@ -241,25 +237,12 @@ export function SessionPane({
     localStorage.setItem(HEIGHT_STORAGE_KEY, String(height));
   }, [height, resizing]);
 
-  useEffect(() => {
-    if (!syncMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!syncMenuRef.current?.contains(e.target as Node))
-        setSyncMenuOpen(false);
-    };
-    window.addEventListener("mousedown", handler);
-    return () => window.removeEventListener("mousedown", handler);
-  }, [syncMenuOpen]);
-
-  useEffect(() => {
-    if (!mergeMenuOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (!mergeMenuRef.current?.contains(e.target as Node))
-        setMergeMenuOpen(false);
-    };
-    window.addEventListener("mousedown", handler);
-    return () => window.removeEventListener("mousedown", handler);
-  }, [mergeMenuOpen]);
+  useClickOutside(syncMenuRef, () => setSyncMenuOpen(false), {
+    enabled: syncMenuOpen,
+  });
+  useClickOutside(mergeMenuRef, () => setMergeMenuOpen(false), {
+    enabled: mergeMenuOpen,
+  });
 
   const boardKey = queryKeys.board(boardId);
 
@@ -917,24 +900,5 @@ function CheckIcon() {
     <svg {...iconProps()}>
       <polyline points="20 6 9 17 4 12" />
     </svg>
-  );
-}
-
-function Tab({
-  active,
-  onClick,
-  label,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-2 border-b-2 transition-colors duration-150 ${active ? "border-accent-500 text-fg" : "border-transparent text-fg-muted hover:text-fg"}`}
-    >
-      {label}
-    </button>
   );
 }

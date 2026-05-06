@@ -479,81 +479,64 @@ func (h *handlers) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
-type syncTicketReq struct {
+type strategyReq struct {
 	Strategy string `json:"strategy"`
 }
 
 func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
-	id := pathID(r, "id")
-	req, err := decodeBody[syncTicketReq](r)
-	if err != nil {
-		h.httpError(w, err, 400)
-		return
-	}
-	if req.Strategy == "" {
-		req.Strategy = "rebase"
-	}
-	switch req.Strategy {
-	case "rebase", "merge":
-	default:
-		h.httpError(w, fmt.Errorf("strategy must be rebase or merge"), 400)
-		return
-	}
-	t, err := h.store.GetTicket(r.Context(), id)
-	if err != nil {
-		h.httpError(w, err, 404)
-		return
-	}
-	board, err := h.store.GetBoard(r.Context(), t.BoardID)
-	if err != nil {
-		h.httpError(w, err, 500)
-		return
-	}
-	if !loadSyncConfig(board.RepoPath).allows(req.Strategy) {
-		h.httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
-		return
-	}
-	sess, err := h.store.GetSessionByTicket(r.Context(), id)
-	if err != nil || sess == nil {
-		h.httpError(w, fmt.Errorf("no session for ticket"), 404)
-		return
-	}
-	if err := h.sessions.Sync(r.Context(), sess.ID, req.Strategy); err != nil {
-		h.httpError(w, err, 409)
-		return
-	}
-	h.bus.Publish(t.BoardID, "session_updated", sess)
-	w.WriteHeader(204)
-}
-
-type mergeTicketReq struct {
-	Strategy string `json:"strategy"`
+	h.ticketStrategyAction(w, r,
+		[]string{"rebase", "merge"}, "rebase",
+		func(repo, strat string) bool { return loadSyncConfig(repo).allows(strat) },
+		h.sessions.Sync,
+		true,
+	)
 }
 
 func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
+	h.ticketStrategyAction(w, r,
+		[]string{"merge-commit", "squash", "rebase"}, "",
+		func(repo, strat string) bool { return loadMergeConfig(repo).allows(strat) },
+		h.sessions.Merge,
+		false,
+	)
+}
+
+// ticketStrategyAction is the shared body of syncTicket and mergeTicket: parse
+// strategy, validate against the allowed set and the per-board config, ensure
+// a session exists, run the action, optionally publish session_updated.
+func (h *handlers) ticketStrategyAction(
+	w http.ResponseWriter, r *http.Request,
+	allowed []string, defaultStrategy string,
+	isAllowed func(repoPath, strategy string) bool,
+	action func(ctx context.Context, sessID int64, strategy string) error,
+	publishOnSuccess bool,
+) {
 	id := pathID(r, "id")
-	req, err := decodeBody[mergeTicketReq](r)
+	req, err := decodeBody[strategyReq](r)
 	if err != nil {
 		h.httpError(w, err, 400)
 		return
 	}
-	switch req.Strategy {
-	case "merge-commit", "squash", "rebase":
-	default:
-		h.httpError(w, fmt.Errorf("strategy must be merge-commit, squash, or rebase"), 400)
+	if req.Strategy == "" && defaultStrategy != "" {
+		req.Strategy = defaultStrategy
+	}
+	valid := false
+	for _, s := range allowed {
+		if s == req.Strategy {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		h.httpError(w, fmt.Errorf("strategy must be %s", joinStrategies(allowed)), 400)
 		return
 	}
-	t, err := h.store.GetTicket(r.Context(), id)
+	t, board, code, err := h.ticketBoard(r.Context(), id)
 	if err != nil {
-		h.httpError(w, err, 404)
+		h.httpError(w, err, code)
 		return
 	}
-	board, err := h.store.GetBoard(r.Context(), t.BoardID)
-	if err != nil {
-		h.httpError(w, err, 500)
-		return
-	}
-	if !loadMergeConfig(board.RepoPath).allows(req.Strategy) {
+	if !isAllowed(board.RepoPath, req.Strategy) {
 		h.httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
 		return
 	}
@@ -562,11 +545,29 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, fmt.Errorf("no session for ticket"), 404)
 		return
 	}
-	if err := h.sessions.Merge(r.Context(), sess.ID, req.Strategy); err != nil {
+	if err := action(r.Context(), sess.ID, req.Strategy); err != nil {
 		h.httpError(w, err, 409)
 		return
 	}
+	if publishOnSuccess {
+		h.bus.Publish(t.BoardID, "session_updated", sess)
+	}
 	w.WriteHeader(204)
+}
+
+// joinStrategies renders an allowed-strategy slice as English ("a or b",
+// "a, b, or c") for the strategy-validation error message.
+func joinStrategies(s []string) string {
+	switch len(s) {
+	case 0:
+		return ""
+	case 1:
+		return s[0]
+	case 2:
+		return s[0] + " or " + s[1]
+	default:
+		return strings.Join(s[:len(s)-1], ", ") + ", or " + s[len(s)-1]
+	}
 }
 
 func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
@@ -609,14 +610,9 @@ func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) ensureSession(w http.ResponseWriter, r *http.Request) {
 	ticketID := pathID(r, "id")
-	t, err := h.store.GetTicket(r.Context(), ticketID)
+	t, board, code, err := h.ticketBoard(r.Context(), ticketID)
 	if err != nil {
-		h.httpError(w, err, 404)
-		return
-	}
-	board, err := h.store.GetBoard(r.Context(), t.BoardID)
-	if err != nil {
-		h.httpError(w, err, 500)
+		h.httpError(w, err, code)
 		return
 	}
 	sess, err := h.sessions.Ensure(r.Context(), board, t)
@@ -965,11 +961,23 @@ func (h *handlers) startProxy(ctx context.Context, sess *db.Session, p db.PortAl
 }
 
 func (h *handlers) boardForSession(ctx context.Context, sess *db.Session) (*db.Board, error) {
-	t, err := h.store.GetTicket(ctx, sess.TicketID)
+	_, board, _, err := h.ticketBoard(ctx, sess.TicketID)
+	return board, err
+}
+
+// ticketBoard fetches a ticket and its parent board in one go. The returned
+// status is the HTTP code callers should pass to httpError when err != nil:
+// 404 if the ticket lookup failed (typically ErrNotFound), 500 otherwise.
+func (h *handlers) ticketBoard(ctx context.Context, id int64) (*db.Ticket, *db.Board, int, error) {
+	t, err := h.store.GetTicket(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, nil, 404, err
 	}
-	return h.store.GetBoard(ctx, t.BoardID)
+	board, err := h.store.GetBoard(ctx, t.BoardID)
+	if err != nil {
+		return nil, nil, 500, err
+	}
+	return t, board, 0, nil
 }
 
 // PTY

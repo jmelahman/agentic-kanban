@@ -203,27 +203,22 @@ func (s *Store) ListTickets(ctx context.Context, boardID int64) ([]Ticket, error
 	defer rows.Close()
 	tickets := []Ticket{}
 	for rows.Next() {
-		var t Ticket
-		if err := rows.Scan(&t.ID, &t.BoardID, &t.ColumnID, &t.Title, &t.Slug, &t.Body, &t.Position, &t.CreatedAt, &t.ArchivedAt); err != nil {
+		t, err := scanTicket(rows)
+		if err != nil {
 			return nil, err
 		}
-		tickets = append(tickets, t)
+		tickets = append(tickets, *t)
 	}
 	return tickets, rows.Err()
 }
 
 func (s *Store) GetTicket(ctx context.Context, id int64) (*Ticket, error) {
-	var t Ticket
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at FROM tickets WHERE id=?`, id,
-	).Scan(&t.ID, &t.BoardID, &t.ColumnID, &t.Title, &t.Slug, &t.Body, &t.Position, &t.CreatedAt, &t.ArchivedAt)
+	t, err := scanTicket(s.db.QueryRowContext(ctx,
+		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at FROM tickets WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &t, nil
+	return t, err
 }
 
 // FindOpenTicketByFingerprint returns the open (non-archived) ticket on
@@ -378,11 +373,11 @@ func (s *Store) ListArchivedTickets(ctx context.Context, boardID int64) ([]Ticke
 	defer rows.Close()
 	tickets := []Ticket{}
 	for rows.Next() {
-		var t Ticket
-		if err := rows.Scan(&t.ID, &t.BoardID, &t.ColumnID, &t.Title, &t.Slug, &t.Body, &t.Position, &t.CreatedAt, &t.ArchivedAt); err != nil {
+		t, err := scanTicket(rows)
+		if err != nil {
 			return nil, err
 		}
-		tickets = append(tickets, t)
+		tickets = append(tickets, *t)
 	}
 	return tickets, rows.Err()
 }
@@ -589,17 +584,12 @@ func (s *Store) UpdateTaskRunStatus(ctx context.Context, id int64, status string
 }
 
 func (s *Store) GetTaskRun(ctx context.Context, id int64) (*TaskRun, error) {
-	var tr TaskRun
-	err := s.db.QueryRowContext(ctx,
-		`SELECT id, session_id, task_label, command, exec_id, status, exit_code, started_at, stopped_at FROM task_runs WHERE id=?`, id,
-	).Scan(&tr.ID, &tr.SessionID, &tr.TaskLabel, &tr.Command, &tr.ExecID, &tr.Status, &tr.ExitCode, &tr.StartedAt, &tr.StoppedAt)
+	tr, err := scanTaskRun(s.db.QueryRowContext(ctx,
+		`SELECT id, session_id, task_label, command, exec_id, status, exit_code, started_at, stopped_at FROM task_runs WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
-	if err != nil {
-		return nil, err
-	}
-	return &tr, nil
+	return tr, err
 }
 
 func (s *Store) ListTaskRuns(ctx context.Context, sessionID int64) ([]TaskRun, error) {
@@ -611,11 +601,11 @@ func (s *Store) ListTaskRuns(ctx context.Context, sessionID int64) ([]TaskRun, e
 	defer rows.Close()
 	runs := []TaskRun{}
 	for rows.Next() {
-		var tr TaskRun
-		if err := rows.Scan(&tr.ID, &tr.SessionID, &tr.TaskLabel, &tr.Command, &tr.ExecID, &tr.Status, &tr.ExitCode, &tr.StartedAt, &tr.StoppedAt); err != nil {
+		tr, err := scanTaskRun(rows)
+		if err != nil {
 			return nil, err
 		}
-		runs = append(runs, tr)
+		runs = append(runs, *tr)
 	}
 	return runs, rows.Err()
 }
@@ -685,6 +675,22 @@ func scanSession(sc scanner) (*Session, error) {
 	sess.MountPath = mount.String
 	sess.RepoPath = repo.String
 	return &sess, nil
+}
+
+func scanTicket(sc scanner) (*Ticket, error) {
+	var t Ticket
+	if err := sc.Scan(&t.ID, &t.BoardID, &t.ColumnID, &t.Title, &t.Slug, &t.Body, &t.Position, &t.CreatedAt, &t.ArchivedAt); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
+func scanTaskRun(sc scanner) (*TaskRun, error) {
+	var tr TaskRun
+	if err := sc.Scan(&tr.ID, &tr.SessionID, &tr.TaskLabel, &tr.Command, &tr.ExecID, &tr.Status, &tr.ExitCode, &tr.StartedAt, &tr.StoppedAt); err != nil {
+		return nil, err
+	}
+	return &tr, nil
 }
 
 func scanPort(sc scanner) (*PortAllocation, error) {

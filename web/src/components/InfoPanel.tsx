@@ -1,14 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ReactNode, useState } from "react";
-import { api, PRState, Session } from "@/api/client";
+import { api, PR_STATE_COLOR, PRState, Session } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-
-const PR_STATE_COLOR: Record<PRState, string> = {
-  draft: "text-zinc-400",
-  open: "text-emerald-400",
-  merged: "text-purple-400",
-  closed: "text-red-400",
-};
 
 export function InfoPanel({ session }: { session: Session }) {
   const portsQ = useQuery({
