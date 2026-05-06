@@ -107,6 +107,9 @@ export function useScalarSelector<T, S>(
 export const ticketStore = new EntityStore<Ticket>();
 export const sessionStore = new EntityStore<Session>();
 export const activeTicketStore = new ScalarStore<number | null>(null);
+// Bumped by the "new ticket" shortcut to ask a Column to open its add form.
+// Holds the target column id; Columns reset it to null after reacting.
+export const addTicketRequestStore = new ScalarStore<number | null>(null);
 
 export function useTicket(id: number): Ticket | undefined {
   return useEntity(ticketStore, id);

@@ -49,6 +49,12 @@ export const ACTIONS: Action[] = [
     group: "Navigation",
     defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "ArrowRight" },
   },
+  {
+    id: "ticket.create",
+    label: "New ticket",
+    group: "Ticket",
+    defaultBinding: { ctrl: false, alt: false, shift: false, meta: false, key: "N" },
+  },
 ];
 
 export const ACTIONS_BY_ID: Record<string, Action> = Object.fromEntries(

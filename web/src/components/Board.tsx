@@ -15,6 +15,7 @@ import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { useShortcut } from "@/keys/useShortcut";
 import {
   activeTicketStore,
+  addTicketRequestStore,
   BoardStructure,
   fetchBoardStructure,
   ScalarStore,
@@ -130,6 +131,20 @@ export function Board({ boardId }: { boardId: number }) {
   useShortcut("ticket.next", () => moveSelection("down"));
   useShortcut("column.prev", () => moveSelection("left"));
   useShortcut("column.next", () => moveSelection("right"));
+  useShortcut("ticket.create", () => {
+    if (!structure) return;
+    const { columns, ticketIdsByColumn } = structure;
+    if (columns.length === 0) return;
+    const activeId = activeTicketStore.get();
+    const activeColIdx =
+      activeId == null
+        ? -1
+        : columns.findIndex((c) =>
+            (ticketIdsByColumn[c.id] ?? []).includes(activeId),
+          );
+    const target = columns[activeColIdx >= 0 ? activeColIdx : 0];
+    addTicketRequestStore.set(target.id);
+  });
 
   if (stateQ.isLoading) return <p className="p-4 text-sm text-fg-muted">Loading…</p>;
   if (!structure) return <p className="p-4 text-sm text-danger">No data.</p>;

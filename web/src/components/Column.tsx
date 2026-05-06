@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, Column as ColumnType } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { addTicketRequestStore, useScalarSelector } from "@/store";
 import { Button } from "./Button";
 import { Ticket } from "./Ticket";
 
@@ -26,6 +27,16 @@ export function Column(props: {
       qc.invalidateQueries({ queryKey: queryKeys.board(props.boardId) });
     },
   });
+
+  const requested = useScalarSelector(
+    addTicketRequestStore,
+    (id) => id === props.column.id,
+  );
+  useEffect(() => {
+    if (!requested) return;
+    setAdding(true);
+    addTicketRequestStore.set(null);
+  }, [requested]);
 
   return (
     <div
