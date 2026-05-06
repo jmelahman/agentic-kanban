@@ -1,14 +1,26 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   api,
-  BoardState,
   MergeConfig,
   PRState,
-  Session,
   SyncConfig,
 } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import {
+  activeTicketStore,
+  BoardStructure,
+  sessionStore,
+  useActiveTicketId,
+  useSession,
+} from "@/store";
 import { useToast } from "@/toast";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
 import { TerminalOrientation } from "@/hooks/useTerminalOrientation";
@@ -84,9 +96,7 @@ export function SessionPane({
   baseBranch,
   mergeConfig,
   syncConfig,
-  ticketId,
-  session,
-  onClose,
+  sessionIdByTicket,
   onAgentSlot,
   onShellSlot,
   orientation,
@@ -95,13 +105,17 @@ export function SessionPane({
   baseBranch: string;
   mergeConfig: MergeConfig;
   syncConfig: SyncConfig;
-  ticketId: number | null;
-  session: Session | null;
-  onClose: () => void;
+  sessionIdByTicket: Record<number, number>;
   onAgentSlot: (el: HTMLDivElement | null) => void;
   onShellSlot: (el: HTMLDivElement | null) => void;
   orientation: TerminalOrientation;
 }) {
+  // Subscribe to selection here so picking a ticket doesn't re-render `Board`
+  // (and therefore doesn't cascade through every Column / Ticket).
+  const ticketId = useActiveTicketId();
+  const sessionId = ticketId != null ? sessionIdByTicket[ticketId] ?? null : null;
+  const session = useSession(sessionId) ?? null;
+  const onClose = useCallback(() => activeTicketStore.set(null), []);
   const isHorizontal = orientation === "horizontal";
   const qc = useQueryClient();
   const toast = useToast();
@@ -124,6 +138,15 @@ export function SessionPane({
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
   const mergeMenuRef = useRef<HTMLDivElement | null>(null);
+
+  // Per-ticket transient UI state. The pane is mounted once for the lifetime
+  // of the board; switching tickets resets these instead of remounting (which
+  // used to wipe ResizeObservers, mutations, the auto-start ref, …).
+  useEffect(() => {
+    setTab("agent");
+    setSyncMenuOpen(false);
+    setMergeMenuOpen(false);
+  }, [ticketId]);
   const [width, setWidth] = useState<number>(() =>
     loadInitialSize(WIDTH_STORAGE_KEY, DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH),
   );
@@ -240,29 +263,29 @@ export function SessionPane({
 
   const boardKey = queryKeys.board(boardId);
 
-  const optimisticStatus = (sessionId: number, status: string) => {
-    const prev = qc.getQueryData<BoardState>(boardKey);
-    if (!prev) return { prev };
-    qc.setQueryData<BoardState>(boardKey, {
-      ...prev,
-      sessions: prev.sessions.map((s) =>
-        s.id === sessionId ? { ...s, status } : s,
-      ),
-    });
+  // Optimistic status updates flow straight into the session entity store —
+  // only `Ticket`s for this session re-render. Returns the snapshot to roll
+  // back on error.
+  const optimisticStatus = (id: number, status: string) => {
+    const prev = sessionStore.get(id);
+    if (!prev) return { prev: null };
+    sessionStore.set(id, { ...prev, status });
     return { prev };
+  };
+  const rollbackStatus = (id: number, prev: typeof session) => {
+    if (prev) sessionStore.set(id, prev);
   };
 
   const startMut = useMutation({
     mutationFn: (id: number) => api.startSession(id),
     onMutate: (id) => optimisticStatus(id, "starting"),
-    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
-    onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
-    },
+    onError: (_err, id, ctx) => rollbackStatus(id, ctx?.prev ?? null),
   });
   const ensureMut = useMutation({
     mutationFn: () => api.ensureSession(ticketId!),
     onSuccess: (created) => {
+      sessionStore.set(created.id, created);
+      // New ticket→session mapping needs the structure index rebuilt.
       qc.invalidateQueries({ queryKey: boardKey });
       startMut.mutate(created.id);
     },
@@ -279,32 +302,39 @@ export function SessionPane({
   const stopMut = useMutation({
     mutationFn: () => api.stopSession(session!.id),
     onMutate: () =>
-      session ? optimisticStatus(session.id, "stopping") : { prev: undefined },
-    onSuccess: () => qc.invalidateQueries({ queryKey: boardKey }),
+      session ? optimisticStatus(session.id, "stopping") : { prev: null },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
+      if (session) rollbackStatus(session.id, ctx?.prev ?? null);
     },
   });
   const restartMut = useMutation({
     mutationFn: () => api.restartSession(session!.id),
     onMutate: () =>
-      session ? optimisticStatus(session.id, "starting") : { prev: undefined },
-    onSuccess: () => {
-      toast.push("success", "container restarted");
-      qc.invalidateQueries({ queryKey: boardKey });
-    },
+      session ? optimisticStatus(session.id, "starting") : { prev: null },
+    onSuccess: () => toast.push("success", "container restarted"),
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) qc.setQueryData(boardKey, ctx.prev);
+      if (session) rollbackStatus(session.id, ctx?.prev ?? null);
     },
   });
+  // ticketId is passed via mutate variable — `onClose()` below clears
+  // activeTicketStore synchronously, which re-renders this component before
+  // `mutationFn` runs. A closure-captured `ticketId` would read the new
+  // (null) render and POST `/tickets/null/archive`.
   const archiveMut = useMutation({
-    mutationFn: () => api.archiveTicket(ticketId!),
-    onMutate: () => {
-      const prev = qc.getQueryData<BoardState>(boardKey);
+    mutationFn: (id: number) => api.archiveTicket(id),
+    onMutate: (id: number) => {
+      const prev = qc.getQueryData<BoardStructure>(boardKey);
       if (prev) {
-        qc.setQueryData<BoardState>(boardKey, {
+        const ticketIdsByColumn: Record<number, number[]> = {};
+        for (const [k, ids] of Object.entries(prev.ticketIdsByColumn)) {
+          ticketIdsByColumn[Number(k)] = ids.filter((tid) => tid !== id);
+        }
+        const sessionIdByTicket = { ...prev.sessionIdByTicket };
+        delete sessionIdByTicket[id];
+        qc.setQueryData<BoardStructure>(boardKey, {
           ...prev,
-          tickets: prev.tickets.filter((t) => t.id !== ticketId),
+          ticketIdsByColumn,
+          sessionIdByTicket,
         });
       }
       onClose();
@@ -645,7 +675,7 @@ export function SessionPane({
           <Button
             variant="neutral"
             size="icon"
-            onClick={() => archiveMut.mutate()}
+            onClick={() => ticketId != null && archiveMut.mutate(ticketId)}
             disabled={archiveMut.isPending}
             aria-label="archive"
             title="archive"
@@ -655,7 +685,7 @@ export function SessionPane({
         ) : (
           <Button
             variant="neutral"
-            onClick={() => archiveMut.mutate()}
+            onClick={() => ticketId != null && archiveMut.mutate(ticketId)}
             pending={archiveMut.isPending}
             idleLabel="archive"
             pendingLabel="archiving…"

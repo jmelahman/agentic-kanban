@@ -2,18 +2,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useState } from "react";
-import { api, Column as ColumnType, Session, Ticket as TicketType } from "@/api/client";
+import { api, Column as ColumnType } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { Button } from "./Button";
 import { Ticket } from "./Ticket";
 
 export function Column(props: {
   column: ColumnType;
-  tickets: TicketType[];
-  sessions: Map<number, Session>;
+  ticketIds: number[];
+  sessionIdByTicket: Record<number, number>;
   boardId: number;
-  activeTicket: number | null;
-  onSelect: (id: number) => void;
 }) {
   const qc = useQueryClient();
   const { setNodeRef, isOver } = useDroppable({ id: `col-${props.column.id}` });
@@ -36,28 +34,17 @@ export function Column(props: {
     >
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{props.column.name}</h2>
-        <span className="text-xs text-fg-muted">{props.tickets.length}</span>
+        <span className="text-xs text-fg-muted">{props.ticketIds.length}</span>
       </div>
       <div className="-mx-0.5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 py-0.5">
-        <SortableContext
-          items={props.tickets
-            .slice()
-            .sort((a, b) => a.position - b.position)
-            .map((t) => t.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {props.tickets
-            .slice()
-            .sort((a, b) => a.position - b.position)
-            .map((t) => (
-              <Ticket
-                key={t.id}
-                ticket={t}
-                session={props.sessions.get(t.id) ?? null}
-                active={props.activeTicket === t.id}
-                onSelect={() => props.onSelect(t.id)}
-              />
-            ))}
+        <SortableContext items={props.ticketIds} strategy={verticalListSortingStrategy}>
+          {props.ticketIds.map((id) => (
+            <Ticket
+              key={id}
+              id={id}
+              sessionId={props.sessionIdByTicket[id] ?? null}
+            />
+          ))}
         </SortableContext>
       </div>
       {adding ? (

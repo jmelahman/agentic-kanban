@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BoardState, Ticket as TicketType } from "@/api/client";
 import {
   DndContext,
   DragEndEvent,
@@ -14,6 +13,17 @@ import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { useShortcut } from "@/keys/useShortcut";
+import {
+  activeTicketStore,
+  BoardStructure,
+  fetchBoardStructure,
+  ScalarStore,
+  ticketStore,
+  useIsActiveTicket,
+  useScalarStore,
+  useSession,
+  useTicket,
+} from "@/store";
 import { Column } from "./Column";
 import { PtyTerminal } from "./PtyTerminal";
 import { SessionPane } from "./SessionPane";
@@ -30,86 +40,74 @@ type Direction = "up" | "down" | "left" | "right";
 function nextTicketId(
   direction: Direction,
   activeId: number | null,
-  columns: { id: number }[],
-  tickets: TicketType[],
+  structure: BoardStructure,
 ): number | null {
+  const { columns, ticketIdsByColumn } = structure;
   if (columns.length === 0) return activeId;
-  const byCol = new Map<number, TicketType[]>();
-  for (const c of columns) {
-    byCol.set(
-      c.id,
-      tickets.filter((t) => t.column_id === c.id).sort((a, b) => a.position - b.position),
-    );
-  }
   if (activeId == null) {
     for (const c of columns) {
-      const list = byCol.get(c.id)!;
-      if (list.length > 0) return list[0].id;
+      const list = ticketIdsByColumn[c.id] ?? [];
+      if (list.length > 0) return list[0];
     }
     return null;
   }
-  const active = tickets.find((t) => t.id === activeId);
-  if (!active) return activeId;
-  const colIdx = columns.findIndex((c) => c.id === active.column_id);
+  const colIdx = columns.findIndex((c) =>
+    (ticketIdsByColumn[c.id] ?? []).includes(activeId),
+  );
   if (colIdx === -1) return activeId;
-  const list = byCol.get(active.column_id)!;
-  const pos = list.findIndex((t) => t.id === activeId);
+  const list = ticketIdsByColumn[columns[colIdx].id] ?? [];
+  const pos = list.indexOf(activeId);
   if (direction === "up" || direction === "down") {
     const next = list[pos + (direction === "down" ? 1 : -1)];
-    return next?.id ?? activeId;
+    return next ?? activeId;
   }
   const delta = direction === "right" ? 1 : -1;
   for (let i = colIdx + delta; i >= 0 && i < columns.length; i += delta) {
-    const candidates = byCol.get(columns[i].id)!;
+    const candidates = ticketIdsByColumn[columns[i].id] ?? [];
     if (candidates.length === 0) continue;
     const targetIdx = Math.min(pos, candidates.length - 1);
-    return candidates[targetIdx].id;
+    return candidates[targetIdx];
   }
   return activeId;
 }
 
-function reorderTickets(
-  tickets: TicketType[],
+function moveTicketIdInStructure(
+  structure: BoardStructure,
   movedId: number,
   targetCol: number,
   insertIndex: number,
-): TicketType[] {
-  const moved = tickets.find((t) => t.id === movedId);
-  if (!moved) return tickets;
-  const affected = new Set([moved.column_id, targetCol]);
-  const lists = new Map<number, TicketType[]>();
-  for (const colId of affected) {
-    lists.set(
-      colId,
-      tickets
-        .filter((t) => t.column_id === colId && t.id !== movedId)
-        .sort((a, b) => a.position - b.position),
-    );
+): BoardStructure {
+  const ticketIdsByColumn: Record<number, number[]> = {};
+  for (const [colKey, ids] of Object.entries(structure.ticketIdsByColumn)) {
+    ticketIdsByColumn[Number(colKey)] = ids.filter((id) => id !== movedId);
   }
-  const targetList = lists.get(targetCol)!;
-  targetList.splice(insertIndex, 0, { ...moved, column_id: targetCol });
-  return tickets.map((t) => {
-    if (t.id === movedId) {
-      return { ...t, column_id: targetCol, position: targetList.findIndex((x) => x.id === movedId) };
-    }
-    if (affected.has(t.column_id)) {
-      const idx = lists.get(t.column_id)!.findIndex((x) => x.id === t.id);
-      if (idx >= 0) return { ...t, position: idx };
-    }
-    return t;
-  });
+  const target = ticketIdsByColumn[targetCol] ?? [];
+  target.splice(insertIndex, 0, movedId);
+  ticketIdsByColumn[targetCol] = target;
+  return { ...structure, ticketIdsByColumn };
 }
 
 export function Board({ boardId }: { boardId: number }) {
   const qc = useQueryClient();
-  const stateQ = useQuery({ queryKey: queryKeys.board(boardId), queryFn: () => api.boardState(boardId) });
-  const [activeTicket, setActiveTicket] = useState<number | null>(null);
+  const stateQ = useQuery({
+    queryKey: queryKeys.board(boardId),
+    queryFn: () => fetchBoardStructure(boardId),
+  });
   const [draggingId, setDraggingId] = useState<number | null>(null);
-  const [agentSlot, setAgentSlot] = useState<HTMLDivElement | null>(null);
-  const onAgentSlot = useCallback((el: HTMLDivElement | null) => setAgentSlot(el), []);
-  const [shellSlot, setShellSlot] = useState<HTMLDivElement | null>(null);
-  const onShellSlot = useCallback((el: HTMLDivElement | null) => setShellSlot(el), []);
-  const [shellOpened, setShellOpened] = useState<Set<number>>(() => new Set());
+  // Slots are SessionPane-owned DOM nodes that PtyTerminals portal into.
+  // Held in ScalarStores rather than `useState` so SessionPane mounting /
+  // unmounting its slot div doesn't re-render Board (and its 4 columns × N
+  // tickets). Only the few `SessionTerminals` instances that subscribe react.
+  const [agentSlotStore] = useState(() => new ScalarStore<HTMLDivElement | null>(null));
+  const [shellSlotStore] = useState(() => new ScalarStore<HTMLDivElement | null>(null));
+  const onAgentSlot = useCallback(
+    (el: HTMLDivElement | null) => agentSlotStore.set(el),
+    [agentSlotStore],
+  );
+  const onShellSlot = useCallback(
+    (el: HTMLDivElement | null) => shellSlotStore.set(el),
+    [shellSlotStore],
+  );
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const orientation = useTerminalOrientation();
 
@@ -119,32 +117,14 @@ export function Board({ boardId }: { boardId: number }) {
     onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.board(boardId) }),
   });
 
-  const sessions = stateQ.data?.sessions ?? [];
-  const sessionByTicket = new Map<number, (typeof sessions)[number]>(sessions.map((s) => [s.ticket_id, s]));
-  const activeSession = activeTicket != null ? sessionByTicket.get(activeTicket) ?? null : null;
-  const activeSessionId = activeSession?.id ?? null;
-
-  // The shell tab is lazy: we only spawn the shell PTY once the user has opened
-  // the shell tab at least once for that session (the slot ref fires non-null).
-  useEffect(() => {
-    if (shellSlot && activeSessionId != null) {
-      setShellOpened((prev) => {
-        if (prev.has(activeSessionId)) return prev;
-        const next = new Set(prev);
-        next.add(activeSessionId);
-        return next;
-      });
-    }
-  }, [shellSlot, activeSessionId]);
-
-  const navColumns = stateQ.data?.columns ?? [];
-  const navTickets = stateQ.data?.tickets ?? [];
+  const structure = stateQ.data;
   const moveSelection = useCallback(
     (direction: Direction) => {
-      const next = nextTicketId(direction, activeTicket, navColumns, navTickets);
-      if (next != null) setActiveTicket(next);
+      if (!structure) return;
+      const next = nextTicketId(direction, activeTicketStore.get(), structure);
+      if (next != null) activeTicketStore.set(next);
     },
-    [activeTicket, navColumns, navTickets],
+    [structure],
   );
   useShortcut("ticket.prev", () => moveSelection("up"));
   useShortcut("ticket.next", () => moveSelection("down"));
@@ -152,9 +132,10 @@ export function Board({ boardId }: { boardId: number }) {
   useShortcut("column.next", () => moveSelection("right"));
 
   if (stateQ.isLoading) return <p className="p-4 text-sm text-fg-muted">Loading…</p>;
-  if (!stateQ.data) return <p className="p-4 text-sm text-danger">No data.</p>;
+  if (!structure) return <p className="p-4 text-sm text-danger">No data.</p>;
 
-  const { board, columns, tickets, merge_config, sync_config } = stateQ.data;
+  const { board, columns, ticketIdsByColumn, sessionIdByTicket, merge_config, sync_config } =
+    structure;
 
   function onDragStart(e: DragStartEvent) {
     setDraggingId(Number(e.active.id));
@@ -165,7 +146,7 @@ export function Board({ boardId }: { boardId: number }) {
     const ticketId = Number(e.active.id);
     const overId = e.over?.id;
     if (overId == null) return;
-    const moved = tickets.find((t) => t.id === ticketId);
+    const moved = ticketStore.get(ticketId);
     if (!moved) return;
 
     // over.id is either `col-N` (column droppable) or a ticket id (sortable item).
@@ -174,18 +155,23 @@ export function Board({ boardId }: { boardId: number }) {
     if (typeof overId === "string" && overId.startsWith("col-")) {
       targetCol = Number(overId.slice(4));
       if (Number.isNaN(targetCol)) return;
-      insertIndex = tickets.filter((t) => t.column_id === targetCol && t.id !== ticketId).length;
+      const list = ticketIdsByColumn[targetCol] ?? [];
+      insertIndex = list.filter((id) => id !== ticketId).length;
     } else {
-      const overTicket = tickets.find((t) => t.id === Number(overId));
+      const overTicketId = Number(overId);
+      const overTicket = ticketStore.get(overTicketId);
       if (!overTicket) return;
       targetCol = overTicket.column_id;
-      const targetList = tickets
-        .filter((t) => t.column_id === targetCol && t.id !== ticketId)
-        .sort((a, b) => a.position - b.position);
-      const idx = targetList.findIndex((t) => t.id === overTicket.id);
+      const targetList = (ticketIdsByColumn[targetCol] ?? []).filter(
+        (id) => id !== ticketId,
+      );
+      const idx = targetList.indexOf(overTicketId);
       if (idx < 0) {
         insertIndex = targetList.length;
-      } else if (moved.column_id === targetCol && moved.position < overTicket.position) {
+      } else if (
+        moved.column_id === targetCol &&
+        moved.position < overTicket.position
+      ) {
         // Dragging downward within the same column: drop after the over ticket.
         insertIndex = idx + 1;
       } else {
@@ -194,19 +180,15 @@ export function Board({ boardId }: { boardId: number }) {
     }
 
     if (moved.column_id === targetCol) {
-      const sourceList = tickets
-        .filter((t) => t.column_id === targetCol)
-        .sort((a, b) => a.position - b.position);
-      if (sourceList.findIndex((t) => t.id === ticketId) === insertIndex) return;
+      const sourceList = ticketIdsByColumn[targetCol] ?? [];
+      if (sourceList.indexOf(ticketId) === insertIndex) return;
     }
 
-    qc.setQueryData<BoardState>(queryKeys.board(boardId), (old) =>
-      old ? { ...old, tickets: reorderTickets(old.tickets, ticketId, targetCol, insertIndex) } : old,
+    qc.setQueryData<BoardStructure>(queryKeys.board(boardId), (old) =>
+      old ? moveTicketIdInStructure(old, ticketId, targetCol, insertIndex) : old,
     );
     moveMut.mutate({ id: ticketId, column_id: targetCol, position: insertIndex });
   }
-
-  const draggingTicket = draggingId != null ? tickets.find((t) => t.id === draggingId) ?? null : null;
 
   return (
     <div className={`flex h-full ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}>
@@ -221,61 +203,99 @@ export function Board({ boardId }: { boardId: number }) {
             <Column
               key={c.id}
               column={c}
-              tickets={tickets.filter((t) => t.column_id === c.id)}
-              sessions={sessionByTicket}
+              ticketIds={ticketIdsByColumn[c.id] ?? []}
+              sessionIdByTicket={sessionIdByTicket}
               boardId={boardId}
-              onSelect={setActiveTicket}
-              activeTicket={activeTicket}
             />
           ))}
         </div>
         <DragOverlay>
-          {draggingTicket ? (
-            <TicketDragPreview
-              ticket={draggingTicket}
-              session={sessionByTicket.get(draggingTicket.id) ?? null}
-              active={activeTicket === draggingTicket.id}
+          {draggingId != null ? (
+            <DraggingPreview
+              id={draggingId}
+              sessionId={sessionIdByTicket[draggingId] ?? null}
             />
           ) : null}
         </DragOverlay>
       </DndContext>
       <SessionPane
-        key={activeTicket ?? "none"}
         boardId={boardId}
         baseBranch={board.base_branch}
         mergeConfig={merge_config}
         syncConfig={sync_config}
-        ticketId={activeTicket}
-        session={activeSession}
-        onClose={() => setActiveTicket(null)}
+        sessionIdByTicket={sessionIdByTicket}
         onAgentSlot={onAgentSlot}
         onShellSlot={onShellSlot}
         orientation={orientation}
       />
-      {sessions
-        .filter((s) => ATTACHABLE.has(s.status))
-        .flatMap((s) => {
-          const isActive = activeTicket === s.ticket_id;
-          const elements = [
-            <PtyTerminal
-              key={`${s.id}:agent:${s.started_at ?? 0}`}
-              sessionId={s.id}
-              kind="agent"
-              mountTarget={isActive ? agentSlot : null}
-            />,
-          ];
-          if (shellOpened.has(s.id)) {
-            elements.push(
-              <PtyTerminal
-                key={`${s.id}:shell:${s.started_at ?? 0}`}
-                sessionId={s.id}
-                kind="shell"
-                mountTarget={isActive ? shellSlot : null}
-              />,
-            );
-          }
-          return elements;
-        })}
+      {Object.entries(sessionIdByTicket).map(([tIdStr, sId]) => (
+        <SessionTerminals
+          key={sId}
+          ticketId={Number(tIdStr)}
+          sessionId={sId}
+          agentSlotStore={agentSlotStore}
+          shellSlotStore={shellSlotStore}
+        />
+      ))}
     </div>
+  );
+}
+
+// Subscribes to one session's status. Status transitions (e.g. starting → idle)
+// notify only this instance, so the PtyTerminal can mount/unmount without the
+// rest of the board re-rendering.
+function SessionTerminals({
+  ticketId,
+  sessionId,
+  agentSlotStore,
+  shellSlotStore,
+}: {
+  ticketId: number;
+  sessionId: number;
+  agentSlotStore: ScalarStore<HTMLDivElement | null>;
+  shellSlotStore: ScalarStore<HTMLDivElement | null>;
+}) {
+  const session = useSession(sessionId);
+  const isActive = useIsActiveTicket(ticketId);
+  const agentSlot = useScalarStore(agentSlotStore);
+  const shellSlot = useScalarStore(shellSlotStore);
+  // The shell tab is lazy: we only spawn the shell PTY once the user has
+  // opened the shell tab at least once for *this* session (slot ref fires
+  // non-null while we're the active ticket).
+  const [shellEverOpened, setShellEverOpened] = useState(false);
+  useEffect(() => {
+    if (isActive && shellSlot) setShellEverOpened(true);
+  }, [isActive, shellSlot]);
+  if (!session || !ATTACHABLE.has(session.status)) return null;
+  return (
+    <>
+      <PtyTerminal
+        key={`agent:${session.started_at ?? 0}`}
+        sessionId={session.id}
+        kind="agent"
+        mountTarget={isActive ? agentSlot : null}
+      />
+      {shellEverOpened && (
+        <PtyTerminal
+          key={`shell:${session.started_at ?? 0}`}
+          sessionId={session.id}
+          kind="shell"
+          mountTarget={isActive ? shellSlot : null}
+        />
+      )}
+    </>
+  );
+}
+
+function DraggingPreview({ id, sessionId }: { id: number; sessionId: number | null }) {
+  const ticket = useTicket(id);
+  const session = useSession(sessionId);
+  if (!ticket) return null;
+  return (
+    <TicketDragPreview
+      ticket={ticket}
+      session={session ?? null}
+      active={activeTicketStore.get() === id}
+    />
   );
 }

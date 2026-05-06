@@ -1,9 +1,15 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, Session, Ticket as TicketType } from "@/api/client";
-import { queryKeys } from "@/api/keys";
+import {
+  activeTicketStore,
+  ticketStore,
+  useIsActiveTicket,
+  useSession,
+  useTicket,
+} from "@/store";
 
 const STATUS_COLOR: Record<string, string> = {
   stopped: "text-fg-muted",
@@ -61,24 +67,16 @@ function TicketCard({
   );
 }
 
-export function Ticket({
-  ticket,
-  session,
-  active,
-  onSelect,
-}: {
-  ticket: TicketType;
-  session: Session | null;
-  active: boolean;
-  onSelect: () => void;
-}) {
-  const qc = useQueryClient();
+export function Ticket({ id, sessionId }: { id: number; sessionId: number | null }) {
+  const ticket = useTicket(id);
+  const session = useSession(sessionId);
+  const active = useIsActiveTicket(id);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(ticket.title);
+  const [draft, setDraft] = useState(ticket?.title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
-    id: ticket.id,
+    id,
     disabled: editing,
   });
   const style: React.CSSProperties = {
@@ -88,22 +86,26 @@ export function Ticket({
   };
 
   const renameMut = useMutation({
-    mutationFn: (title: string) => api.updateTicket(ticket.id, { title }),
-    onSuccess: () => {
+    mutationFn: (title: string) => api.updateTicket(id, { title }),
+    onSuccess: (updated) => {
       setEditing(false);
-      qc.invalidateQueries({ queryKey: queryKeys.board(ticket.board_id) });
+      ticketStore.set(updated.id, updated);
     },
   });
 
   useEffect(() => {
-    if (editing) {
+    if (editing && ticket) {
       setDraft(ticket.title);
       requestAnimationFrame(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
       });
     }
-  }, [editing, ticket.title]);
+  }, [editing, ticket]);
+
+  const onSelect = useCallback(() => activeTicketStore.set(id), [id]);
+
+  if (!ticket) return null;
 
   const submit = () => {
     const next = draft.trim();
@@ -118,7 +120,7 @@ export function Ticket({
   return (
     <TicketCard
       ticket={ticket}
-      session={session}
+      session={session ?? null}
       active={active}
       onClick={editing ? undefined : onSelect}
       onDoubleClick={(e) => {

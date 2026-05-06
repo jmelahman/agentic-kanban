@@ -1,7 +1,12 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, BoardState, Session, subscribeBoard, Ticket } from "@/api/client";
+import { api, Session, subscribeBoard, Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import {
+  activeTicketStore,
+  sessionStore,
+  ticketStore,
+} from "@/store";
 import { AppSettings } from "@/components/AppSettings";
 import { ArchivedDrawer } from "@/components/ArchivedDrawer";
 import { Board } from "@/components/Board";
@@ -39,6 +44,9 @@ export default function App() {
 
   useEffect(() => {
     if (activeId != null) writeActiveBoardId(activeId);
+    // Selection lives outside the board; clear it when the board changes so a
+    // ticket-id from board A doesn't leak into board B's pane.
+    activeTicketStore.set(null);
   }, [activeId]);
 
   useEffect(() => {
@@ -46,12 +54,9 @@ export default function App() {
     const key = queryKeys.board(activeId);
     return subscribeBoard(activeId, {
       onEvent: (type, data) => {
-        const patched = applyBoardEvent(qc.getQueryData<BoardState>(key), type, data);
-        if (patched === undefined) {
-          qc.invalidateQueries({ queryKey: key });
-        } else if (patched !== null) {
-          qc.setQueryData(key, patched);
-        }
+        applyBoardEvent(activeId, type, data, () =>
+          qc.invalidateQueries({ queryKey: key }),
+        );
         if (type === "ticket_archived" || type === "ticket_unarchived" || type === "ticket_deleted") {
           qc.invalidateQueries({ queryKey: queryKeys.archived(activeId) });
         }
@@ -148,52 +153,50 @@ export default function App() {
   );
 }
 
-// Patches the cached BoardState with an SSE event payload. Returns the new
-// state, null to indicate "no change" (event for a different board / no cache
-// yet), or undefined to fall back to refetching.
+// Routes an SSE event to the right cache. Per-id content updates flow
+// straight to the entity stores (no cascade). Structural changes — anything
+// that adds, removes, or reorders ticket-ids in a column — invalidate the
+// boardStructure query so it refetches and rebuilds the index.
 function applyBoardEvent(
-  prev: BoardState | undefined,
+  boardId: number,
   type: string,
   data: unknown,
-): BoardState | null | undefined {
-  if (!prev) return null;
+  invalidateStructure: () => void,
+): void {
   switch (type) {
-    case "ticket_created": {
-      const t = data as Ticket;
-      if (!t || prev.tickets.some((x) => x.id === t.id)) return prev;
-      return { ...prev, tickets: [...prev.tickets, t] };
+    case "ticket_updated": {
+      const t = data as Ticket | null;
+      if (t) ticketStore.set(t.id, t);
+      return;
     }
-    case "ticket_updated":
-    case "ticket_moved": {
-      const t = data as Ticket;
-      if (!t) return null;
-      return { ...prev, tickets: prev.tickets.map((x) => (x.id === t.id ? t : x)) };
+    case "ticket_created":
+    case "ticket_moved":
+    case "ticket_unarchived": {
+      const t = data as Ticket | null;
+      if (t) ticketStore.set(t.id, t);
+      invalidateStructure();
+      return;
     }
     case "ticket_archived":
     case "ticket_deleted": {
-      const t = data as Ticket;
-      if (!t) return null;
-      return {
-        ...prev,
-        tickets: prev.tickets.filter((x) => x.id !== t.id),
-        sessions: prev.sessions.filter((s) => s.ticket_id !== t.id),
-      };
-    }
-    case "ticket_unarchived": {
-      const t = data as Ticket;
-      if (!t || prev.tickets.some((x) => x.id === t.id)) return prev;
-      return { ...prev, tickets: [...prev.tickets, t] };
+      const t = data as Ticket | null;
+      if (t && activeTicketStore.get() === t.id && t.board_id === boardId) {
+        activeTicketStore.set(null);
+      }
+      invalidateStructure();
+      return;
     }
     case "session_updated": {
-      const s = data as Session;
-      if (!s) return null;
-      const idx = prev.sessions.findIndex((x) => x.id === s.id);
-      const sessions = idx === -1 ? [...prev.sessions, s] : prev.sessions.map((x) => (x.id === s.id ? s : x));
-      return { ...prev, sessions };
+      const s = data as Session | null;
+      if (!s) return;
+      const prev = sessionStore.get(s.id);
+      sessionStore.set(s.id, s);
+      // New session: ticket → session map needs rebuild.
+      if (!prev) invalidateStructure();
+      return;
     }
     case "ready":
-      return null;
     default:
-      return undefined;
+      return;
   }
 }
