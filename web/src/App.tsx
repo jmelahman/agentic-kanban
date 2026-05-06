@@ -82,7 +82,7 @@ export default function App() {
       <header className="flex items-center gap-4 border-b border-border px-3 py-2">
         <h1 className="text-lg font-semibold">Kanban</h1>
         <select
-          className="rounded bg-surface px-2 py-1 text-sm"
+          className="cursor-pointer rounded bg-surface px-2 py-1 text-sm"
           value={activeId ?? ""}
           onChange={(e) => setActiveId(Number(e.target.value))}
         >

@@ -12,7 +12,7 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
   children?: ReactNode;
 };
 
-const BASE = "rounded transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
+const BASE = "rounded cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
 
 const VARIANTS: Record<Variant, string> = {
   primary: "bg-accent-700 text-white hover:bg-accent-600",
