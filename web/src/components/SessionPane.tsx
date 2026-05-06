@@ -116,6 +116,7 @@ export function SessionPane({
   const qc = useQueryClient();
   const toast = useToast();
   const [tab, setTab] = useState<TabId>("agent");
+  const [fullscreen, setFullscreen] = useState(false);
   const tabsEnabled = ticketId != null;
   useShortcut(
     "tab.next",
@@ -130,6 +131,9 @@ export function SessionPane({
       ),
     { enabled: tabsEnabled },
   );
+  useShortcut("session.fullscreen", () => setFullscreen((v) => !v), {
+    enabled: tabsEnabled,
+  });
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
@@ -150,7 +154,6 @@ export function SessionPane({
     loadInitialSize(HEIGHT_STORAGE_KEY, DEFAULT_HEIGHT, MIN_HEIGHT, MAX_HEIGHT),
   );
   const [resizing, setResizing] = useState(false);
-  const [fullscreen, setFullscreen] = useState(false);
   const [compact, setCompact] = useState(false);
   const headerRef = useRef<HTMLDivElement | null>(null);
   const headerGhostRef = useRef<HTMLDivElement | null>(null);

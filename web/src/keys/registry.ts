@@ -14,6 +14,12 @@ export const ACTIONS: Action[] = [
     defaultBinding: { ctrl: true, alt: true, shift: false, meta: false, key: "PageUp" },
   },
   {
+    id: "session.fullscreen",
+    label: "Toggle fullscreen",
+    group: "Session",
+    defaultBinding: { ctrl: false, alt: false, shift: false, meta: false, key: "F" },
+  },
+  {
     id: "board.next",
     label: "Next board",
     group: "Navigation",
