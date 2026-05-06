@@ -1,6 +1,6 @@
 {
   "name": "Personal Dev Sandbox",
-  "image": "lahmanja/devcontainer@sha256:50bb06f1ac153533dc02e8f8d6028f110bd411628c670b4eafa7fd1402668e91",
+  "image": "lahmanja/devcontainer@sha256:f0e46093b6538ef87756901b95e8f9b430ad956e61e551836cd976833e55216d",
   "runArgs": [
     "--cap-add=NET_ADMIN",
     "--cap-add=NET_RAW",
