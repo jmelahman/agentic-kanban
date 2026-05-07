@@ -1,6 +1,20 @@
 import { defineConfig } from 'vitepress'
+import llmstxt from 'vitepress-plugin-llms'
 
 export default defineConfig({
+  vite: {
+    plugins: [llmstxt()],
+  },
+  transformHead({ pageData, siteData }) {
+    if (pageData.frontmatter.layout === 'home') return []
+    return [
+      ['link', {
+        rel: 'alternate',
+        type: 'text/markdown',
+        href: `${siteData.base}${pageData.relativePath}`,
+      }],
+    ]
+  },
   title: 'Agentic Kanban',
   description: 'A kanban board for managing AI agent sessions.',
   base: '/agentic-kanban/',
