@@ -47,6 +47,7 @@ plans/
 !assets/*.png
 !web/public/**/*.png
 !web/src/**/*.png
+!docs/public/**/*.png
 .claude-tmp/
 
 # python packaging
