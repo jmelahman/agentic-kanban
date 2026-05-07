@@ -5,16 +5,7 @@
    visually centers in the hero — that overlaps our wide screenshot with
    the heading on stacked viewports. Zero the margins out. */
 .VPHero .image {
-  margin: 0 !important;
-}
-
-/* Default theme reserves 24 px of side padding on small viewports for a
-   small logo. With our wide screenshot we want it edge-to-edge. */
-@media (max-width: 959px) {
-  .VPHero {
-    padding-left: 12px !important;
-    padding-right: 12px !important;
-  }
+  margin-top: -32px !important;
 }
 
 .VPHero .image-container {
@@ -25,7 +16,6 @@
   /* Default theme nudges the container -32px / -32px to offset a logo;
      that pushes our wide screenshot under the heading on side-by-side
      layouts and clips the top on stacked layouts. */
-  transform: none !important;
 }
 
 .VPHero .image-bg {
