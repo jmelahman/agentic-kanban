@@ -681,7 +681,7 @@ func (h *handlers) ensureSession(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	sess, err := h.sessions.Start(r.Context(), id)
+	sess, err := h.sessions.Start(r.Context(), id, h.makePullProgressCb(r.Context(), id))
 	if err != nil {
 		h.httpError(w, err, 500)
 		return
@@ -692,13 +692,39 @@ func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) restartSession(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	sess, err := h.sessions.Restart(r.Context(), id)
+	sess, err := h.sessions.Restart(r.Context(), id, h.makePullProgressCb(r.Context(), id))
 	if err != nil {
 		h.httpError(w, err, 500)
 		return
 	}
 	h.publishSessionUpdated(r.Context(), sess)
 	writeJSON(w, 200, sess)
+}
+
+// makePullProgressCb returns a callback that publishes session_pull_progress
+// SSE events to the session's board. Returns nil if the session or its ticket
+// can't be resolved — Start will surface that as its own error.
+func (h *handlers) makePullProgressCb(ctx context.Context, sessionID int64) docker.PullProgressFunc {
+	sess, err := h.store.GetSession(ctx, sessionID)
+	if err != nil || sess == nil {
+		return nil
+	}
+	t, err := h.store.GetTicket(ctx, sess.TicketID)
+	if err != nil || t == nil {
+		return nil
+	}
+	boardID := t.BoardID
+	return func(p docker.PullProgress) {
+		h.bus.Publish(boardID, "session_pull_progress", map[string]any{
+			"session_id": sessionID,
+			"image":      p.Image,
+			"current":    p.Current,
+			"total":      p.Total,
+			"layers":     p.Layers,
+			"status":     p.Status,
+			"done":       p.Done,
+		})
+	}
 }
 
 func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {

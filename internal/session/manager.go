@@ -99,8 +99,10 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 	return sess, nil
 }
 
-// Start brings up the devcontainer for a session.
-func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, error) {
+// Start brings up the devcontainer for a session. onPullProgress, if non-nil,
+// receives throttled image-pull progress while the devcontainer image is
+// being fetched (no-op when the image is already cached).
+func (m *Manager) Start(ctx context.Context, sessionID int64, onPullProgress docker.PullProgressFunc) (*db.Session, error) {
 	sess, err := m.store.GetSession(ctx, sessionID)
 	if err != nil {
 		return nil, err
@@ -164,7 +166,8 @@ func (m *Manager) Start(ctx context.Context, sessionID int64) (*db.Session, erro
 			"KANBAN_SESSION_ID": fmt.Sprintf("%d", sess.ID),
 			"KANBAN_API_URL":    m.apiBase,
 		},
-		AttachNetwork: docker.KanbanNetworkName,
+		AttachNetwork:  docker.KanbanNetworkName,
+		OnPullProgress: onPullProgress,
 	})
 	if err != nil {
 		_ = m.store.UpdateSessionStatus(ctx, sess.ID, db.SessionStatusError)
@@ -298,11 +301,11 @@ func (m *Manager) Stop(ctx context.Context, sessionID int64) error {
 // Restart stops the session's container (if any) and starts it again. The
 // session row, worktree, branch, and port allocations are preserved. Returns
 // the refreshed session.
-func (m *Manager) Restart(ctx context.Context, sessionID int64) (*db.Session, error) {
+func (m *Manager) Restart(ctx context.Context, sessionID int64, onPullProgress docker.PullProgressFunc) (*db.Session, error) {
 	if err := m.Stop(ctx, sessionID); err != nil {
 		return nil, err
 	}
-	return m.Start(ctx, sessionID)
+	return m.Start(ctx, sessionID, onPullProgress)
 }
 
 // Destroy fully tears down a session: stops the container, removes the

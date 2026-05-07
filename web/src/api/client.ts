@@ -48,6 +48,18 @@ export type Session = {
   pr_url?: string;
 };
 
+// PullProgress is an aggregate snapshot of an in-flight image pull, summed
+// across layers. `total` is 0 until the daemon reports the first byte counter.
+export type PullProgress = {
+  session_id: number;
+  image: string;
+  current: number;
+  total: number;
+  layers: number;
+  status: string;
+  done: boolean;
+};
+
 export type MergeConfig = {
   allow_merge_commit: boolean;
   allow_squash: boolean;
@@ -268,7 +280,7 @@ export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => v
       opts.onEvent(e.type, null);
     }
   };
-  for (const t of ["ticket_created", "ticket_updated", "ticket_moved", "ticket_archived", "ticket_unarchived", "ticket_deleted", "session_updated", "ready"]) {
+  for (const t of ["ticket_created", "ticket_updated", "ticket_moved", "ticket_archived", "ticket_unarchived", "ticket_deleted", "session_updated", "session_pull_progress", "ready"]) {
     es.addEventListener(t, handler as EventListener);
   }
   es.onopen = () => opts.onStatus?.("open");

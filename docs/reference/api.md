@@ -82,6 +82,13 @@ Server-Sent Events stream of board changes. Events include:
 - `ticket_moved`
 - `ticket_archived`
 - `session_status_changed`
+- `session_pull_progress` — emitted while a session is starting and its
+  devcontainer image is being pulled. The payload is
+  `{ session_id, image, current, total, layers, status, done }` where
+  `current`/`total` are aggregate bytes summed across layers (`total` is `0`
+  until the daemon reports the first byte counter), `status` is the most
+  recent human-readable line from Docker (e.g. `Downloading`,
+  `Extracting`), and `done` is `true` on the final terminal event.
 - `task_run_*`
 
 Useful for keeping a dashboard or another integration in sync without polling.

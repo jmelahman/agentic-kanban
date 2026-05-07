@@ -4,6 +4,7 @@ import type {
   Board,
   Column,
   MergeConfig,
+  PullProgress,
   Session,
   SyncConfig,
   Ticket,
@@ -106,6 +107,10 @@ export function useScalarSelector<T, S>(
 // (column moves, archives, creates) refetch independently of content edits.
 export const ticketStore = new EntityStore<Ticket>();
 export const sessionStore = new EntityStore<Session>();
+// Transient per-session image-pull progress. Populated by SSE events while a
+// session is starting; cleared once the pull completes or the session
+// transitions out of "starting".
+export const pullProgressStore = new EntityStore<PullProgress>();
 export const activeTicketStore = new ScalarStore<number | null>(null);
 // Bumped by the "new ticket" shortcut to ask a Column to open its add form.
 // Holds the target column id; Columns reset it to null after reacting.
@@ -117,6 +122,12 @@ export function useTicket(id: number): Ticket | undefined {
 
 export function useSession(id: number | null | undefined): Session | undefined {
   return useEntity(sessionStore, id ?? -1);
+}
+
+export function usePullProgress(
+  id: number | null | undefined,
+): PullProgress | undefined {
+  return useEntity(pullProgressStore, id ?? -1);
 }
 
 export function useActiveTicketId(): number | null {

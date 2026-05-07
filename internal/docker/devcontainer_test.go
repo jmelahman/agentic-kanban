@@ -10,6 +10,48 @@ import (
 	"github.com/docker/docker/api/types/mount"
 )
 
+func TestStreamPullProgress(t *testing.T) {
+	stream := strings.Join([]string{
+		`{"status":"Pulling from library/alpine","id":"latest"}`,
+		`{"status":"Pulling fs layer","progressDetail":{},"id":"abc"}`,
+		`{"status":"Pulling fs layer","progressDetail":{},"id":"def"}`,
+		`{"status":"Downloading","progressDetail":{"current":50,"total":100},"id":"abc"}`,
+		`{"status":"Downloading","progressDetail":{"current":200,"total":400},"id":"def"}`,
+		`{"status":"Pull complete","progressDetail":{},"id":"abc"}`,
+		`{"status":"Pull complete","progressDetail":{},"id":"def"}`,
+		`{"status":"Status: Downloaded newer image"}`,
+	}, "\n")
+	var snaps []PullProgress
+	if err := streamPullProgress(strings.NewReader(stream), "alpine:latest", func(p PullProgress) {
+		snaps = append(snaps, p)
+	}); err != nil {
+		t.Fatalf("streamPullProgress: %v", err)
+	}
+	if len(snaps) == 0 {
+		t.Fatal("no snapshots emitted")
+	}
+	last := snaps[len(snaps)-1]
+	if !last.Done {
+		t.Errorf("final snapshot Done = false, want true")
+	}
+	// "Pull complete" snaps each layer's current to its total, so the final
+	// emission must report a fully-fetched 500/500 across both layers.
+	if last.Current != 500 || last.Total != 500 {
+		t.Errorf("final aggregate = %d/%d; want 500/500", last.Current, last.Total)
+	}
+	if last.Layers != 2 {
+		t.Errorf("final layers = %d; want 2", last.Layers)
+	}
+}
+
+func TestStreamPullProgress_Error(t *testing.T) {
+	stream := `{"errorDetail":{"message":"boom"},"error":"boom"}`
+	err := streamPullProgress(strings.NewReader(stream), "x", func(PullProgress) {})
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("err = %v; want error containing \"boom\"", err)
+	}
+}
+
 func TestSubstitute(t *testing.T) {
 	t.Setenv("KANBAN_TEST_SET", "world")
 	t.Setenv("KANBAN_TEST_EMPTY", "")

@@ -65,6 +65,24 @@ type PortMapping struct {
 	ContainerPort int
 }
 
+// PullProgress is an aggregate snapshot of an in-flight image pull, summed
+// across all layers the daemon has reported so far. Total is 0 until the
+// first byte counter arrives, and Current >= Total never holds true mid-pull
+// (Total grows as new layers are discovered).
+type PullProgress struct {
+	Image   string `json:"image"`
+	Current int64  `json:"current"`
+	Total   int64  `json:"total"`
+	Layers  int    `json:"layers"`
+	Status  string `json:"status"`
+	Done    bool   `json:"done"`
+}
+
+// PullProgressFunc receives throttled progress updates while an image pulls.
+// It is called from the goroutine driving the pull; implementations must not
+// block.
+type PullProgressFunc func(PullProgress)
+
 // SpawnOptions configures a devcontainer spawn.
 type SpawnOptions struct {
 	// WorktreePath is the host path used for variable substitution in the
@@ -93,6 +111,9 @@ type SpawnOptions struct {
 	// AttachNetwork, if non-empty, names a docker network the container is
 	// attached to after start so it can reach kanban (or other peers) by name.
 	AttachNetwork string
+	// OnPullProgress, if non-nil, receives throttled progress snapshots while
+	// the image is being pulled. No-op when the image is already cached.
+	OnPullProgress PullProgressFunc
 }
 
 // RepoMountTarget is where the per-session git worktree is bind-mounted inside
@@ -340,7 +361,7 @@ func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnO
 	}
 	cfg.Substitute(NewSubstitutionContext(substSource, cfg.WorkspaceFolder))
 
-	imageRef, err := c.ensureImage(ctx, cfg, opts.WorktreePath)
+	imageRef, err := c.ensureImage(ctx, cfg, opts.WorktreePath, opts.OnPullProgress)
 	if err != nil {
 		return nil, fmt.Errorf("ensure image: %w", err)
 	}
@@ -550,7 +571,7 @@ func parseMountString(s string) (mount.Mount, error) {
 	return m, nil
 }
 
-func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, worktreePath string) (string, error) {
+func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, worktreePath string, onProgress PullProgressFunc) (string, error) {
 	if cfg.Image != "" {
 		if _, _, err := c.cli.ImageInspectWithRaw(ctx, cfg.Image); err == nil {
 			return cfg.Image, nil
@@ -560,7 +581,11 @@ func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, workt
 			return "", fmt.Errorf("pull image %q: %w", cfg.Image, err)
 		}
 		defer rc.Close()
-		if err := jsonmessage.DisplayJSONMessagesStream(rc, io.Discard, 0, false, nil); err != nil {
+		if onProgress != nil {
+			if err := streamPullProgress(rc, cfg.Image, onProgress); err != nil {
+				return "", fmt.Errorf("pull image %q: %w", cfg.Image, err)
+			}
+		} else if err := jsonmessage.DisplayJSONMessagesStream(rc, io.Discard, 0, false, nil); err != nil {
 			return "", fmt.Errorf("pull image %q: %w", cfg.Image, err)
 		}
 		return cfg.Image, nil
@@ -799,4 +824,88 @@ func (c *Client) StopContainer(ctx context.Context, id string, timeout time.Dura
 
 func (c *Client) RemoveContainer(ctx context.Context, id string) error {
 	return c.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: true})
+}
+
+// isLayerStatus reports whether a Docker pull status string identifies a
+// per-layer lifecycle event. Filters out manifest-level lines like
+// "Pulling from library/alpine" whose ID is the tag, not a layer.
+func isLayerStatus(s string) bool {
+	switch s {
+	case "Pulling fs layer", "Waiting", "Downloading",
+		"Verifying Checksum", "Download complete",
+		"Extracting", "Pull complete", "Already exists":
+		return true
+	}
+	return false
+}
+
+// streamPullProgress decodes a Docker pull JSON stream and emits aggregated
+// snapshots to onProgress at a fixed cadence. Each layer's last-known current
+// and total bytes are summed; once the daemon reports a layer as complete
+// ("Pull complete", "Already exists", "Download complete", "Verifying
+// Checksum") we snap its current to its total so the bar fills smoothly. The
+// final emission has Done=true so consumers can clear transient UI state.
+func streamPullProgress(rc io.Reader, imageRef string, onProgress PullProgressFunc) error {
+	type layer struct{ current, total int64 }
+	layers := map[string]*layer{}
+	dec := json.NewDecoder(rc)
+	var lastEmit time.Time
+	var lastStatus string
+	emit := func(done bool) {
+		var cur, tot int64
+		for _, l := range layers {
+			cur += l.current
+			tot += l.total
+		}
+		onProgress(PullProgress{
+			Image:   imageRef,
+			Current: cur,
+			Total:   tot,
+			Layers:  len(layers),
+			Status:  lastStatus,
+			Done:    done,
+		})
+	}
+	for {
+		var msg jsonmessage.JSONMessage
+		if err := dec.Decode(&msg); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+		if msg.Error != nil {
+			return msg.Error
+		}
+		if msg.Status != "" {
+			lastStatus = msg.Status
+		}
+		if msg.ID != "" && isLayerStatus(msg.Status) {
+			l, ok := layers[msg.ID]
+			if !ok {
+				l = &layer{}
+				layers[msg.ID] = l
+			}
+			if msg.Progress != nil {
+				if msg.Progress.Total > l.total {
+					l.total = msg.Progress.Total
+				}
+				if msg.Progress.Current > l.current {
+					l.current = msg.Progress.Current
+				}
+			}
+			switch msg.Status {
+			case "Pull complete", "Already exists", "Download complete", "Verifying Checksum":
+				if l.total > 0 {
+					l.current = l.total
+				}
+			}
+		}
+		if time.Since(lastEmit) > 200*time.Millisecond {
+			lastEmit = time.Now()
+			emit(false)
+		}
+	}
+	emit(true)
+	return nil
 }

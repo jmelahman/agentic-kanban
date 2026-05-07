@@ -12,6 +12,7 @@ import {
   MergeConfig,
   PR_STATE_COLOR,
   PRState,
+  PullProgress,
   SyncConfig,
 } from "@/api/client";
 import { queryKeys } from "@/api/keys";
@@ -19,6 +20,7 @@ import {
   activeTicketStore,
   sessionStore,
   useActiveTicketId,
+  usePullProgress,
   useSession,
 } from "@/store";
 import { useToast } from "@/toast";
@@ -110,6 +112,7 @@ export function SessionPane({
   const ticketId = useActiveTicketId();
   const sessionId = ticketId != null ? sessionIdByTicket[ticketId] ?? null : null;
   const session = useSession(sessionId) ?? null;
+  const pullProgress = usePullProgress(sessionId);
   const onClose = useCallback(() => activeTicketStore.set(null), []);
   const isHorizontal = orientation === "horizontal";
   const qc = useQueryClient();
@@ -728,6 +731,9 @@ export function SessionPane({
       >
         {renderHeaderContent({ compact: false, interactive: false })}
       </div>
+      {status === "starting" && (
+        <PullProgressBanner progress={pullProgress ?? null} />
+      )}
       <div className="flex border-b border-border text-sm">
         <Tab
           active={tab === "agent"}
@@ -787,6 +793,57 @@ export function SessionPane({
       </div>
     </aside>
   );
+}
+
+// PullProgressBanner shows the live image pull state under the header while a
+// session is starting. Falls back to an indeterminate "starting…" line when no
+// progress events have arrived yet (image cached, or first event still in
+// flight) so the bar isn't blank for the first ~200ms.
+function PullProgressBanner({ progress }: { progress: PullProgress | null }) {
+  const hasBytes = progress != null && progress.total > 0;
+  const pct = hasBytes
+    ? Math.min(
+        100,
+        Math.max(0, Math.round((progress.current / progress.total) * 100)),
+      )
+    : 0;
+  const status = progress?.status?.toLowerCase() ?? "starting";
+  return (
+    <div className="border-b border-border bg-surface px-3 py-1.5 text-xs">
+      <div className="flex items-center justify-between gap-2 text-fg-muted">
+        <span className="truncate">
+          {hasBytes ? `pulling image — ${status}` : "starting…"}
+        </span>
+        <span className="shrink-0 font-mono">
+          {hasBytes
+            ? `${formatBytes(progress.current)} / ${formatBytes(progress.total)} (${pct}%)`
+            : ""}
+        </span>
+      </div>
+      <div className="mt-1 h-1 w-full overflow-hidden rounded bg-border">
+        {hasBytes ? (
+          <div
+            className="h-full bg-accent-500 transition-[width] duration-200 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        ) : (
+          <div className="h-full w-1/3 animate-pulse bg-accent-500/60" />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
 }
 
 function PullIcon() {

@@ -1,9 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, Session, subscribeBoard, Ticket } from "@/api/client";
+import { api, PullProgress, Session, subscribeBoard, Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import {
   activeTicketStore,
+  pullProgressStore,
   sessionStore,
   ticketStore,
 } from "@/store";
@@ -203,8 +204,21 @@ function applyBoardEvent(
       if (!s) return;
       const prev = sessionStore.get(s.id);
       sessionStore.set(s.id, s);
+      // Pull progress is only meaningful while the session is starting; clear
+      // it on any other status so the bar doesn't linger after a stop/restart.
+      if (s.status !== "starting") pullProgressStore.delete(s.id);
       // New session: ticket → session map needs rebuild.
       if (!prev) invalidateStructure();
+      return;
+    }
+    case "session_pull_progress": {
+      const p = data as PullProgress | null;
+      if (!p) return;
+      if (p.done) {
+        pullProgressStore.delete(p.session_id);
+      } else {
+        pullProgressStore.set(p.session_id, p);
+      }
       return;
     }
     case "ready":
