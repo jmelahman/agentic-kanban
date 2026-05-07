@@ -52,6 +52,7 @@ func NewMux(d Deps) http.Handler {
 		reporter: d.Reporter,
 	}
 
+	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/version", h.version)
 
