@@ -141,14 +141,6 @@ export function SessionPane({
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
   const mergeMenuRef = useRef<HTMLDivElement | null>(null);
 
-  // Per-ticket transient UI state. The pane is mounted once for the lifetime
-  // of the board; switching tickets resets these instead of remounting (which
-  // used to wipe ResizeObservers, mutations, the auto-start ref, …).
-  useEffect(() => {
-    setTab("agent");
-    setSyncMenuOpen(false);
-    setMergeMenuOpen(false);
-  }, [ticketId]);
   const [width, setWidth] = useState<number>(() =>
     loadInitialSize(WIDTH_STORAGE_KEY, DEFAULT_WIDTH, MIN_WIDTH, MAX_WIDTH),
   );
@@ -341,6 +333,26 @@ export function SessionPane({
       onClose();
     },
   });
+
+  // Per-ticket transient UI state. The pane is mounted once for the lifetime
+  // of the board; switching tickets resets these instead of remounting (which
+  // used to wipe ResizeObservers, the auto-start ref, …). Mutation pending
+  // flags belong here too — without the reset, an in-flight action on the
+  // previous ticket leaves the new ticket's button stuck in its spinner state.
+  useEffect(() => {
+    setTab("agent");
+    setSyncMenuOpen(false);
+    setMergeMenuOpen(false);
+    startMut.reset();
+    ensureMut.reset();
+    stopMut.reset();
+    restartMut.reset();
+    archiveMut.reset();
+    syncMut.reset();
+    mergeMut.reset();
+    doneMut.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticketId]);
 
   useLayoutEffect(() => {
     if (ticketId == null) return;
