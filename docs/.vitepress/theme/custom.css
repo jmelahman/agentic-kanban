@@ -19,6 +19,11 @@
   --vp-c-border: #e4e4e7;
   --vp-c-gutter: #e4e4e7;
 
+  /* Tip blocks use the app's surface-2 fill with the border gray as the
+     outline, so they read as a subdued callout rather than an accented one. */
+  --vp-custom-block-tip-bg: #f4f4f5;
+  --vp-custom-block-tip-border: #e4e4e7;
+
   /* Softer red for inline code + body links so they read as accent, not alarm. */
   --vp-code-color: oklch(63.7% 0.2 27);
 }
@@ -41,6 +46,9 @@
   --vp-c-divider: #3f3f46;
   --vp-c-border: #3f3f46;
   --vp-c-gutter: #09090b;
+
+  --vp-custom-block-tip-bg: #27272a;
+  --vp-custom-block-tip-border: #3f3f46;
 
   --vp-code-color: oklch(72% 0.2 25);
 }
