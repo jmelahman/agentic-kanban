@@ -9,7 +9,7 @@ export default defineConfig({
   ignoreDeadLinks: 'localhostLinks',
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/agentic-kanban/favicon.svg' }],
-    ['meta', { name: 'theme-color', content: '#3eaf7c' }],
+    ['meta', { name: 'theme-color', content: '#ef4444' }],
   ],
   themeConfig: {
     logo: '/favicon.svg',

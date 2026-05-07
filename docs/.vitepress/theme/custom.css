@@ -1,3 +1,59 @@
+/* Brand + surfaces — match the app's default red accent and zinc palette
+   (see web/src/index.css). */
+:root {
+  --vp-c-brand-1: oklch(57.7% 0.245 27.325);
+  --vp-c-brand-2: oklch(63.7% 0.237 25.331);
+  --vp-c-brand-3: oklch(63.7% 0.237 25.331);
+  --vp-c-brand-soft: oklch(63.7% 0.237 25.331 / 0.14);
+
+  --vp-c-bg: #ffffff;
+  --vp-c-bg-alt: #fafafa;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #f4f4f5;
+
+  --vp-c-text-1: #18181b;
+  --vp-c-text-2: #71717a;
+  --vp-c-text-3: #a1a1aa;
+
+  --vp-c-divider: #e4e4e7;
+  --vp-c-border: #e4e4e7;
+  --vp-c-gutter: #e4e4e7;
+
+  /* Softer red for inline code + body links so they read as accent, not alarm. */
+  --vp-code-color: oklch(63.7% 0.2 27);
+}
+
+.dark {
+  --vp-c-brand-1: oklch(63.7% 0.237 25.331);
+  --vp-c-brand-2: oklch(57.7% 0.245 27.325);
+  --vp-c-brand-3: oklch(50.5% 0.213 27.518);
+  --vp-c-brand-soft: oklch(63.7% 0.237 25.331 / 0.16);
+
+  --vp-c-bg: #18181b;
+  --vp-c-bg-alt: #09090b;
+  --vp-c-bg-elv: #27272a;
+  --vp-c-bg-soft: #27272a;
+
+  --vp-c-text-1: #f4f4f5;
+  --vp-c-text-2: #a1a1aa;
+  --vp-c-text-3: #71717a;
+
+  --vp-c-divider: #3f3f46;
+  --vp-c-border: #3f3f46;
+  --vp-c-gutter: #09090b;
+
+  --vp-code-color: oklch(72% 0.2 25);
+}
+
+.vp-doc a,
+.VPDocFooter .edit-link-button {
+  color: var(--vp-code-color);
+}
+.vp-doc a:hover,
+.VPDocFooter .edit-link-button:hover {
+  color: var(--vp-c-brand-1);
+}
+
 /* Larger hero screenshot — the default 320 px ceiling is sized for a logo,
    but our hero image is a wide app screenshot. Apply the size overrides on
    every viewport so the image stays prominent when the layout stacks. */
