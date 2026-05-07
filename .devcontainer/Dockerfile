@@ -37,6 +37,17 @@ ENV PATH="/usr/local/go/bin:/root/go/bin:/home/dev/go/bin:${PATH}" \
 
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@latest
 
+ARG PREK_VERSION=0.3.13
+RUN ARCH="$(dpkg --print-architecture)" \
+  && case "$ARCH" in \
+       amd64) TARGET="x86_64-unknown-linux-gnu" ;; \
+       arm64) TARGET="aarch64-unknown-linux-gnu" ;; \
+       *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
+     esac \
+  && curl -fsSL "https://github.com/j178/prek/releases/download/v${PREK_VERSION}/prek-${TARGET}.tar.gz" \
+     | tar -xz --strip-components=1 -C /usr/local/bin "prek-${TARGET}/prek" \
+  && ln -s /usr/local/bin/prek /usr/local/bin/pre-commit
+
 # Create non-root user. Both root (the devcontainer.json remoteUser) and dev
 # get zsh as their login shell so interactive terminals — which the kanban
 # server attaches to via /etc/passwd lookup — open zsh by default.
