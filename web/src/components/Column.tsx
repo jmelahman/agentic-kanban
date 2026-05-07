@@ -5,7 +5,9 @@ import { useEffect, useState } from "react";
 import { api, Column as ColumnType } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { addTicketRequestStore, useScalarSelector } from "@/store";
+import { useToast } from "@/toast";
 import { Button } from "./Button";
+import { Modal } from "./Modal";
 import { Ticket } from "./Ticket";
 
 export function Column(props: {
@@ -15,9 +17,11 @@ export function Column(props: {
   boardId: number;
 }) {
   const qc = useQueryClient();
+  const { push } = useToast();
   const { setNodeRef, isOver } = useDroppable({ id: `col-${props.column.id}` });
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
+  const [confirmArchive, setConfirmArchive] = useState(false);
 
   const createMut = useMutation({
     mutationFn: () => api.createTicket(props.boardId, { column_id: props.column.id, title }),
@@ -25,6 +29,20 @@ export function Column(props: {
       setTitle("");
       setAdding(false);
       qc.invalidateQueries({ queryKey: queryKeys.board(props.boardId) });
+    },
+  });
+
+  const archiveAllMut = useMutation({
+    mutationFn: async () => {
+      const count = props.ticketIds.length;
+      await api.archiveColumnTickets(props.column.id);
+      return count;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: queryKeys.board(props.boardId) });
+      qc.invalidateQueries({ queryKey: queryKeys.archived(props.boardId) });
+      setConfirmArchive(false);
+      push("success", `Archived ${count} ticket${count === 1 ? "" : "s"}.`);
     },
   });
 
@@ -38,14 +56,28 @@ export function Column(props: {
     addTicketRequestStore.set(null);
   }, [requested]);
 
+  const ticketCount = props.ticketIds.length;
+
   return (
     <div
       ref={setNodeRef}
       className={`flex h-full min-w-72 flex-1 flex-col gap-2 overflow-hidden rounded border border-border bg-surface p-2 ${isOver ? "ring-2 ring-accent-600" : ""}`}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{props.column.name}</h2>
-        <span className="text-xs text-fg-muted">{props.ticketIds.length}</span>
+        <div className="flex items-center gap-2">
+          {ticketCount > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setConfirmArchive(true)}
+              title={`Archive all ${ticketCount} ticket${ticketCount === 1 ? "" : "s"}`}
+            >
+              archive all
+            </Button>
+          )}
+          <span className="text-xs text-fg-muted">{ticketCount}</span>
+        </div>
       </div>
       <div className="-mx-0.5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 py-0.5">
         <SortableContext items={props.ticketIds} strategy={verticalListSortingStrategy}>
@@ -98,6 +130,42 @@ export function Column(props: {
           + add ticket
         </Button>
       )}
+      <Modal
+        open={confirmArchive}
+        onClose={() => setConfirmArchive(false)}
+        title={`Archive all in ${props.column.name}?`}
+        busy={archiveAllMut.isPending}
+      >
+        <div className="p-4">
+          <p className="text-sm">
+            Archive all <span className="font-medium">{ticketCount}</span> ticket{ticketCount === 1 ? "" : "s"} in{" "}
+            <span className="font-medium">{props.column.name}</span>? Their sessions will be stopped.
+          </p>
+          <p className="mt-2 text-xs text-fg-muted">
+            Tickets can be restored from the archive.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmArchive(false)}
+              disabled={archiveAllMut.isPending}
+            >
+              cancel
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="lg"
+              onClick={() => archiveAllMut.mutate()}
+              disabled={archiveAllMut.isPending}
+              pending={archiveAllMut.isPending}
+              idleLabel="archive all"
+              pendingLabel="archiving…"
+            />
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

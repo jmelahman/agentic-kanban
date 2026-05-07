@@ -335,6 +335,38 @@ func (s *Store) ArchiveTicket(ctx context.Context, id int64) error {
 	return err
 }
 
+// ListTicketsInColumn returns non-archived tickets in a column ordered by position.
+func (s *Store) ListTicketsInColumn(ctx context.Context, columnID int64) ([]Ticket, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at
+         FROM tickets WHERE column_id=? AND archived_at IS NULL ORDER BY position`,
+		columnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tickets := []Ticket{}
+	for rows.Next() {
+		t, err := scanTicket(rows)
+		if err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, *t)
+	}
+	return tickets, rows.Err()
+}
+
+// ArchiveTicketsInColumn archives every non-archived ticket in the column in
+// one statement. Returns the number of tickets affected.
+func (s *Store) ArchiveTicketsInColumn(ctx context.Context, columnID int64) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE tickets SET archived_at=unixepoch() WHERE column_id=? AND archived_at IS NULL`, columnID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 func (s *Store) UnarchiveTicket(ctx context.Context, id int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -385,6 +417,17 @@ func (s *Store) ListArchivedTickets(ctx context.Context, boardID int64) ([]Ticke
 func (s *Store) DeleteTicket(ctx context.Context, id int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM tickets WHERE id=?`, id)
 	return err
+}
+
+// DeleteAllArchivedTickets deletes every archived ticket on the board in one
+// statement. Returns the number of tickets affected.
+func (s *Store) DeleteAllArchivedTickets(ctx context.Context, boardID int64) (int64, error) {
+	res, err := s.db.ExecContext(ctx,
+		`DELETE FROM tickets WHERE board_id=? AND archived_at IS NOT NULL`, boardID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // Sessions

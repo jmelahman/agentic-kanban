@@ -172,9 +172,13 @@ export const api = {
   moveTicket: (id: number, input: { column_id: number; position: number }) =>
     request<void>(`/api/tickets/${id}/move`, { method: "PATCH", body: JSON.stringify(input) }),
   archiveTicket: (id: number) => request<void>(`/api/tickets/${id}/archive`, { method: "POST" }),
+  archiveColumnTickets: (columnId: number) =>
+    request<void>(`/api/columns/${columnId}/archive-all`, { method: "POST" }),
   unarchiveTicket: (id: number) => request<void>(`/api/tickets/${id}/unarchive`, { method: "POST" }),
   listArchivedTickets: (boardId: number) => request<Ticket[]>(`/api/boards/${boardId}/archived`),
   deleteTicket: (id: number) => request<void>(`/api/tickets/${id}`, { method: "DELETE" }),
+  deleteAllArchived: (boardId: number) =>
+    request<void>(`/api/boards/${boardId}/archived`, { method: "DELETE" }),
   syncTicket: (id: number, strategy: "rebase" | "merge") =>
     request<void>(`/api/tickets/${id}/sync`, { method: "POST", body: JSON.stringify({ strategy }) }),
   mergeTicket: (id: number, strategy: "merge-commit" | "squash" | "rebase") =>

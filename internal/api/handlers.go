@@ -479,6 +479,61 @@ func (h *handlers) deleteTicket(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+// archiveColumnTickets archives every non-archived ticket in a column. Mirrors
+// archiveTicket per-ticket: stops any running session, archives, then publishes
+// a ticket_archived SSE + EventTicketArchived hook for each ticket affected.
+func (h *handlers) archiveColumnTickets(w http.ResponseWriter, r *http.Request) {
+	columnID := pathID(r, "id")
+	tickets, err := h.store.ListTicketsInColumn(r.Context(), columnID)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	for _, t := range tickets {
+		if sess, err := h.store.GetSessionByTicket(r.Context(), t.ID); err == nil && sess != nil {
+			_ = h.sessions.Stop(r.Context(), sess.ID)
+		}
+	}
+	if _, err := h.store.ArchiveTicketsInColumn(r.Context(), columnID); err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	for i := range tickets {
+		t := tickets[i]
+		h.bus.Publish(t.BoardID, "ticket_archived", &t)
+		h.hooks.Fire(&t.BoardID, hooks.EventTicketArchived, map[string]string{
+			"ticket_id": fmt.Sprintf("%d", t.ID),
+		})
+	}
+	w.WriteHeader(204)
+}
+
+// deleteAllArchived permanently deletes every archived ticket on a board.
+// Mirrors deleteTicket per-ticket: destroys any associated session, deletes
+// the ticket, then publishes a ticket_deleted SSE for each.
+func (h *handlers) deleteAllArchived(w http.ResponseWriter, r *http.Request) {
+	boardID := pathID(r, "id")
+	tickets, err := h.store.ListArchivedTickets(r.Context(), boardID)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	for _, t := range tickets {
+		if sess, err := h.store.GetSessionByTicket(r.Context(), t.ID); err == nil && sess != nil {
+			_ = h.sessions.Destroy(r.Context(), sess.ID)
+		}
+	}
+	if _, err := h.store.DeleteAllArchivedTickets(r.Context(), boardID); err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	for i := range tickets {
+		t := tickets[i]
+		h.bus.Publish(boardID, "ticket_deleted", &t)
+	}
+	w.WriteHeader(204)
+}
+
 type strategyReq struct {
 	Strategy string `json:"strategy"`
 }

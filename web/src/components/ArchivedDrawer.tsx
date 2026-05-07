@@ -18,6 +18,7 @@ export function ArchivedDrawer({
   const qc = useQueryClient();
   const { push } = useToast();
   const [confirmTicket, setConfirmTicket] = useState<Ticket | null>(null);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const archivedQ = useQuery({
     queryKey: queryKeys.archived(boardId),
     queryFn: () => api.listArchivedTickets(boardId),
@@ -34,6 +35,20 @@ export function ArchivedDrawer({
     },
   });
 
+  const deleteAllMut = useMutation({
+    mutationFn: async () => {
+      const count = archivedQ.data?.length ?? 0;
+      await api.deleteAllArchived(boardId);
+      return count;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
+      qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+      push("success", `Deleted ${count} archived ticket${count === 1 ? "" : "s"}.`);
+      setConfirmDeleteAll(false);
+    },
+  });
+
   const unarchiveMut = useMutation({
     mutationFn: (id: number) => api.unarchiveTicket(id),
     onSuccess: () => {
@@ -47,10 +62,25 @@ export function ArchivedDrawer({
     confirmTicket !== null &&
     deleteMut.isPending &&
     deleteMut.variables === confirmTicket.id;
+  const archivedCount = archivedQ.data?.length ?? 0;
 
   return (
     <>
       <Drawer open={open} onClose={onClose} title="Archived tickets">
+        {archivedCount > 0 && (
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <span className="text-xs text-fg-muted">
+              {archivedCount} archived
+            </span>
+            <Button
+              variant="danger"
+              size="sm"
+              onClick={() => setConfirmDeleteAll(true)}
+            >
+              delete all
+            </Button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto p-3">
           {archivedQ.isLoading && <p className="text-sm text-fg-muted">Loading…</p>}
           {archivedQ.data && archivedQ.data.length === 0 && (
@@ -106,6 +136,41 @@ export function ArchivedDrawer({
             </div>
           </div>
         )}
+      </Modal>
+      <Modal
+        open={confirmDeleteAll}
+        onClose={() => setConfirmDeleteAll(false)}
+        title="Permanently delete all archived?"
+        busy={deleteAllMut.isPending}
+      >
+        <div className="p-4">
+          <p className="text-sm">
+            Permanently delete all <span className="font-medium">{archivedCount}</span> archived ticket{archivedCount === 1 ? "" : "s"}?
+          </p>
+          <p className="mt-2 text-xs text-fg-muted">
+            This stops their containers, removes worktrees, and deletes branches. Cannot be undone.
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmDeleteAll(false)}
+              disabled={deleteAllMut.isPending}
+            >
+              cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              size="lg"
+              onClick={() => deleteAllMut.mutate()}
+              disabled={deleteAllMut.isPending}
+              pending={deleteAllMut.isPending}
+              idleLabel="delete all"
+              pendingLabel="deleting…"
+            />
+          </div>
+        </div>
       </Modal>
     </>
   );
