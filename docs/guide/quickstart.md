@@ -8,23 +8,27 @@ With `kanban serve` running, open <http://localhost:7474/>.
 
 You'll land on the boards list. It's empty — there's nothing here yet.
 
-![Empty boards list](/quickstart-01-empty.png)
+<img class="light-only" src="/quickstart-01-empty-light.png" alt="Empty boards list" />
+<img class="dark-only" src="/quickstart-01-empty-dark.png" alt="Empty boards list" />
 
 ## 2. Create a board
 
 Click **New board**. Give it a name (e.g. `playground`) and point it at a local git repository on your machine. Kanban will read that repo's `.devcontainer/devcontainer.json` to figure out how to launch sessions for tickets.
 
-![Create board dialog](/quickstart-02-create-board.png)
+<img class="light-only" src="/quickstart-02-create-board-light.png" alt="Create board dialog" />
+<img class="dark-only" src="/quickstart-02-create-board-dark.png" alt="Create board dialog" />
 
 The board opens with the default columns: `Backlog`, `In Progress`, `In Review`, `Done`.
 
-![Empty board](/quickstart-03-empty-board.png)
+<img class="light-only" src="/quickstart-03-empty-board-light.png" alt="Empty board" />
+<img class="dark-only" src="/quickstart-03-empty-board-dark.png" alt="Empty board" />
 
 ## 3. Create a ticket
 
 Click **+** in the `Backlog` column. Title the ticket and write a markdown body describing what you want the agent to do.
 
-![Create ticket](/quickstart-04-create-ticket.png)
+<img class="light-only" src="/quickstart-04-create-ticket-light.png" alt="Create ticket" />
+<img class="dark-only" src="/quickstart-04-create-ticket-dark.png" alt="Create ticket" />
 
 When you save, the ticket appears as a card in `Backlog`.
 

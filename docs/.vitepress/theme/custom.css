@@ -53,6 +53,13 @@
   --vp-code-color: oklch(72% 0.2 25);
 }
 
+/* Theme-aware images: pair a light + dark variant with these classes and
+   only the matching one renders. */
+.light-only { display: block; }
+.dark-only  { display: none; }
+.dark .light-only { display: none; }
+.dark .dark-only  { display: block; }
+
 .vp-doc a,
 .VPDocFooter .edit-link-button {
   color: var(--vp-code-color);
