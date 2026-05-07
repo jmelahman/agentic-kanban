@@ -84,7 +84,7 @@ export default function App() {
         <select
           className="cursor-pointer rounded bg-surface px-2 py-1 text-sm"
           value={activeId ?? ""}
-          onChange={(e) => setActiveId(Number(e.target.value))}
+          onChange={(e) => setActiveId(e.target.value ? Number(e.target.value) : null)}
         >
           <option value="">— select board —</option>
           {(boardsQ.data ?? []).map((b) => (
