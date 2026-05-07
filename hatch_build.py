@@ -33,8 +33,13 @@ class GoBinaryBuildHook(BuildHookInterface):
 
         if not os.path.exists(binary_name):
             print(f"Building Go binary '{binary_name}'...")
+            devcontainer_image = (
+                os.getenv("KANBAN_DEVCONTAINER_IMAGE")
+                or "lahmanja/kanban-devcontainer:latest"
+            )
             ldflags = (
                 f"-X github.com/jmelahman/kanban/cmd/server.version={version} "
+                f"-X github.com/jmelahman/kanban/internal/docker.BuiltinImage={devcontainer_image} "
                 "-s -w"
             )
             subprocess.check_call(  # noqa: S603

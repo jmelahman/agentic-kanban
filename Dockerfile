@@ -20,8 +20,11 @@ COPY --from=web /web/dist ./web/dist
 ARG VERSION=dev
 ARG TARGETOS
 ARG TARGETARCH
+ARG KANBAN_DEVCONTAINER_IMAGE=lahmanja/kanban-devcontainer:latest
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -tags embed -trimpath \
-      -ldflags="-s -w -X github.com/jmelahman/kanban/cmd/server.version=${VERSION}" \
+      -ldflags="-s -w \
+        -X github.com/jmelahman/kanban/cmd/server.version=${VERSION} \
+        -X github.com/jmelahman/kanban/internal/docker.BuiltinImage=${KANBAN_DEVCONTAINER_IMAGE}" \
       -o /out/kanban .
 
 FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
