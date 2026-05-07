@@ -37,8 +37,11 @@ ENV PATH="/usr/local/go/bin:/root/go/bin:/home/dev/go/bin:${PATH}" \
 
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@latest
 
-# Create non-root user
-RUN useradd -m -s /bin/bash dev && \
+# Create non-root user. Both root (the devcontainer.json remoteUser) and dev
+# get zsh as their login shell so interactive terminals — which the kanban
+# server attaches to via /etc/passwd lookup — open zsh by default.
+RUN chsh -s /bin/zsh root && \
+  useradd -m -s /bin/zsh dev && \
   echo "dev ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/dev && \
   chmod 0440 /etc/sudoers.d/dev
 

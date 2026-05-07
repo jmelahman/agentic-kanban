@@ -33,9 +33,11 @@ func (m *Manager) AttachAgent(ctx context.Context, sess *db.Session, w http.Resp
 
 // AttachShell upgrades the request to a WebSocket and runs an interactive
 // shell inside the session container, brokered alongside (and independent of)
-// the agent PTY.
+// the agent PTY. The container's user-configured login shell (as recorded in
+// /etc/passwd, falling back to /bin/sh) is used so the choice tracks whatever
+// the image declares — no need to hardcode bash here.
 func (m *Manager) AttachShell(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, workDir string) error {
-	return m.attachKind(ctx, sess, w, r, "shell", []string{"bash"}, workDir)
+	return m.attachKind(ctx, sess, w, r, "shell", []string{"sh", "-c", `s=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f7); exec "${s:-/bin/sh}"`}, workDir)
 }
 
 func (m *Manager) attachKind(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, kind string, command []string, workDir string) error {
