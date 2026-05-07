@@ -17,7 +17,7 @@ import { CreateBoardForm } from "@/components/CreateBoardForm";
 import { useAccent } from "@/hooks/useAccent";
 import { useContrast } from "@/hooks/useContrast";
 import { useThemeMode } from "@/hooks/useThemeMode";
-import { CogIcon, MenuIcon } from "@/icons";
+import { CogIcon, HelpIcon, MenuIcon } from "@/icons";
 import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
@@ -111,6 +111,16 @@ export default function App() {
               archived
             </Button>
           )}
+          <a
+            href="https://jamison.lahman.dev/agentic-kanban/guide/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Help"
+            title="Help"
+            className="rounded cursor-pointer transition-colors duration-150 bg-surface-2 text-fg hover:bg-surface-3 inline-flex h-7 w-7 items-center justify-center"
+          >
+            <HelpIcon />
+          </a>
           {activeBoard && (
             <Button
               variant="neutral"
