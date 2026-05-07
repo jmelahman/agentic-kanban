@@ -48,6 +48,20 @@ RUN ARCH="$(dpkg --print-architecture)" \
      | tar -xz --strip-components=1 -C /usr/local/bin "prek-${TARGET}/prek" \
   && ln -s /usr/local/bin/prek /usr/local/bin/pre-commit
 
+# Pre-install ripsecrets so the prek hook uses language: system instead of
+# `cargo install`-ing it at runtime — index.crates.io rotates Fastly IPs and
+# breaks the firewall ipset captured at boot.
+ARG RIPSECRETS_VERSION=0.1.11
+RUN ARCH="$(dpkg --print-architecture)" \
+  && case "$ARCH" in \
+       amd64) TARGET="x86_64-unknown-linux-gnu" ;; \
+       *) echo "ripsecrets has no prebuilt binary for arch: $ARCH" >&2; exit 1 ;; \
+     esac \
+  && curl -fsSL "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-${TARGET}.tar.gz" \
+     | tar -xz --strip-components=1 -C /usr/local/bin "ripsecrets-${RIPSECRETS_VERSION}-${TARGET}/ripsecrets"
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
 # Create non-root user. Both root (the devcontainer.json remoteUser) and dev
 # get zsh as their login shell so interactive terminals — which the kanban
 # server attaches to via /etc/passwd lookup — open zsh by default.
