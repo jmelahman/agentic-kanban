@@ -248,9 +248,18 @@ export async function postError(p: {
 
 export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => void {
   const es = new EventSource(`/api/boards/${boardId}/events`);
+  // The backend wraps each event as {type, data}; unwrap so consumers see the
+  // raw entity (Ticket / Session / …). Without this, `data.id` is undefined
+  // and per-id stores never update — selections appear stuck (e.g. a session
+  // pinned at "starting" forever).
   const handler = (e: MessageEvent) => {
     try {
-      opts.onEvent(e.type, JSON.parse(e.data));
+      const parsed = JSON.parse(e.data);
+      const payload =
+        parsed && typeof parsed === "object" && "data" in parsed
+          ? parsed.data
+          : parsed;
+      opts.onEvent(e.type, payload);
     } catch {
       opts.onEvent(e.type, null);
     }
