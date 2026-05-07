@@ -37,11 +37,6 @@ kanban
 
 `kanban --version` prints the build version.
 
-::: warning Renamed in this release
-The previous flat commands `kanban list-boards` and `kanban create-ticket`
-were removed. Use `kanban board list` and `kanban ticket create` instead.
-:::
-
 ## `serve`
 
 Starts the HTTP server.
@@ -50,15 +45,15 @@ Starts the HTTP server.
 kanban serve [flags]
 ```
 
-| Flag                  | Default                                | Description                                                                                                                              |
-|-----------------------|----------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------|
-| `--addr`              | `:7474`                                | HTTP listen address.                                                                                                                     |
-| `--data-dir`          | `$KANBAN_DATA_DIR` or XDG share dir    | Override the data directory (SQLite + worktrees).                                                                                        |
-| `--worktrees-dir`     | `$KANBAN_WORKTREES_DIR` or `<data>/worktrees` | Override where new worktrees are created.                                                                                          |
-| `--config`            | `$KANBAN_CONFIG` or XDG config dir     | Override the user-level kanban config path.                                                                                              |
-| `--port-range-start`  | `13000`                                | First host port available for proxy allocation.                                                                                          |
-| `--port-range-end`    | `13099`                                | Last host port available for proxy allocation (inclusive).                                                                               |
-| `--in-memory`         | `false`                                | Dev/test only. Use an ephemeral in-memory SQLite database; **all data is discarded on shutdown**. The server logs `WARNING: --in-memory set` at startup. |
+| Flag                 | Default                                       | Description                                                                                                                                              |
+| -------------------- | --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--addr`             | `:7474`                                       | HTTP listen address.                                                                                                                                     |
+| `--data-dir`         | `$KANBAN_DATA_DIR` or XDG share dir           | Override the data directory (SQLite + worktrees).                                                                                                        |
+| `--worktrees-dir`    | `$KANBAN_WORKTREES_DIR` or `<data>/worktrees` | Override where new worktrees are created.                                                                                                                |
+| `--config`           | `$KANBAN_CONFIG` or XDG config dir            | Override the user-level kanban config path.                                                                                                              |
+| `--port-range-start` | `13000`                                       | First host port available for proxy allocation.                                                                                                          |
+| `--port-range-end`   | `13099`                                       | Last host port available for proxy allocation (inclusive).                                                                                               |
+| `--in-memory`        | `false`                                       | Dev/test only. Use an ephemeral in-memory SQLite database; **all data is discarded on shutdown**. The server logs `WARNING: --in-memory set` at startup. |
 
 ## `mcp`
 
@@ -72,9 +67,9 @@ kanban mcp [--server URL]
 KANBAN_URL=http://localhost:7474 kanban mcp
 ```
 
-| Flag       | Default                  | Description                                |
-|------------|--------------------------|--------------------------------------------|
-| `--server` | `http://localhost:7474`  | Base URL of the kanban HTTP server.        |
+| Flag       | Default                 | Description                         |
+| ---------- | ----------------------- | ----------------------------------- |
+| `--server` | `http://localhost:7474` | Base URL of the kanban HTTP server. |
 
 See the [MCP reference](./mcp) for tool definitions and Claude Desktop /
 Claude Code wiring.
@@ -103,15 +98,15 @@ Prints all boards as an `ID SLUG NAME` table.
 kanban board create --name <name> --repo-path <path> [flags]
 ```
 
-| Flag              | Required | Description                                                              |
-|-------------------|----------|--------------------------------------------------------------------------|
-| `--name`          | yes      | Board name.                                                              |
-| `--repo-path`     | one of   | Path to the host git repo. Required if `--mount-path` is not set.        |
-| `--mount-path`    | one of   | Mount path inside session containers. Alternative to `--repo-path`.      |
-| `--worktree-root` | no       | Override the parent directory for new session worktrees.                 |
-| `--base-branch`   | no       | Branch new session worktrees fork from. Defaults to `main`.              |
-| `--branch-prefix` | no       | Optional prefix prepended to session branch names.                       |
-| `--json`          | no       | Print the full board JSON instead of a one-line summary.                 |
+| Flag              | Required | Description                                                         |
+| ----------------- | -------- | ------------------------------------------------------------------- |
+| `--name`          | yes      | Board name.                                                         |
+| `--repo-path`     | one of   | Path to the host git repo. Required if `--mount-path` is not set.   |
+| `--mount-path`    | one of   | Mount path inside session containers. Alternative to `--repo-path`. |
+| `--worktree-root` | no       | Override the parent directory for new session worktrees.            |
+| `--base-branch`   | no       | Branch new session worktrees fork from. Defaults to `main`.         |
+| `--branch-prefix` | no       | Optional prefix prepended to session branch names.                  |
+| `--json`          | no       | Print the full board JSON instead of a one-line summary.            |
 
 ### `board get <id>`
 
@@ -148,13 +143,13 @@ Permanently deletes every archived ticket on the board. Destructive.
 kanban ticket create --board <id-or-slug> --title <title> [flags]
 ```
 
-| Flag       | Required | Default          | Description                                                              |
-|------------|----------|------------------|--------------------------------------------------------------------------|
-| `--board`  | yes      |                  | Board id or slug.                                                        |
-| `--title`  | yes      |                  | Ticket title.                                                            |
-| `--body`   | no       |                  | Markdown ticket body.                                                    |
-| `--column` | no       | leftmost column  | Column name (case-insensitive) or numeric id.                            |
-| `--json`   | no       | `false`          | Print the full ticket JSON instead of a one-line summary.                |
+| Flag       | Required | Default         | Description                                               |
+| ---------- | -------- | --------------- | --------------------------------------------------------- |
+| `--board`  | yes      |                 | Board id or slug.                                         |
+| `--title`  | yes      |                 | Ticket title.                                             |
+| `--body`   | no       |                 | Markdown ticket body.                                     |
+| `--column` | no       | leftmost column | Column name (case-insensitive) or numeric id.             |
+| `--json`   | no       | `false`         | Print the full ticket JSON instead of a one-line summary. |
 
 ```sh
 kanban ticket create --board playground --title "Wire CI" --column "In Progress"
@@ -162,11 +157,11 @@ kanban ticket create --board playground --title "Wire CI" --column "In Progress"
 
 ### `ticket update <id> [flags]`
 
-| Flag       | Description                                |
-|------------|--------------------------------------------|
-| `--title`  | New title.                                 |
-| `--body`   | New body.                                  |
-| `--json`   | Print the full ticket JSON.                |
+| Flag      | Description                 |
+| --------- | --------------------------- |
+| `--title` | New title.                  |
+| `--body`  | New body.                   |
+| `--json`  | Print the full ticket JSON. |
 
 ### `ticket move <id> --column-id <int> [--position <int>]`
 
@@ -217,9 +212,9 @@ Stops a running session.
 
 ## Environment variables
 
-| Variable                  | Used by                                    | Notes                                                                  |
-|---------------------------|--------------------------------------------|------------------------------------------------------------------------|
-| `KANBAN_URL`              | `mcp`, `board`, `ticket`, `column`, `session` | Default server URL. Overridden by `--server` if explicitly set.       |
-| `KANBAN_CONFIG`           | `serve`                                    | User-level config path. Overridden by `--config` if set.                |
-| `KANBAN_DATA_DIR`         | `serve`                                    | Data directory. Overridden by `--data-dir` if set.                      |
-| `KANBAN_WORKTREES_DIR`    | `serve`                                    | Worktrees directory. Overridden by `--worktrees-dir` if set.            |
+| Variable               | Used by                                       | Notes                                                           |
+| ---------------------- | --------------------------------------------- | --------------------------------------------------------------- |
+| `KANBAN_URL`           | `mcp`, `board`, `ticket`, `column`, `session` | Default server URL. Overridden by `--server` if explicitly set. |
+| `KANBAN_CONFIG`        | `serve`                                       | User-level config path. Overridden by `--config` if set.        |
+| `KANBAN_DATA_DIR`      | `serve`                                       | Data directory. Overridden by `--data-dir` if set.              |
+| `KANBAN_WORKTREES_DIR` | `serve`                                       | Worktrees directory. Overridden by `--worktrees-dir` if set.    |
