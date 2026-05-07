@@ -166,3 +166,55 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
 		}
 	})
 }
+
+func TestApplyKanbanDevcontainerOverrides_BuiltInClaudeConfig(t *testing.T) {
+	// Seed a HOME with both files present so ClaudeConfigMounts returns the
+	// expected pair on hosts that don't have ~/.claude.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Seeded XDG socket prevents the docker_socket default from contributing
+	// other mounts that could confuse the assertions.
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+
+	hasClaude := func(cfg *docker.DevcontainerConfig) bool {
+		for _, m := range cfg.Mounts {
+			if m == "type=bind,source="+filepath.Join(home, ".claude")+",target=/home/dev/.claude" {
+				return true
+			}
+		}
+		return false
+	}
+	boolPtr := func(b bool) *bool { return &b }
+
+	t.Run("default mounts claude config on built-in", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{BuiltIn: true}
+		applyKanbanDevcontainerOverrides(cfg, nil)
+		if !hasClaude(cfg) {
+			t.Errorf("claude config missing; mounts = %v", cfg.Mounts)
+		}
+	})
+
+	t.Run("claude_config=false drops the mount", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{BuiltIn: true}
+		applyKanbanDevcontainerOverrides(cfg, &kanbantoml.DevcontainerSection{
+			ClaudeConfig: boolPtr(false),
+		})
+		if hasClaude(cfg) {
+			t.Errorf("claude config present despite claude_config=false; mounts = %v", cfg.Mounts)
+		}
+	})
+
+	t.Run("non-built-in configs are not auto-mounted", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{}
+		applyKanbanDevcontainerOverrides(cfg, nil)
+		if hasClaude(cfg) {
+			t.Errorf("hand-written config got auto-claude; mounts = %v", cfg.Mounts)
+		}
+	})
+}

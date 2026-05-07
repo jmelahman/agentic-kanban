@@ -355,8 +355,8 @@ func TestResolveBuildPaths(t *testing.T) {
 	})
 }
 
-func TestBuiltinDevcontainer_ClaudeMounts(t *testing.T) {
-	t.Run("mounts both files when present", func(t *testing.T) {
+func TestClaudeConfigMounts(t *testing.T) {
+	t.Run("returns mounts for both files when present", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
@@ -366,35 +366,33 @@ func TestBuiltinDevcontainer_ClaudeMounts(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		cfg := BuiltinDevcontainer()
-
-		want := map[string]string{
-			filepath.Join(home, ".claude"):      "/home/dev/.claude",
-			filepath.Join(home, ".claude.json"): "/home/dev/.claude.json",
+		want := []string{
+			"type=bind,source=" + filepath.Join(home, ".claude") + ",target=/home/dev/.claude",
+			"type=bind,source=" + filepath.Join(home, ".claude.json") + ",target=/home/dev/.claude.json",
 		}
-		got := map[string]string{}
-		for _, m := range cfg.Mounts {
-			pm, err := parseMountString(m)
-			if err != nil {
-				t.Fatalf("parseMountString(%q): %v", m, err)
-			}
-			if target, ok := want[pm.Source]; ok && target == pm.Target {
-				got[pm.Source] = pm.Target
-			}
-		}
+		got := ClaudeConfigMounts()
 		if !reflect.DeepEqual(got, want) {
-			t.Errorf("claude mounts = %v; want %v (all mounts: %v)", got, want, cfg.Mounts)
+			t.Errorf("ClaudeConfigMounts() = %v; want %v", got, want)
 		}
 	})
 
-	t.Run("skips when host files missing", func(t *testing.T) {
-		t.Setenv("HOME", t.TempDir())
+	t.Run("skips files that don't exist", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 
-		cfg := BuiltinDevcontainer()
-		for _, m := range cfg.Mounts {
-			if strings.Contains(m, ".claude") {
-				t.Errorf("unexpected claude mount when source missing: %q", m)
-			}
+		got := ClaudeConfigMounts()
+		if len(got) != 1 || !strings.Contains(got[0], ".claude.json") {
+			t.Errorf("ClaudeConfigMounts() = %v; want only .claude.json mount", got)
+		}
+	})
+
+	t.Run("returns nil when nothing exists", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		if got := ClaudeConfigMounts(); got != nil {
+			t.Errorf("ClaudeConfigMounts() = %v; want nil", got)
 		}
 	})
 }

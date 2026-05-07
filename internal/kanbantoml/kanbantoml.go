@@ -69,14 +69,15 @@ type MergeSection struct {
 // container_env merges key-by-key with user values winning over both the
 // project file and the devcontainer.json.
 //
-// DockerSocket toggles the host docker socket bind mount on the *built-in*
+// DockerSocket and ClaudeConfig toggle host bind mounts on the *built-in*
 // devcontainer only — hand-written devcontainer.json files are unaffected
-// and manage their own mounts. Defaults to true when unset.
+// and manage their own mounts. Both default to true when unset.
 type DevcontainerSection struct {
 	RunArgs      []string          `toml:"run_args"`
 	Mounts       []string          `toml:"mounts"`
 	ContainerEnv map[string]string `toml:"container_env"`
 	DockerSocket *bool             `toml:"docker_socket"`
+	ClaudeConfig *bool             `toml:"claude_config"`
 }
 
 type GitHubSection struct {
@@ -313,6 +314,7 @@ func mergeDevcontainer(p, u *DevcontainerSection) *DevcontainerSection {
 			out.ContainerEnv[k] = v
 		}
 		out.DockerSocket = p.DockerSocket
+		out.ClaudeConfig = p.ClaudeConfig
 	}
 	if u != nil {
 		out.RunArgs = append(out.RunArgs, u.RunArgs...)
@@ -325,6 +327,9 @@ func mergeDevcontainer(p, u *DevcontainerSection) *DevcontainerSection {
 		}
 		if u.DockerSocket != nil {
 			out.DockerSocket = u.DockerSocket
+		}
+		if u.ClaudeConfig != nil {
+			out.ClaudeConfig = u.ClaudeConfig
 		}
 	}
 	return &out

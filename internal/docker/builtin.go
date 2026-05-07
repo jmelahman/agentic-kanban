@@ -18,9 +18,10 @@ var BuiltinImage = "lahmanja/kanban-devcontainer:latest"
 
 // BuiltinDevcontainer returns the bundled DevcontainerConfig used when a
 // session has no repo-level or user-level devcontainer.json. It is
-// deliberately permissive: SSH agent, gh credentials, and Claude Code
-// config are forwarded from the host so that git, ssh, gh, and claude
-// "just work" on a fresh install.
+// deliberately permissive: SSH agent and gh credentials are forwarded
+// from the host so that git, ssh, and gh "just work" on a fresh install.
+// Host Claude Code config is layered on later by the session manager
+// (see ClaudeConfigMounts) so it can be toggled via .kanban.toml.
 func BuiltinDevcontainer() *DevcontainerConfig {
 	cfg := &DevcontainerConfig{
 		Name:            "kanban-default",
@@ -38,16 +39,30 @@ func BuiltinDevcontainer() *DevcontainerConfig {
 	if tok := os.Getenv("GH_TOKEN"); tok != "" {
 		cfg.ContainerEnv["GH_TOKEN"] = tok
 	}
-	if home, err := os.UserHomeDir(); err == nil {
-		for _, name := range []string{".claude", ".claude.json"} {
-			src := filepath.Join(home, name)
-			if _, err := os.Stat(src); err == nil {
-				cfg.Mounts = append(cfg.Mounts,
-					"type=bind,source="+src+",target=/home/dev/"+name)
-			}
-		}
-	}
 	return cfg
+}
+
+// ClaudeConfigMounts returns bind-mount strings that forward the host's
+// Claude Code config (~/.claude and ~/.claude.json) into the built-in
+// container's home directory so credentials and session history persist
+// across sessions. Sources that don't exist on the host are skipped so
+// users without Claude Code installed aren't broken. The session manager
+// applies these to built-in configs unless the .kanban.toml
+// [devcontainer].claude_config flag is set to false.
+func ClaudeConfigMounts() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	var mounts []string
+	for _, name := range []string{".claude", ".claude.json"} {
+		src := filepath.Join(home, name)
+		if _, err := os.Stat(src); err != nil {
+			continue
+		}
+		mounts = append(mounts, "type=bind,source="+src+",target=/home/dev/"+name)
+	}
+	return mounts
 }
 
 // DockerSocketMount returns the host docker socket bind mount string applied

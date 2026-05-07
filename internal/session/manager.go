@@ -214,9 +214,10 @@ func resolveBranchPrefix(board *db.Board, repoPath string) string {
 // .kanban.toml (project + user) onto the parsed devcontainer.json: run_args
 // and mounts append, container_env merges with kanban values winning.
 //
-// For built-in configs the docker_socket flag (default true) controls
-// whether the host docker socket gets bind-mounted. Hand-written
-// devcontainer.json files manage their own mounts and ignore the flag.
+// For built-in configs the docker_socket and claude_config flags (both
+// default true) control whether the host docker socket and Claude Code
+// config get bind-mounted. Hand-written devcontainer.json files manage
+// their own mounts and ignore the flags.
 func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanbantoml.DevcontainerSection) {
 	if cfg == nil {
 		return
@@ -230,6 +231,13 @@ func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanba
 			if mount := docker.DockerSocketMount(); mount != "" {
 				cfg.Mounts = append(cfg.Mounts, mount)
 			}
+		}
+		mountClaude := true
+		if dev != nil && dev.ClaudeConfig != nil {
+			mountClaude = *dev.ClaudeConfig
+		}
+		if mountClaude {
+			cfg.Mounts = append(cfg.Mounts, docker.ClaudeConfigMounts()...)
 		}
 	}
 	if dev == nil {
