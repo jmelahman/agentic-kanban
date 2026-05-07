@@ -18,8 +18,9 @@ var BuiltinImage = "lahmanja/kanban-devcontainer:latest"
 
 // BuiltinDevcontainer returns the bundled DevcontainerConfig used when a
 // session has no repo-level or user-level devcontainer.json. It is
-// deliberately permissive: SSH agent and gh credentials are forwarded from
-// the host so that git, ssh, and gh "just work" on a fresh install.
+// deliberately permissive: SSH agent, gh credentials, and Claude Code
+// config are forwarded from the host so that git, ssh, gh, and claude
+// "just work" on a fresh install.
 func BuiltinDevcontainer() *DevcontainerConfig {
 	cfg := &DevcontainerConfig{
 		Name:            "kanban-default",
@@ -36,6 +37,15 @@ func BuiltinDevcontainer() *DevcontainerConfig {
 	}
 	if tok := os.Getenv("GH_TOKEN"); tok != "" {
 		cfg.ContainerEnv["GH_TOKEN"] = tok
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, name := range []string{".claude", ".claude.json"} {
+			src := filepath.Join(home, name)
+			if _, err := os.Stat(src); err == nil {
+				cfg.Mounts = append(cfg.Mounts,
+					"type=bind,source="+src+",target=/home/dev/"+name)
+			}
+		}
 	}
 	return cfg
 }

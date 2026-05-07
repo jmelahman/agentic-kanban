@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/docker/docker/api/types/mount"
@@ -350,6 +351,50 @@ func TestResolveBuildPaths(t *testing.T) {
 		}
 		if dfPath != filepath.Join(userDir, "build", "Dockerfile.dev") {
 			t.Errorf("dockerfilePath = %q; want %q", dfPath, filepath.Join(userDir, "build", "Dockerfile.dev"))
+		}
+	})
+}
+
+func TestBuiltinDevcontainer_ClaudeMounts(t *testing.T) {
+	t.Run("mounts both files when present", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		cfg := BuiltinDevcontainer()
+
+		want := map[string]string{
+			filepath.Join(home, ".claude"):      "/home/dev/.claude",
+			filepath.Join(home, ".claude.json"): "/home/dev/.claude.json",
+		}
+		got := map[string]string{}
+		for _, m := range cfg.Mounts {
+			pm, err := parseMountString(m)
+			if err != nil {
+				t.Fatalf("parseMountString(%q): %v", m, err)
+			}
+			if target, ok := want[pm.Source]; ok && target == pm.Target {
+				got[pm.Source] = pm.Target
+			}
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("claude mounts = %v; want %v (all mounts: %v)", got, want, cfg.Mounts)
+		}
+	})
+
+	t.Run("skips when host files missing", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+
+		cfg := BuiltinDevcontainer()
+		for _, m := range cfg.Mounts {
+			if strings.Contains(m, ".claude") {
+				t.Errorf("unexpected claude mount when source missing: %q", m)
+			}
 		}
 	})
 }
