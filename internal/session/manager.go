@@ -213,8 +213,24 @@ func resolveBranchPrefix(board *db.Board, repoPath string) string {
 // applyKanbanDevcontainerOverrides layers the [devcontainer] section from
 // .kanban.toml (project + user) onto the parsed devcontainer.json: run_args
 // and mounts append, container_env merges with kanban values winning.
+//
+// For built-in configs the docker_socket flag (default true) controls
+// whether the host docker socket gets bind-mounted. Hand-written
+// devcontainer.json files manage their own mounts and ignore the flag.
 func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanbantoml.DevcontainerSection) {
-	if cfg == nil || dev == nil {
+	if cfg == nil {
+		return
+	}
+	if cfg.BuiltIn {
+		mountSocket := true
+		if dev != nil && dev.DockerSocket != nil {
+			mountSocket = *dev.DockerSocket
+		}
+		if mountSocket {
+			cfg.Mounts = append(cfg.Mounts, docker.DockerSocketMount)
+		}
+	}
+	if dev == nil {
 		return
 	}
 	cfg.RunArgs = append(cfg.RunArgs, dev.RunArgs...)

@@ -116,3 +116,41 @@ func TestApplyKanbanDevcontainerOverrides_InitializesEnvMap(t *testing.T) {
 		t.Errorf("ContainerEnv[FOO] = %q; want bar", cfg.ContainerEnv["FOO"])
 	}
 }
+
+func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
+	hasSocket := func(cfg *docker.DevcontainerConfig) bool {
+		for _, m := range cfg.Mounts {
+			if m == docker.DockerSocketMount {
+				return true
+			}
+		}
+		return false
+	}
+	boolPtr := func(b bool) *bool { return &b }
+
+	t.Run("default mounts socket on built-in", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{BuiltIn: true}
+		applyKanbanDevcontainerOverrides(cfg, nil)
+		if !hasSocket(cfg) {
+			t.Errorf("docker socket missing; mounts = %v", cfg.Mounts)
+		}
+	})
+
+	t.Run("docker_socket=false drops the mount", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{BuiltIn: true}
+		applyKanbanDevcontainerOverrides(cfg, &kanbantoml.DevcontainerSection{
+			DockerSocket: boolPtr(false),
+		})
+		if hasSocket(cfg) {
+			t.Errorf("docker socket present despite docker_socket=false; mounts = %v", cfg.Mounts)
+		}
+	})
+
+	t.Run("non-built-in configs are not auto-mounted", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{}
+		applyKanbanDevcontainerOverrides(cfg, nil)
+		if hasSocket(cfg) {
+			t.Errorf("hand-written config got auto-socket; mounts = %v", cfg.Mounts)
+		}
+	})
+}

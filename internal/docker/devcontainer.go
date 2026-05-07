@@ -45,6 +45,12 @@ type DevcontainerConfig struct {
 	// context and Dockerfile paths resolve relative to it so user-level fallback
 	// configs can ship their own Dockerfile alongside the json.
 	ConfigDir string `json:"-"`
+
+	// BuiltIn is true when this config was synthesized by BuiltinDevcontainer
+	// rather than parsed from disk. The session manager keys docker-socket
+	// injection off this flag so hand-written devcontainer.json files retain
+	// full control over their mounts.
+	BuiltIn bool `json:"-"`
 }
 
 type BuildConfig struct {
@@ -198,10 +204,12 @@ func (c *DevcontainerConfig) Substitute(ctx SubstitutionContext) {
 //  2. <worktree>/.devcontainer.json
 //  3. <userConfigDir>/kanban/.devcontainer/devcontainer.json
 //  4. <userConfigDir>/kanban/devcontainer.json
+//  5. the built-in default (BuiltinDevcontainer), pinned to the kanban
+//     release's published image.
 //
-// The user-level fallbacks let users without a repo-defined devcontainer still
-// get a session container; the .devcontainer/ directory form lets them ship a
-// sibling Dockerfile.
+// The user-level fallbacks let users without a repo-defined devcontainer ship
+// a sibling Dockerfile; the built-in fallback ensures every session gets a
+// container even with no kanban configuration on disk.
 func LoadDevcontainer(worktreePath string) (*DevcontainerConfig, error) {
 	candidates := []string{
 		filepath.Join(worktreePath, ".devcontainer", "devcontainer.json"),
@@ -228,7 +236,8 @@ func LoadDevcontainer(worktreePath string) (*DevcontainerConfig, error) {
 		}
 	}
 	if data == nil {
-		return nil, fmt.Errorf("read devcontainer.json: not found in %s or user config", worktreePath)
+		log.Printf("devcontainer: %s has no devcontainer.json; using built-in default %s", worktreePath, BuiltinImage)
+		return BuiltinDevcontainer(), nil
 	}
 	if !strings.HasPrefix(loaded, worktreePath) {
 		log.Printf("devcontainer: %s has no devcontainer.json; using user fallback at %s", worktreePath, loaded)

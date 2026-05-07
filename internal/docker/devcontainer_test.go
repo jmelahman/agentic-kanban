@@ -251,13 +251,20 @@ func TestLoadDevcontainer_FallbackOrder(t *testing.T) {
 		}
 	})
 
-	t.Run("errors when neither repo nor user config has one", func(t *testing.T) {
+	t.Run("falls back to built-in when neither repo nor user config has one", func(t *testing.T) {
 		repo := t.TempDir()
 		xdg := t.TempDir()
 		t.Setenv("XDG_CONFIG_HOME", xdg)
 
-		if _, err := LoadDevcontainer(repo); err == nil {
-			t.Fatal("expected error when no devcontainer.json exists, got nil")
+		cfg, err := LoadDevcontainer(repo)
+		if err != nil {
+			t.Fatalf("LoadDevcontainer: %v", err)
+		}
+		if !cfg.BuiltIn {
+			t.Errorf("BuiltIn = false; want true")
+		}
+		if cfg.Image != BuiltinImage {
+			t.Errorf("Image = %q; want %q", cfg.Image, BuiltinImage)
 		}
 	})
 }
