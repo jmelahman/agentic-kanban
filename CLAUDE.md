@@ -86,10 +86,27 @@ bundled Chromium under `$PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`.
 
 - `main.go`, `cmd/`, `internal/` — Go server, MCP, CLI subcommands.
 - `web/` — Vite + React 19 + Tailwind 4 frontend.
+- `docs/` — VitePress site (`guide/`, `reference/api.md`, `reference/cli.md`,
+  `reference/mcp.md`).
 - `.kanban.toml` — maps the task labels above to container ports so kanban
   proxies them to host ports `13000–13099` when run as a session.
 - `.devcontainer/` — image, firewall (allowlists `storage.googleapis.com`,
   `registry.npmjs.org`, GitHub, `proxy.golang.org`, anthropic, etc.).
+
+## Documentation upkeep
+
+User-facing changes need a docs update in the same PR. Match the change to
+the page:
+
+- New/changed CLI flags or subcommands → `docs/reference/cli.md`.
+- New/changed HTTP endpoints or request/response shapes → `docs/reference/api.md`.
+- New/changed MCP tools → `docs/reference/mcp.md`.
+- Config keys (`.kanban.toml`, env vars, `--in-memory`, etc.) → `docs/guide/configuration.md`.
+- Install/setup steps → `docs/guide/install.md` or `docs/guide/quickstart.md`.
+
+If a feature doesn't fit an existing page, add one under `docs/guide/` and
+link it from `docs/.vitepress/config.*`. Skip docs only for purely internal
+refactors with no observable behavior change.
 
 ## Network notes
 
