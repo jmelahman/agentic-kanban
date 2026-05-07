@@ -93,7 +93,7 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
           })}
         </ul>
       </section>
-      <section className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable]">
+      <section>
         <h3 className="mb-2 text-xs uppercase tracking-wide text-fg-muted">Runs</h3>
         <ul className="flex flex-col gap-1">
           {runs.map((r) => (
