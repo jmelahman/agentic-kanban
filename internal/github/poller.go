@@ -84,22 +84,24 @@ type Publisher interface {
 	Publish(boardID int64, typ string, data any)
 }
 
-// SessionDestroyer is the subset of *session.Manager the poller needs to
-// clean up a worktree + container after a PR is merged externally.
-type SessionDestroyer interface {
-	Destroy(ctx context.Context, sessionID int64) error
+// SessionStopper is the subset of *session.Manager the poller needs to halt
+// a session's container after a PR is merged externally. The worktree,
+// branch, and session row are preserved so the user can still inspect or
+// restart the work.
+type SessionStopper interface {
+	Stop(ctx context.Context, sessionID int64) error
 }
 
 type Poller struct {
 	store    *db.Store
 	bus      Publisher
-	sessions SessionDestroyer
+	sessions SessionStopper
 	interval time.Duration
 	http     *http.Client
 }
 
 // NewPoller constructs a poller. interval is the global tick rate.
-func NewPoller(store *db.Store, bus Publisher, sessions SessionDestroyer, interval time.Duration) *Poller {
+func NewPoller(store *db.Store, bus Publisher, sessions SessionStopper, interval time.Duration) *Poller {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -303,8 +305,8 @@ func (p *Poller) applyTransition(ctx context.Context, board *db.Board, sess *db.
 		p.bus.Publish(board.ID, "ticket_moved", updated)
 	}
 	if next == PRStateMerged && p.sessions != nil {
-		if err := p.sessions.Destroy(ctx, sess.ID); err != nil {
-			log.Printf("github poller: destroy session %d after merge: %v", sess.ID, err)
+		if err := p.sessions.Stop(ctx, sess.ID); err != nil {
+			log.Printf("github poller: stop session %d after merge: %v", sess.ID, err)
 		}
 	}
 	return nil
