@@ -34,6 +34,7 @@ ENV PATH="/usr/local/go/bin:/home/dev/go/bin:${PATH}" \
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@latest
 
 RUN useradd -m -s /bin/bash dev \
+ && chown -R dev:dev /home/dev \
  && echo "dev ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/dev \
  && chmod 0440 /etc/sudoers.d/dev
 
