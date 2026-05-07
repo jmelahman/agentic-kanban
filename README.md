@@ -26,6 +26,33 @@ uv tool install agentic-kanban
 
 Docker images and prebuilt binaries are also available — see the [install guide](https://jmelahman.github.io/agentic-kanban/guide/install).
 
+## Run
+
+```sh
+kanban serve
+```
+
+The server listens on `:7474`. Open <http://localhost:7474/>.
+
+Or with Docker:
+
+```sh
+SOURCE=$HOME/code
+docker run -d --name kanban \
+  --restart unless-stopped \
+  -p 127.0.0.1:7474:7474 \
+  -p 13000-13099:13000-13099 \
+  -v ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock \
+  -v $HOME/.claude:$HOME/.claude \
+  -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
+  -v $SOURCE:$SOURCE \
+  -e HOME=$HOME \
+  -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+  -e KANBAN_DATA_DIR=$HOME/.local/share/kanban \
+  -e GH_TOKEN=$(gh auth token) \
+  lahmanja/kanban:latest
+```
+
 ## 📖 Documentation
 
 Full documentation lives at **<https://jmelahman.github.io/agentic-kanban/>**:
