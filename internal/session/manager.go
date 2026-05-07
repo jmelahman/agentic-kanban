@@ -227,7 +227,9 @@ func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanba
 			mountSocket = *dev.DockerSocket
 		}
 		if mountSocket {
-			cfg.Mounts = append(cfg.Mounts, docker.DockerSocketMount)
+			if mount := docker.DockerSocketMount(); mount != "" {
+				cfg.Mounts = append(cfg.Mounts, mount)
+			}
 		}
 	}
 	if dev == nil {

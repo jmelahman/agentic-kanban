@@ -118,9 +118,21 @@ func TestApplyKanbanDevcontainerOverrides_InitializesEnvMap(t *testing.T) {
 }
 
 func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
+	// Seed an XDG_RUNTIME_DIR socket so DockerSocketMount resolves a
+	// non-empty mount on hosts without /var/run/docker.sock.
+	runDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(runDir, "docker.sock"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_RUNTIME_DIR", runDir)
+
+	expectedMount := docker.DockerSocketMount()
+	if expectedMount == "" {
+		t.Fatal("DockerSocketMount returned empty despite seeded XDG socket")
+	}
 	hasSocket := func(cfg *docker.DevcontainerConfig) bool {
 		for _, m := range cfg.Mounts {
-			if m == docker.DockerSocketMount {
+			if m == expectedMount {
 				return true
 			}
 		}

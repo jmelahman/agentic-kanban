@@ -2,6 +2,7 @@ package docker
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 )
 
@@ -39,11 +40,28 @@ func BuiltinDevcontainer() *DevcontainerConfig {
 	return cfg
 }
 
-// DockerSocketMount is the host docker socket bind mount string applied to
-// built-in configs when DevcontainerSection.DockerSocket is unset or true.
-// Hand-written devcontainer.json files manage their own socket mount and are
-// unaffected by the flag.
-const DockerSocketMount = "type=bind,source=/var/run/docker.sock,target=/var/run/docker.sock"
+// DockerSocketMount returns the host docker socket bind mount string applied
+// to built-in configs when DevcontainerSection.DockerSocket is unset or true.
+// It probes /var/run/docker.sock first, then $XDG_RUNTIME_DIR/docker.sock for
+// rootless installs, and returns "" when neither exists. Hand-written
+// devcontainer.json files manage their own socket mount and are unaffected by
+// the flag.
+func DockerSocketMount() string {
+	for _, src := range dockerSocketCandidates() {
+		if _, err := os.Stat(src); err == nil {
+			return "type=bind,source=" + src + ",target=/var/run/docker.sock"
+		}
+	}
+	return ""
+}
+
+func dockerSocketCandidates() []string {
+	paths := []string{"/var/run/docker.sock"}
+	if xdg := os.Getenv("XDG_RUNTIME_DIR"); xdg != "" {
+		paths = append(paths, filepath.Join(xdg, "docker.sock"))
+	}
+	return paths
+}
 
 // sshAgentSocketPath returns a host path to bind-mount as the container's
 // ssh-agent socket. Returns SSH_AUTH_SOCK when set, falling back to the
