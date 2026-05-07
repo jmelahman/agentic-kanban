@@ -44,6 +44,7 @@ const MIN_HEIGHT = 200;
 const MAX_HEIGHT = 1200;
 const DEFAULT_HEIGHT = 360;
 const HEIGHT_STORAGE_KEY = "sessionPane.height";
+const TAB_STORAGE_KEY = "sessionPane.tab";
 
 function loadInitialSize(
   key: string,
@@ -56,6 +57,16 @@ function loadInitialSize(
   const n = raw ? Number(raw) : NaN;
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
+}
+
+function loadInitialTab(): TabId {
+  const raw =
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem(TAB_STORAGE_KEY)
+      : null;
+  return (TAB_ORDER as readonly string[]).includes(raw ?? "")
+    ? (raw as TabId)
+    : "agent";
 }
 
 type MergeStrategy = "merge-commit" | "squash" | "rebase";
@@ -117,7 +128,7 @@ export function SessionPane({
   const isHorizontal = orientation === "horizontal";
   const qc = useQueryClient();
   const toast = useToast();
-  const [tab, setTab] = useState<TabId>("agent");
+  const [tab, setTab] = useState<TabId>(loadInitialTab);
   const [fullscreen, setFullscreen] = useState(false);
   const tabsEnabled = ticketId != null;
   useShortcut(
@@ -234,6 +245,10 @@ export function SessionPane({
     localStorage.setItem(HEIGHT_STORAGE_KEY, String(height));
   }, [height, resizing]);
 
+  useEffect(() => {
+    localStorage.setItem(TAB_STORAGE_KEY, tab);
+  }, [tab]);
+
   useClickOutside(syncMenuRef, () => setSyncMenuOpen(false), {
     enabled: syncMenuOpen,
   });
@@ -340,7 +355,6 @@ export function SessionPane({
   // flags belong here too — without the reset, an in-flight action on the
   // previous ticket leaves the new ticket's button stuck in its spinner state.
   useEffect(() => {
-    setTab("agent");
     setSyncMenuOpen(false);
     setMergeMenuOpen(false);
     startMut.reset();
