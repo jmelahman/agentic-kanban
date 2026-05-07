@@ -13,6 +13,12 @@ Either file may be absent. Both accept the same schema.
 [harness]
 id = "claude-code"            # default harness for new sessions
 
+[worktrees]
+root = "/path/to/worktrees"   # parent dir for new worktrees (overrides --worktrees-dir)
+
+[branches]
+prefix = "kanban"              # branch name = "<prefix>/<ticket-slug>"
+
 [sync]
 allow_rebase = true            # offer "rebase onto base" in the sync menu
 allow_merge  = true            # offer "merge base into branch"
@@ -29,12 +35,22 @@ review_column = "In Review"
 done_column   = "Done"
 closed_column = "Done"
 
+# Toggles the in-process error-to-ticket reporter. Off by default — typically
+# only useful to developers maintaining kanban itself.
+[errors]
+enabled    = false
+board_name = "kanban-errors"
+
 # Extra knobs layered onto the worktree's devcontainer.json at session spawn.
 # `mounts` and `run_args` append to whatever the devcontainer.json declares;
-# `container_env` merges with kanban values winning.
+# `container_env` merges with kanban values winning. `docker_socket` and
+# `claude_config` only affect the built-in fallback devcontainer (both default
+# to true) — hand-written devcontainer.json files manage their own mounts.
 [devcontainer]
-mounts   = ["type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock"]
-run_args = ["--cap-add=SYS_PTRACE"]
+mounts        = ["type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock"]
+run_args      = ["--cap-add=SYS_PTRACE"]
+docker_socket = true           # built-in only: bind /var/run/docker.sock into the container
+claude_config = true           # built-in only: bind ~/.claude into the container
 
 [devcontainer.container_env]
 SSH_AUTH_SOCK = "/tmp/ssh-agent.sock"
