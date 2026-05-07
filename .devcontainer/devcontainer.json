@@ -14,7 +14,8 @@
     "source=${localEnv:HOME}/.config/nvim,target=/root/.config/nvim,type=bind,readonly",
     "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,readonly",
     "source=devcontainer-go-mod,target=/home/dev/go/pkg/mod,type=volume",
-    "source=devcontainer-go-build,target=/root/.cache/go-build,type=volume",
+    "source=devcontainer-cache,target=/root/.cache,type=volume",
+    "source=devcontainer-local,target=/root/.local,type=volume",
     "source=devcontainer-npm,target=/root/.npm,type=volume"
   ],
   "containerEnv": {
