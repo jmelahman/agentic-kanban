@@ -1,6 +1,6 @@
 // Package mcp implements a minimal Model Context Protocol server (stdio
-// transport) that lets AI agents create kanban tickets via the existing HTTP
-// API. It speaks the JSON-RPC 2.0 dialect described in the MCP spec
+// transport) that lets AI agents drive kanban via the existing HTTP API.
+// It speaks the JSON-RPC 2.0 dialect described in the MCP spec
 // (https://modelcontextprotocol.io) — initialize, tools/list, tools/call,
 // plus the standard cancellation / ping flow. Only the methods we need are
 // implemented; unknown methods return JSON-RPC error -32601.
@@ -59,10 +59,10 @@ type rpcRequest struct {
 }
 
 type rpcResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      any         `json:"id"`
-	Result  any         `json:"result,omitempty"`
-	Error   *rpcError   `json:"error,omitempty"`
+	JSONRPC string    `json:"jsonrpc"`
+	ID      any       `json:"id"`
+	Result  any       `json:"result,omitempty"`
+	Error   *rpcError `json:"error,omitempty"`
 }
 
 type rpcError struct {
@@ -158,28 +158,282 @@ func (s *server) initialize(params json.RawMessage) map[string]any {
 	}
 }
 
+// schemaProp is shorthand for one inputSchema property entry.
+func schemaProp(typ, desc string) map[string]any {
+	return map[string]any{"type": typ, "description": desc}
+}
+
+func boardIdentSchema() map[string]any {
+	return schemaProp("string", "Board id (numeric) or slug")
+}
+
+func ticketIDSchema() map[string]any {
+	return schemaProp("integer", "Ticket id (numeric)")
+}
+
+func sessionIDSchema() map[string]any {
+	return schemaProp("integer", "Session id (numeric)")
+}
+
 func toolDefinitions() []map[string]any {
 	return []map[string]any{
 		{
-			"name":        "create_ticket",
-			"description": "Create a new ticket on a kanban board. The board can be referenced by numeric id or slug. Column is optional and defaults to the leftmost column (typically Backlog); when set it accepts a column name (case-insensitive) or numeric id.",
+			"name":        "list_boards",
+			"description": "List all kanban boards as {id, name, slug}.",
+			"inputSchema": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+		},
+		{
+			"name":        "create_board",
+			"description": "Create a new kanban board. Either repo_path or mount_path must be set; the server seeds the four default columns (Backlog, In Progress, Review, Done).",
 			"inputSchema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"board":  map[string]any{"type": "string", "description": "Board id or slug"},
-					"title":  map[string]any{"type": "string", "description": "Ticket title"},
-					"body":   map[string]any{"type": "string", "description": "Optional ticket body / description"},
-					"column": map[string]any{"type": "string", "description": "Optional column name or id"},
+					"name":          schemaProp("string", "Board name"),
+					"repo_path":     schemaProp("string", "Path to the host git repo (one of repo_path/mount_path is required)"),
+					"mount_path":    schemaProp("string", "Mount path inside session containers (alternative to repo_path)"),
+					"worktree_root": schemaProp("string", "Override the parent directory for new session worktrees"),
+					"base_branch":   schemaProp("string", "Branch session worktrees fork from (default: main)"),
+					"branch_prefix": schemaProp("string", "Optional prefix prepended to session branch names"),
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			"name":        "get_board",
+			"description": "Fetch a single board by id or slug.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "update_board",
+			"description": "Patch fields on a board. Only fields you supply are updated.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board":         boardIdentSchema(),
+					"name":          schemaProp("string", "New name"),
+					"repo_path":     schemaProp("string", "New repo path"),
+					"mount_path":    schemaProp("string", "New mount path"),
+					"worktree_root": schemaProp("string", "New worktree root"),
+					"base_branch":   schemaProp("string", "New base branch"),
+					"branch_prefix": schemaProp("string", "New branch prefix"),
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "delete_board",
+			"description": "Delete a board. Destroys every associated session first.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "board_state",
+			"description": "Return a single-shot snapshot of a board: {board, columns, tickets, sessions, merge_config, sync_config}.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "list_archived",
+			"description": "List archived tickets on a board.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "delete_archived",
+			"description": "Permanently delete every archived ticket on a board (destructive).",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "create_ticket",
+			"description": "Create a new ticket on a kanban board. Board accepts numeric id or slug. Column is optional and defaults to the leftmost column (typically Backlog); when set it accepts a column name (case-insensitive) or numeric id.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board":  boardIdentSchema(),
+					"title":  schemaProp("string", "Ticket title"),
+					"body":   schemaProp("string", "Optional ticket body / description"),
+					"column": schemaProp("string", "Optional column name or id"),
 				},
 				"required": []string{"board", "title"},
 			},
 		},
 		{
-			"name":        "list_boards",
-			"description": "List all kanban boards as {id, name, slug}. Useful for discovering which board to target before calling create_ticket.",
+			"name":        "update_ticket",
+			"description": "Patch the title and/or body of a ticket.",
 			"inputSchema": map[string]any{
-				"type":       "object",
-				"properties": map[string]any{},
+				"type": "object",
+				"properties": map[string]any{
+					"ticket": ticketIDSchema(),
+					"title":  schemaProp("string", "New title"),
+					"body":   schemaProp("string", "New body"),
+				},
+				"required": []string{"ticket"},
+			},
+		},
+		{
+			"name":        "move_ticket",
+			"description": "Move a ticket to a different column / position.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket":    ticketIDSchema(),
+					"column_id": schemaProp("integer", "Target column id"),
+					"position":  schemaProp("integer", "Target 0-indexed position within the column"),
+				},
+				"required": []string{"ticket", "column_id"},
+			},
+		},
+		{
+			"name":        "archive_ticket",
+			"description": "Archive a ticket. Stops its session if running.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket": ticketIDSchema(),
+				},
+				"required": []string{"ticket"},
+			},
+		},
+		{
+			"name":        "unarchive_ticket",
+			"description": "Unarchive a ticket; placed at the end of its original column.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket": ticketIDSchema(),
+				},
+				"required": []string{"ticket"},
+			},
+		},
+		{
+			"name":        "delete_ticket",
+			"description": "Permanently delete a ticket. The ticket must be archived first.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket": ticketIDSchema(),
+				},
+				"required": []string{"ticket"},
+			},
+		},
+		{
+			"name":        "done_ticket",
+			"description": "Move a ticket to the Done column (last position) and stop its session.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket": ticketIDSchema(),
+				},
+				"required": []string{"ticket"},
+			},
+		},
+		{
+			"name":        "sync_ticket",
+			"description": "Sync a ticket branch from base. Strategy is 'rebase' or 'merge'.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket":   ticketIDSchema(),
+					"strategy": schemaProp("string", "rebase or merge (default: rebase)"),
+				},
+				"required": []string{"ticket"},
+			},
+		},
+		{
+			"name":        "merge_ticket",
+			"description": "Merge a ticket branch into base. Strategy is 'merge-commit', 'squash', or 'rebase'.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket":   ticketIDSchema(),
+					"strategy": schemaProp("string", "merge-commit, squash, or rebase"),
+				},
+				"required": []string{"ticket", "strategy"},
+			},
+		},
+		{
+			"name":        "archive_column_tickets",
+			"description": "Archive every non-archived ticket in a column. Stops their sessions.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"column_id": schemaProp("integer", "Column id (numeric)"),
+				},
+				"required": []string{"column_id"},
+			},
+		},
+		{
+			"name":        "ensure_session",
+			"description": "Ensure a session exists for a ticket (creates one if absent).",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"ticket": ticketIDSchema(),
+				},
+				"required": []string{"ticket"},
+			},
+		},
+		{
+			"name":        "start_session",
+			"description": "Start a stopped session.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"session": sessionIDSchema(),
+				},
+				"required": []string{"session"},
+			},
+		},
+		{
+			"name":        "stop_session",
+			"description": "Stop a running session.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"session": sessionIDSchema(),
+				},
+				"required": []string{"session"},
+			},
+		},
+		{
+			"name":        "restart_session",
+			"description": "Restart a session.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"session": sessionIDSchema(),
+				},
+				"required": []string{"session"},
 			},
 		},
 	}
@@ -193,29 +447,42 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 	if err := json.Unmarshal(params, &p); err != nil {
 		return nil, fmt.Errorf("invalid params: %w", err)
 	}
+
+	// unmarshal args into a single big shape; tools only read the fields
+	// they care about.
+	var a struct {
+		Board        string  `json:"board"`
+		Name         string  `json:"name"`
+		RepoPath     string  `json:"repo_path"`
+		MountPath    string  `json:"mount_path"`
+		WorktreeRoot string  `json:"worktree_root"`
+		BaseBranch   string  `json:"base_branch"`
+		BranchPrefix string  `json:"branch_prefix"`
+		NamePtr      *string `json:"-"`
+		Title        string  `json:"title"`
+		Body         string  `json:"body"`
+		Column       string  `json:"column"`
+		Ticket       int64   `json:"ticket"`
+		ColumnID     int64   `json:"column_id"`
+		Position     int     `json:"position"`
+		Strategy     string  `json:"strategy"`
+		Session      int64   `json:"session"`
+	}
+	if len(p.Arguments) > 0 {
+		if err := json.Unmarshal(p.Arguments, &a); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+
+	// raw is also re-decoded for tools whose patch semantics need
+	// "field present?" detection (update_board, update_ticket).
+	var rawArgs map[string]json.RawMessage
+	if len(p.Arguments) > 0 {
+		_ = json.Unmarshal(p.Arguments, &rawArgs)
+	}
+	hasField := func(k string) bool { _, ok := rawArgs[k]; return ok }
+
 	switch p.Name {
-	case "create_ticket":
-		var args struct {
-			Board  string `json:"board"`
-			Title  string `json:"title"`
-			Body   string `json:"body"`
-			Column string `json:"column"`
-		}
-		if len(p.Arguments) > 0 {
-			if err := json.Unmarshal(p.Arguments, &args); err != nil {
-				return nil, fmt.Errorf("invalid arguments: %w", err)
-			}
-		}
-		raw, err := s.client.CreateTicket(ctx, client.CreateTicketArgs{
-			Board:  args.Board,
-			Title:  args.Title,
-			Body:   args.Body,
-			Column: args.Column,
-		})
-		if err != nil {
-			return errorResult(err.Error()), nil
-		}
-		return textResult(string(raw)), nil
 	case "list_boards":
 		boards, err := s.client.ListBoards(ctx)
 		if err != nil {
@@ -223,9 +490,194 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 		}
 		buf, _ := json.Marshal(boards)
 		return textResult(string(buf)), nil
+
+	case "create_board":
+		raw, err := s.client.CreateBoard(ctx, client.CreateBoardArgs{
+			Name:         a.Name,
+			RepoPath:     a.RepoPath,
+			MountPath:    a.MountPath,
+			WorktreeRoot: a.WorktreeRoot,
+			BaseBranch:   a.BaseBranch,
+			BranchPrefix: a.BranchPrefix,
+		})
+		return rawOrError(raw, err), nil
+
+	case "get_board":
+		id, err := s.client.ResolveBoardID(ctx, a.Board)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		raw, err := s.client.GetBoard(ctx, id)
+		return rawOrError(raw, err), nil
+
+	case "update_board":
+		id, err := s.client.ResolveBoardID(ctx, a.Board)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		patch := client.UpdateBoardArgs{}
+		if hasField("name") {
+			patch.Name = &a.Name
+		}
+		if hasField("repo_path") {
+			patch.RepoPath = &a.RepoPath
+		}
+		if hasField("mount_path") {
+			patch.MountPath = &a.MountPath
+		}
+		if hasField("worktree_root") {
+			patch.WorktreeRoot = &a.WorktreeRoot
+		}
+		if hasField("base_branch") {
+			patch.BaseBranch = &a.BaseBranch
+		}
+		if hasField("branch_prefix") {
+			patch.BranchPrefix = &a.BranchPrefix
+		}
+		raw, err := s.client.UpdateBoard(ctx, id, patch)
+		return rawOrError(raw, err), nil
+
+	case "delete_board":
+		id, err := s.client.ResolveBoardID(ctx, a.Board)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		if err := s.client.DeleteBoard(ctx, id); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "board_state":
+		id, err := s.client.ResolveBoardID(ctx, a.Board)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		raw, err := s.client.BoardState(ctx, id)
+		return rawOrError(raw, err), nil
+
+	case "list_archived":
+		id, err := s.client.ResolveBoardID(ctx, a.Board)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		raw, err := s.client.ListArchived(ctx, id)
+		return rawOrError(raw, err), nil
+
+	case "delete_archived":
+		id, err := s.client.ResolveBoardID(ctx, a.Board)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		if err := s.client.DeleteArchived(ctx, id); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "create_ticket":
+		raw, err := s.client.CreateTicket(ctx, client.CreateTicketArgs{
+			Board:  a.Board,
+			Title:  a.Title,
+			Body:   a.Body,
+			Column: a.Column,
+		})
+		return rawOrError(raw, err), nil
+
+	case "update_ticket":
+		patch := client.UpdateTicketArgs{}
+		if hasField("title") {
+			patch.Title = &a.Title
+		}
+		if hasField("body") {
+			patch.Body = &a.Body
+		}
+		raw, err := s.client.UpdateTicket(ctx, a.Ticket, patch)
+		return rawOrError(raw, err), nil
+
+	case "move_ticket":
+		if err := s.client.MoveTicket(ctx, a.Ticket, client.MoveTicketArgs{
+			ColumnID: a.ColumnID, Position: a.Position,
+		}); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "archive_ticket":
+		if err := s.client.ArchiveTicket(ctx, a.Ticket); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "unarchive_ticket":
+		if err := s.client.UnarchiveTicket(ctx, a.Ticket); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "delete_ticket":
+		if err := s.client.DeleteTicket(ctx, a.Ticket); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "done_ticket":
+		if err := s.client.DoneTicket(ctx, a.Ticket); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "sync_ticket":
+		strategy := a.Strategy
+		if strategy == "" {
+			strategy = "rebase"
+		}
+		if err := s.client.SyncTicket(ctx, a.Ticket, strategy); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "merge_ticket":
+		if err := s.client.MergeTicket(ctx, a.Ticket, a.Strategy); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "archive_column_tickets":
+		if err := s.client.ArchiveColumnTickets(ctx, a.ColumnID); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "ensure_session":
+		raw, err := s.client.EnsureSession(ctx, a.Ticket)
+		return rawOrError(raw, err), nil
+
+	case "start_session":
+		raw, err := s.client.StartSession(ctx, a.Session)
+		return rawOrError(raw, err), nil
+
+	case "stop_session":
+		if err := s.client.StopSession(ctx, a.Session); err != nil {
+			return errorResult(err.Error()), nil
+		}
+		return textResult("ok"), nil
+
+	case "restart_session":
+		raw, err := s.client.RestartSession(ctx, a.Session)
+		return rawOrError(raw, err), nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", p.Name)
 	}
+}
+
+func rawOrError(raw json.RawMessage, err error) map[string]any {
+	if err != nil {
+		return errorResult(err.Error())
+	}
+	if len(raw) == 0 {
+		return textResult("ok")
+	}
+	return textResult(string(raw))
 }
 
 func textResult(text string) map[string]any {

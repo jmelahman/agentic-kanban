@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/jmelahman/kanban/internal/api"
+	"github.com/jmelahman/kanban/internal/client"
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
@@ -64,12 +65,21 @@ func TestRun_CreateTicketFlow(t *testing.T) {
 	}
 	send(`{"jsonrpc":"2.0","method":"notifications/initialized"}`)
 
-	// 2. tools/list
+	// 2. tools/list — assert every tool we expose is present.
 	send(`{"jsonrpc":"2.0","id":2,"method":"tools/list"}`)
 	listResp := read()
-	if !strings.Contains(string(listResp["result"]), `"create_ticket"`) ||
-		!strings.Contains(string(listResp["result"]), `"list_boards"`) {
-		t.Fatalf("tools/list missing tools: %s", listResp["result"])
+	expectTools := []string{
+		"list_boards", "create_board", "get_board", "update_board", "delete_board", "board_state",
+		"list_archived", "delete_archived",
+		"create_ticket", "update_ticket", "move_ticket", "archive_ticket", "unarchive_ticket",
+		"delete_ticket", "done_ticket", "sync_ticket", "merge_ticket",
+		"archive_column_tickets",
+		"ensure_session", "start_session", "stop_session", "restart_session",
+	}
+	for _, name := range expectTools {
+		if !strings.Contains(string(listResp["result"]), `"`+name+`"`) {
+			t.Fatalf("tools/list missing %q: %s", name, listResp["result"])
+		}
 	}
 
 	// 3. tools/call create_ticket by slug, no column
@@ -125,6 +135,77 @@ func TestRun_CreateTicketFlow(t *testing.T) {
 	out.Close()
 	if err := <-done; err != nil {
 		t.Errorf("run returned error: %v", err)
+	}
+}
+
+// TestCallTool_LifecycleCoverage exercises a representative slice of the new
+// tools by invoking callTool directly, instead of full JSON-RPC framing, so
+// each dispatch case is checked without ceremony.
+func TestCallTool_LifecycleCoverage(t *testing.T) {
+	srv, store, board := newKanbanTestServer(t)
+	s := &server{client: client.New(srv.URL, srv.Client())}
+	ctx := t.Context()
+
+	call := func(name string, args map[string]any) map[string]any {
+		t.Helper()
+		argBuf, _ := json.Marshal(args)
+		paramBuf, _ := json.Marshal(map[string]any{"name": name, "arguments": json.RawMessage(argBuf)})
+		out, err := s.callTool(ctx, paramBuf)
+		if err != nil {
+			t.Fatalf("callTool %s: %v", name, err)
+		}
+		if isErr, _ := out["isError"].(bool); isErr {
+			text := ""
+			if c, ok := out["content"].([]map[string]any); ok && len(c) > 0 {
+				text, _ = c[0]["text"].(string)
+			}
+			t.Fatalf("tool %s returned error: %s", name, text)
+		}
+		return out
+	}
+
+	call("create_ticket", map[string]any{"board": board.Slug, "title": "first", "body": "b"})
+	tickets, _ := store.ListTickets(ctx, board.ID)
+	if len(tickets) != 1 || tickets[0].Title != "first" {
+		t.Fatalf("create_ticket did not land: %+v", tickets)
+	}
+	tid := tickets[0].ID
+
+	call("update_ticket", map[string]any{"ticket": tid, "title": "renamed"})
+	updated, _ := store.GetTicket(ctx, tid)
+	if updated.Title != "renamed" {
+		t.Errorf("update_ticket: got %q", updated.Title)
+	}
+
+	call("archive_ticket", map[string]any{"ticket": tid})
+	updated, _ = store.GetTicket(ctx, tid)
+	if updated.ArchivedAt == nil {
+		t.Error("archive_ticket: not archived")
+	}
+
+	call("unarchive_ticket", map[string]any{"ticket": tid})
+	updated, _ = store.GetTicket(ctx, tid)
+	if updated.ArchivedAt != nil {
+		t.Error("unarchive_ticket: still archived")
+	}
+
+	cols, _ := store.ListColumns(ctx, board.ID)
+	call("move_ticket", map[string]any{"ticket": tid, "column_id": cols[1].ID, "position": 0})
+	updated, _ = store.GetTicket(ctx, tid)
+	if updated.ColumnID != cols[1].ID {
+		t.Errorf("move_ticket: column %d, want %d", updated.ColumnID, cols[1].ID)
+	}
+
+	call("archive_column_tickets", map[string]any{"column_id": cols[1].ID})
+	leftInCol, _ := store.ListTicketsInColumn(ctx, cols[1].ID)
+	if len(leftInCol) != 0 {
+		t.Errorf("archive_column_tickets: %d tickets left", len(leftInCol))
+	}
+
+	call("delete_archived", map[string]any{"board": board.Slug})
+	archived, _ := store.ListArchivedTickets(ctx, board.ID)
+	if len(archived) != 0 {
+		t.Errorf("delete_archived: %d archived left", len(archived))
 	}
 }
 
