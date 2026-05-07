@@ -7,7 +7,7 @@ Agentic Kanban is a kanban board for managing AI agent sessions. It's a single G
 You point Agentic Kanban at a target repository. It reads that repo's existing devcontainer definition. When you create a ticket and start its session, kanban:
 
 1. Creates a fresh git **worktree** off the chosen base branch.
-2. Spawns the worktree's devcontainer in Docker.
+2. Spawns the worktree's devcontainer in Docker — using the repo's `.devcontainer/devcontainer.json` if it has one, or the **bundled fallback devcontainer** that ships with kanban if it doesn't.
 3. Starts the configured **harness** (Claude Code, pi.dev, …) inside that container, attached to a PTY you can drive from the web UI.
 4. Optionally proxies dev-server ports from the container to host ports `13000–13099` so you can browse the WIP app.
 
@@ -31,7 +31,7 @@ When you're done with the work the agent did, you sync (rebase or merge the base
 :   A git worktree in `<data-dir>/worktrees/` (or the directory you set with `--worktrees-dir`). The session container bind-mounts the worktree, so file changes the agent makes are visible on the host.
 
 **Devcontainer**
-:   The container the session runs inside. Kanban reuses the target repo's `.devcontainer/devcontainer.json`; you can layer extra `mounts`, `runArgs`, and env vars per-repo via `.kanban.toml`.
+:   The container the session runs inside. Kanban reuses the target repo's `.devcontainer/devcontainer.json` when present, and otherwise falls back to a **bundled devcontainer image** (`lahmanja/kanban-devcontainer`, Ubuntu 24.04 + git, gh, node, Go) — pinned to the kanban release by digest at build time, so a fresh install works against any repo with zero setup. You can layer extra `mounts`, `runArgs`, and env vars per-repo via `.kanban.toml`.
 
 ## Where data lives
 
@@ -41,8 +41,6 @@ When you're done with the work the agent did, you sync (rebase or merge the base
 | `$KANBAN_CONFIG` or XDG config dir     | User-level `config.toml`                          |
 | `<repo>/.kanban.toml`                  | Project-level config, checked into the repo       |
 | `<data-dir>/worktrees/<board>/<id>`    | Per-ticket git worktrees                          |
-
-Run with `--in-memory` to use an ephemeral database — handy for trying the UI without a persistent footprint.
 
 ## Next steps
 

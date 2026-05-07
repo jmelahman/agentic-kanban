@@ -10,6 +10,10 @@ container_port = 5173
 label = "Kanban Frontend (Local Backend)"
 container_port = 5174
 
+[[task]]
+label = "Kanban Docs"
+container_port = 5175
+
 [sync]
 allow_rebase = true
 allow_merge = false

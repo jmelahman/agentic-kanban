@@ -49,16 +49,14 @@ cd agentic-kanban
 docker bake          # builds the multi-arch container image
 # ...or, for a local Go build:
 npm --prefix web ci && npm --prefix web run build
-go build -o kanban
+go build -tags embed -o kanban
 ```
 
 ## Verify
 
 ```sh
 kanban --version
-kanban serve --in-memory
+kanban serve
 ```
 
-The server logs `WARNING: --in-memory set` and starts listening on `:7474`. Open <http://localhost:7474/> — you should see the kanban UI.
-
-Press <kbd>Ctrl</kbd>+<kbd>C</kbd> to shut down. With `--in-memory` everything you created is discarded.
+The server starts listening on `:7474`. Open <http://localhost:7474/>.

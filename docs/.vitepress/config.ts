@@ -50,8 +50,7 @@ export default defineConfig({
     },
     search: { provider: 'local' },
     footer: {
-      message: 'Released under the MIT License.',
-      copyright: '© Jamison Lahman',
+      message: '<a href="https://jamison.lahman.dev/">Jamison Lahman</a>',
     },
   },
 })

@@ -2,14 +2,6 @@
 
 This walkthrough creates a board, adds a ticket, and starts an agent session — end to end in a few minutes.
 
-::: tip Throwaway run
-The whole walkthrough works against an in-memory database, so nothing is persisted to disk.
-
-```sh
-kanban serve --in-memory
-```
-:::
-
 ## 1. Open the UI
 
 With `kanban serve` running, open <http://localhost:7474/>.

@@ -28,7 +28,7 @@ kanban serve [flags]
 | `--config`            | `$KANBAN_CONFIG` or XDG config dir     | Override the user-level kanban config path.                                                                                              |
 | `--port-range-start`  | `13000`                                | First host port available for proxy allocation.                                                                                          |
 | `--port-range-end`    | `13099`                                | Last host port available for proxy allocation (inclusive).                                                                               |
-| `--in-memory`         | `false`                                | Use an ephemeral in-memory SQLite database; **all data is discarded on shutdown**. The server logs `WARNING: --in-memory set` at startup. |
+| `--in-memory`         | `false`                                | Dev/test only. Use an ephemeral in-memory SQLite database; **all data is discarded on shutdown**. The server logs `WARNING: --in-memory set` at startup. |
 
 ## `mcp`
 
