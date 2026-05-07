@@ -1,6 +1,13 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ReactNode, useEffect, useRef, useState } from "react";
-import { api, PR_STATE_COLOR, PRState, Session } from "@/api/client";
+import {
+  api,
+  PR_STATE_COLOR,
+  PRDetail,
+  PRReviewDecision,
+  PRState,
+  Session,
+} from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { ticketStore, useTicket } from "@/store";
 
@@ -63,27 +70,7 @@ export function InfoPanel({ session }: { session: Session }) {
       </Section>
 
       {session.pr_number != null && session.pr_url && (
-        <Section title="Pull request">
-          <Row
-            label="PR"
-            value={
-              <a
-                href={session.pr_url}
-                target="_blank"
-                rel="noreferrer"
-                className={`hover:underline ${
-                  session.pr_state
-                    ? (PR_STATE_COLOR[session.pr_state as PRState] ??
-                      "text-fg-muted")
-                    : "text-fg-muted"
-                }`}
-              >
-                #{session.pr_number}
-                {session.pr_state ? ` (${session.pr_state})` : ""}
-              </a>
-            }
-          />
-        </Section>
+        <PRSection session={session} />
       )}
 
       <Section title="Ports">
@@ -279,6 +266,206 @@ function Copyable({ text, display }: { text: string; display?: string }) {
       </span>
     </button>
   );
+}
+
+function PRSection({ session }: { session: Session }) {
+  const detailQ = useQuery({
+    queryKey: queryKeys.prDetail(session.id),
+    queryFn: () => api.prDetail(session.id),
+    enabled: session.pr_number != null,
+    staleTime: 30_000,
+    refetchInterval: session.status === "running" ? 60_000 : false,
+    retry: false,
+  });
+  const detail = detailQ.data;
+
+  return (
+    <Section title="Pull request">
+      <Row
+        label="PR"
+        value={
+          <div className="flex min-w-0 items-baseline gap-2">
+            <a
+              href={session.pr_url}
+              target="_blank"
+              rel="noreferrer"
+              className={`min-w-0 truncate hover:underline ${
+                session.pr_state
+                  ? (PR_STATE_COLOR[session.pr_state as PRState] ??
+                    "text-fg-muted")
+                  : "text-fg-muted"
+              }`}
+              title={session.pr_title ?? ""}
+            >
+              #{session.pr_number}
+              {session.pr_title ? ` ${session.pr_title}` : ""}
+              {session.pr_state ? ` (${session.pr_state})` : ""}
+            </a>
+            <CopyPRLink session={session} detail={detail} />
+          </div>
+        }
+      />
+      <Row label="Review" value={<ReviewValue detail={detail} loading={detailQ.isLoading} />} />
+      <Row label="Checks" value={<ChecksValue detail={detail} loading={detailQ.isLoading} />} />
+    </Section>
+  );
+}
+
+function ReviewValue({
+  detail,
+  loading,
+}: {
+  detail: PRDetail | undefined;
+  loading: boolean;
+}) {
+  if (loading && !detail) return <Muted>…</Muted>;
+  if (!detail) return <Muted>—</Muted>;
+  return reviewBadge(detail.review_decision);
+}
+
+function reviewBadge(decision: PRReviewDecision): ReactNode {
+  switch (decision) {
+    case "approved":
+      return <span className="text-emerald-400">✓ Approved</span>;
+    case "changes_requested":
+      return <span className="text-red-400">✗ Changes requested</span>;
+    case "review_required":
+      return <span className="text-fg-muted">· Review pending</span>;
+    default:
+      return <Muted>—</Muted>;
+  }
+}
+
+function ChecksValue({
+  detail,
+  loading,
+}: {
+  detail: PRDetail | undefined;
+  loading: boolean;
+}) {
+  if (loading && !detail) return <Muted>…</Muted>;
+  if (!detail) return <Muted>—</Muted>;
+  const c = detail.checks;
+  if (c.total === 0) return <Muted>none</Muted>;
+  const parts: ReactNode[] = [];
+  if (c.success > 0) {
+    parts.push(
+      <span key="ok" className="text-emerald-400">
+        ✓ {c.success}
+      </span>,
+    );
+  }
+  if (c.failure > 0) {
+    parts.push(
+      <span
+        key="fail"
+        className="cursor-help text-red-400"
+        title={
+          c.failing.length > 0
+            ? `Failing:\n${c.failing.map((f) => `• ${f.name}`).join("\n")}`
+            : `${c.failure} failing`
+        }
+      >
+        ✗ {c.failure}
+      </span>,
+    );
+  }
+  if (c.pending > 0) {
+    parts.push(
+      <span key="pend" className="text-amber-400">
+        · {c.pending}
+      </span>,
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-2">
+      {parts.flatMap((p, i) =>
+        i === 0
+          ? [p]
+          : [
+              <span key={`sep-${i}`} className="text-fg-muted">
+                /
+              </span>,
+              p,
+            ],
+      )}
+    </span>
+  );
+}
+
+function CopyPRLink({
+  session,
+  detail,
+}: {
+  session: Session;
+  detail: PRDetail | undefined;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!session.pr_url) return null;
+
+  const onCopy = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const url = session.pr_url!;
+      const title =
+        session.pr_title && session.pr_title.trim().length > 0
+          ? session.pr_title
+          : `#${session.pr_number}`;
+      let stats = detail;
+      if (!stats) {
+        try {
+          stats = await api.prDetail(session.id);
+        } catch {
+          // diff is optional — fall back to a link without it
+        }
+      }
+      const diff = stats
+        ? ` (+${stats.additions} / -${stats.deletions})`
+        : "";
+      const html = `<a href="${escapeHtml(url)}">${escapeHtml(title)}</a>${escapeHtml(diff)}`;
+      const text = `${title}${diff} ${url}`;
+      const w = window as Window &
+        typeof globalThis & { ClipboardItem?: typeof ClipboardItem };
+      if (w.ClipboardItem && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new w.ClipboardItem({
+            "text/html": new Blob([html], { type: "text/html" }),
+            "text/plain": new Blob([text], { type: "text/plain" }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      disabled={busy}
+      title={copied ? "copied" : "copy link for Slack"}
+      className="shrink-0 text-fg-muted hover:text-accent-500 disabled:opacity-50"
+    >
+      {copied ? "✓" : "⧉"}
+    </button>
+  );
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function formatTime(ts?: number): ReactNode {

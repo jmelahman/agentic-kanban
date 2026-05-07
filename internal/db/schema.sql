@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   pr_state TEXT NOT NULL DEFAULT '',
   pr_number INTEGER,
   pr_url TEXT,
+  pr_title TEXT,
   mount_path TEXT,
   repo_path TEXT
 );

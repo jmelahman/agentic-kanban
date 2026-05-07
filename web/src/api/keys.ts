@@ -5,6 +5,7 @@ export const queryKeys = {
   tasks: (sessionId: number) => ["tasks", sessionId] as const,
   runs: (sessionId: number) => ["runs", sessionId] as const,
   ports: (sessionId: number) => ["ports", sessionId] as const,
+  prDetail: (sessionId: number) => ["pr-detail", sessionId] as const,
   settings: ["settings"] as const,
   harnesses: ["harnesses"] as const,
   version: ["version"] as const,

@@ -151,6 +151,7 @@ func (p *Poller) tick(ctx context.Context) {
 type ghPR struct {
 	Number   int64   `json:"number"`
 	HTMLURL  string  `json:"html_url"`
+	Title    string  `json:"title"`
 	State    string  `json:"state"`     // "open" or "closed"
 	Draft    bool    `json:"draft"`
 	MergedAt *string `json:"merged_at"` // null until merged
@@ -207,7 +208,8 @@ func (p *Poller) syncBoard(ctx context.Context, board *db.Board, cfg Config) err
 		stateChanged := newState != sess.PRState
 		numberChanged := sess.PRNumber == nil || *sess.PRNumber != pr.Number
 		urlChanged := sess.PRURL != pr.HTMLURL
-		if !stateChanged && !numberChanged && !urlChanged {
+		titleChanged := sess.PRTitle != pr.Title
+		if !stateChanged && !numberChanged && !urlChanged && !titleChanged {
 			continue
 		}
 		if err := p.applyTransition(ctx, board, sess, sess.PRState, newState, pr, cfg, colByName); err != nil {
@@ -251,13 +253,14 @@ func (p *Poller) applyTransition(ctx context.Context, board *db.Board, sess *db.
 	// Always persist the new observation, even when we decide not to move.
 	defer func() {
 		number := pr.Number
-		if err := p.store.UpdateSessionPR(ctx, sess.ID, next, &number, pr.HTMLURL); err != nil {
+		if err := p.store.UpdateSessionPR(ctx, sess.ID, next, &number, pr.HTMLURL, pr.Title); err != nil {
 			log.Printf("github poller: persist pr_state %d: %v", sess.ID, err)
 			return
 		}
 		sess.PRState = next
 		sess.PRNumber = &number
 		sess.PRURL = pr.HTMLURL
+		sess.PRTitle = pr.Title
 		p.bus.Publish(board.ID, "session_updated", sess)
 	}()
 

@@ -46,6 +46,30 @@ export type Session = {
   pr_state?: PRState | "";
   pr_number?: number;
   pr_url?: string;
+  pr_title?: string;
+};
+
+export type PRReviewDecision =
+  | "approved"
+  | "changes_requested"
+  | "review_required"
+  | "";
+
+export type PRCheckEntry = { name: string; url?: string };
+
+export type PRChecks = {
+  total: number;
+  success: number;
+  failure: number;
+  pending: number;
+  failing: PRCheckEntry[];
+};
+
+export type PRDetail = {
+  additions: number;
+  deletions: number;
+  review_decision: PRReviewDecision;
+  checks: PRChecks;
 };
 
 // PullProgress is an aggregate snapshot of an in-flight image pull, summed
@@ -207,6 +231,8 @@ export const api = {
   startTaskRun: (sessionId: number, label: string) =>
     request<TaskRun>(`/api/sessions/${sessionId}/task-runs`, { method: "POST", body: JSON.stringify({ label }) }),
   stopTaskRun: (id: number) => request<void>(`/api/task-runs/${id}`, { method: "DELETE" }),
+
+  prDetail: (sessionId: number) => request<PRDetail>(`/api/sessions/${sessionId}/pr-detail`),
 
   listPorts: (sessionId: number) => request<PortAllocation[]>(`/api/sessions/${sessionId}/ports`),
   createPort: (sessionId: number, input: { label: string; container_port: number }) =>

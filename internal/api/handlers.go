@@ -15,6 +15,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/errreport"
+	gh "github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
@@ -992,6 +993,38 @@ func (h *handlers) deletePort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(204)
+}
+
+func (h *handlers) prDetail(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	if sess.PRNumber == nil || *sess.PRNumber == 0 {
+		h.httpError(w, fmt.Errorf("session has no pull request"), 404)
+		return
+	}
+	repoPath := sess.RepoPath
+	if repoPath == "" {
+		board, err := h.boardForSession(r.Context(), sess)
+		if err != nil {
+			h.httpError(w, err, 500)
+			return
+		}
+		repoPath = board.RepoPath
+	}
+	if repoPath == "" {
+		h.httpError(w, fmt.Errorf("no repo path for session"), 400)
+		return
+	}
+	detail, err := gh.FetchPRDetail(r.Context(), repoPath, *sess.PRNumber)
+	if err != nil {
+		h.httpError(w, err, 502)
+		return
+	}
+	writeJSON(w, 200, detail)
 }
 
 func (h *handlers) ensurePortProxy(ctx context.Context, sess *db.Session, label string, containerPort int) error {

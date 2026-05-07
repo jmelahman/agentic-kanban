@@ -45,6 +45,7 @@ type Session struct {
 	PRState       string  `json:"pr_state,omitempty"`
 	PRNumber      *int64  `json:"pr_number,omitempty"`
 	PRURL         string  `json:"pr_url,omitempty"`
+	PRTitle       string  `json:"pr_title,omitempty"`
 	MountPath     string  `json:"mount_path,omitempty"`
 	RepoPath      string  `json:"repo_path,omitempty"`
 }
