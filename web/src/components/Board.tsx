@@ -62,7 +62,7 @@ function nextTicketId(
   return activeId;
 }
 
-function moveTicketIdInStructure(
+export function moveTicketIdInStructure(
   structure: BoardStructure,
   movedId: number,
   targetCol: number,
