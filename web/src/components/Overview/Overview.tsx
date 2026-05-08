@@ -36,6 +36,10 @@ export function Overview() {
     handleRef.current?.open(boardId, ticketId);
   }, []);
 
+  const [openTicketIds, setOpenTicketIds] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
+
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [resizing, setResizing] = useState(false);
   const [collapsed, setCollapsed] = useState(loadSidebarCollapsed);
@@ -93,7 +97,11 @@ export function Overview() {
             style={{ width: `${sidebarWidth}px`, flex: `0 0 ${sidebarWidth}px` }}
             className="flex h-full flex-col border-r border-border bg-bg"
           >
-            <BoardTree onOpenTicket={onOpenTicket} onCollapseSidebar={toggleCollapsed} />
+            <BoardTree
+              onOpenTicket={onOpenTicket}
+              openTicketIds={openTicketIds}
+              onCollapseSidebar={toggleCollapsed}
+            />
           </aside>
           <div
             role="separator"
@@ -104,7 +112,10 @@ export function Overview() {
         </>
       )}
       <div className="min-w-0 flex-1">
-        <PanelCanvas registerHandle={registerHandle} />
+        <PanelCanvas
+          registerHandle={registerHandle}
+          onOpenTicketsChange={setOpenTicketIds}
+        />
       </div>
     </div>
   );

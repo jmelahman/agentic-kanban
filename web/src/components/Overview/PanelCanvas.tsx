@@ -45,8 +45,10 @@ type DragState = {
 // moves focus to the nearest panel in that direction.
 export function PanelCanvas({
   registerHandle,
+  onOpenTicketsChange,
 }: {
   registerHandle: (handle: PanelCanvasHandle | null) => void;
+  onOpenTicketsChange?: (ids: ReadonlySet<number>) => void;
 }) {
   const [panels, setPanels] = useState<PersistedPanel[]>(loadPanels);
   const [focusedTicketId, setFocusedTicketId] = useState<number | null>(null);
@@ -57,7 +59,8 @@ export function PanelCanvas({
 
   useEffect(() => {
     writePanels(panels);
-  }, [panels]);
+    onOpenTicketsChange?.(new Set(panels.map((p) => p.ticketId)));
+  }, [panels, onOpenTicketsChange]);
 
   // Track canvas size so tile rects follow viewport changes (sidebar resize,
   // window resize). ResizeObserver fires synchronously on layout, so tiled

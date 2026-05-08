@@ -16,9 +16,11 @@ export type OpenTicketFn = (boardId: number, ticketId: number) => void;
 
 export function BoardTree({
   onOpenTicket,
+  openTicketIds,
   onCollapseSidebar,
 }: {
   onOpenTicket: OpenTicketFn;
+  openTicketIds: ReadonlySet<number>;
   onCollapseSidebar?: () => void;
 }) {
   const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
@@ -91,6 +93,7 @@ export function BoardTree({
           collapsed={collapsed.has(b.id)}
           onToggle={() => toggle(b.id)}
           onOpenTicket={onOpenTicket}
+          openTicketIds={openTicketIds}
         />
       ))}
     </div>
@@ -104,6 +107,7 @@ function BoardNode({
   collapsed,
   onToggle,
   onOpenTicket,
+  openTicketIds,
 }: {
   boardId: number;
   boardName: string;
@@ -111,6 +115,7 @@ function BoardNode({
   collapsed: boolean;
   onToggle: () => void;
   onOpenTicket: OpenTicketFn;
+  openTicketIds: ReadonlySet<number>;
 }) {
   // Subscribe to live updates for *every* board in the tree so status dots
   // animate in real time. See useBoardSubscription doc for the connection
@@ -234,6 +239,7 @@ function BoardNode({
                         boardId={boardId}
                         sessionId={structure.sessionIdByTicket[tid] ?? null}
                         onOpenTicket={onOpenTicket}
+                        active={openTicketIds.has(tid)}
                       />
                     ))}
                   </ul>
@@ -252,24 +258,30 @@ function TicketRow({
   boardId,
   sessionId,
   onOpenTicket,
+  active,
 }: {
   ticketId: number;
   boardId: number;
   sessionId: number | null;
   onOpenTicket: OpenTicketFn;
+  active: boolean;
 }) {
   const ticket = useTicket(ticketId);
   const session = useSession(sessionId);
   if (!ticket) return null;
   const status = session?.status ?? "";
   const dotClass = status ? STATUS_BG[status] ?? STATUS_BG_NONE : STATUS_BG_NONE;
+  const activeCls = active
+    ? "bg-accent-500/15 ring-1 ring-inset ring-accent-500/40"
+    : "hover:bg-surface-2";
   return (
     <li>
       <button
         type="button"
         onClick={() => onOpenTicket(boardId, ticketId)}
-        className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-surface-2"
+        className={`flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm ${activeCls}`}
         title={ticket.title}
+        aria-current={active ? "true" : undefined}
       >
         <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
         <span className="truncate text-fg-muted">#{ticket.id}</span>
