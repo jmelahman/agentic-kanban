@@ -133,7 +133,7 @@ export default function App() {
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
         <h1 className="hidden text-lg font-semibold sm:block">Kanban</h1>
-        <nav className="flex">
+        <nav className="flex self-stretch -my-2">
           <Tab
             active={view === "overview"}
             onClick={() => setView("overview")}
