@@ -21,6 +21,7 @@ import {
   setTerminalSlot,
   usePullProgress,
   useSession,
+  useTicket,
 } from "@/store";
 import { useToast } from "@/toast";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -107,6 +108,7 @@ export function SessionView({
 }: SessionViewProps) {
   const sessionId = sessionIdByTicket[ticketId] ?? null;
   const session = useSession(sessionId) ?? null;
+  const ticket = useTicket(ticketId);
   const pullProgress = usePullProgress(sessionId);
   const qc = useQueryClient();
   const toast = useToast();
@@ -323,10 +325,8 @@ export function SessionView({
     interactive: boolean;
   }): ReactNode => (
     <>
-      <span className="whitespace-nowrap font-medium">Ticket #{ticketId}</span>
-      {!compact && (
-        <span className="min-w-0 truncate text-fg-muted">{session?.branch_name}</span>
-      )}
+      <span className="min-w-0 truncate font-medium">{ticket?.title}</span>
+      <span className="whitespace-nowrap text-fg-muted">#{ticketId}</span>
       {session?.pr_number != null && session.pr_url && (
         <a
           href={session.pr_url}
