@@ -165,8 +165,8 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
                 value={orientation}
                 onChange={(e) => setOrientation(e.target.value as TerminalOrientation)}
               >
-                <option value="vertical">vertical (right side)</option>
-                <option value="horizontal">horizontal (bottom)</option>
+                <option value="vertical">right</option>
+                <option value="horizontal">bottom</option>
               </select>
             </FormField>
           </>
