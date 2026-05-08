@@ -14,7 +14,13 @@ import {
 
 export type OpenTicketFn = (boardId: number, ticketId: number) => void;
 
-export function BoardTree({ onOpenTicket }: { onOpenTicket: OpenTicketFn }) {
+export function BoardTree({
+  onOpenTicket,
+  onCollapseSidebar,
+}: {
+  onOpenTicket: OpenTicketFn;
+  onCollapseSidebar?: () => void;
+}) {
   const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
   const boards = boardsQ.data ?? [];
   const structures = useQueries({
@@ -34,22 +40,48 @@ export function BoardTree({ onOpenTicket }: { onOpenTicket: OpenTicketFn }) {
       return next;
     });
 
+  const header = (
+    <div className="flex items-center border-b border-border px-3 py-2">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+        Boards
+      </h2>
+      {onCollapseSidebar && (
+        <button
+          type="button"
+          onClick={onCollapseSidebar}
+          title="Hide boards sidebar"
+          aria-label="Hide boards sidebar"
+          aria-expanded={true}
+          className="ml-auto rounded px-1 text-fg-muted hover:bg-surface-2 hover:text-fg"
+        >
+          <span aria-hidden>◀</span>
+        </button>
+      )}
+    </div>
+  );
+
   if (boardsQ.isLoading) {
-    return <p className="p-3 text-sm text-fg-muted">Loading boards…</p>;
+    return (
+      <div className="flex h-full flex-col">
+        {header}
+        <p className="p-3 text-sm text-fg-muted">Loading boards…</p>
+      </div>
+    );
   }
   if (boards.length === 0) {
     return (
-      <p className="p-3 text-sm text-fg-muted">
-        No boards yet. Create one from the Board view.
-      </p>
+      <div className="flex h-full flex-col">
+        {header}
+        <p className="p-3 text-sm text-fg-muted">
+          No boards yet. Create one from the Board view.
+        </p>
+      </div>
     );
   }
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
-      <h2 className="border-b border-border px-3 py-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">
-        Boards
-      </h2>
+      {header}
       {boards.map((b, i) => (
         <BoardNode
           key={b.id}

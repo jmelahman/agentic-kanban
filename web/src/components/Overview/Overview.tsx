@@ -3,6 +3,7 @@ import { BoardTree } from "./BoardTree";
 import { PanelCanvas, type PanelCanvasHandle } from "./PanelCanvas";
 
 const SIDEBAR_WIDTH_KEY = "overview.sidebar.width";
+const SIDEBAR_COLLAPSED_KEY = "overview.sidebar.collapsed";
 const DEFAULT_SIDEBAR = 280;
 const MIN_SIDEBAR = 200;
 const MAX_SIDEBAR = 600;
@@ -18,6 +19,14 @@ function loadSidebarWidth(): number {
   }
 }
 
+function loadSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Overview() {
   const handleRef = useRef<PanelCanvasHandle | null>(null);
   const registerHandle = useCallback((h: PanelCanvasHandle | null) => {
@@ -29,8 +38,22 @@ export function Overview() {
 
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [resizing, setResizing] = useState(false);
+  const [collapsed, setCollapsed] = useState(loadSidebarCollapsed);
+
+  const toggleCollapsed = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   const onResizeStart = (e: React.MouseEvent) => {
+    if (collapsed) return;
     e.preventDefault();
     setResizing(true);
     const onMove = (ev: MouseEvent) => {
@@ -53,18 +76,33 @@ export function Overview() {
 
   return (
     <div className="flex h-full">
-      <aside
-        style={{ width: `${sidebarWidth}px`, flex: `0 0 ${sidebarWidth}px` }}
-        className="flex h-full flex-col border-r border-border bg-bg"
-      >
-        <BoardTree onOpenTicket={onOpenTicket} />
-      </aside>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onMouseDown={onResizeStart}
-        className={`w-1 cursor-col-resize hover:bg-accent-500/40 ${resizing ? "bg-accent-500/60" : ""}`}
-      />
+      {collapsed ? (
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          title="Show boards sidebar"
+          aria-label="Show boards sidebar"
+          aria-expanded={false}
+          className="flex h-full w-6 shrink-0 items-center justify-center border-r border-border bg-bg text-fg-muted hover:bg-surface-2 hover:text-fg"
+        >
+          <span aria-hidden>▶</span>
+        </button>
+      ) : (
+        <>
+          <aside
+            style={{ width: `${sidebarWidth}px`, flex: `0 0 ${sidebarWidth}px` }}
+            className="flex h-full flex-col border-r border-border bg-bg"
+          >
+            <BoardTree onOpenTicket={onOpenTicket} onCollapseSidebar={toggleCollapsed} />
+          </aside>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            onMouseDown={onResizeStart}
+            className={`w-1 cursor-col-resize hover:bg-accent-500/40 ${resizing ? "bg-accent-500/60" : ""}`}
+          />
+        </>
+      )}
       <div className="min-w-0 flex-1">
         <PanelCanvas registerHandle={registerHandle} />
       </div>
