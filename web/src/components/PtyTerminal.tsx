@@ -48,7 +48,12 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
       term.loadAddon(fit);
       term.open(host);
       fit.fit();
-      if (host.parentElement !== getOffscreenContainer()) term.focus();
+      // Bypass term.focus() — it calls host.focus() with no options, so the
+      // browser scrolls the host into view. With the mobile soft keyboard
+      // open the visual viewport is short, so that scroll lands the terminal
+      // in the middle of the screen instead of pinned to the top of the pane.
+      if (host.parentElement !== getOffscreenContainer())
+        host.focus({ preventScroll: true });
 
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const path = kind === "shell" ? "shell" : "pty";
@@ -120,7 +125,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
     if (host.parentElement !== target) {
       target.appendChild(host);
       fitRef.current?.fit();
-      if (mountTarget) termRef.current?.focus();
+      if (mountTarget) host.focus({ preventScroll: true });
     }
   }, [mountTarget]);
 
