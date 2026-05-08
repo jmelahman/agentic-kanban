@@ -50,6 +50,33 @@ discards everything — including any boards or tickets the UI created.
 Frontend (`:5173`) and Playwright MCP (`browser_navigate
 http://localhost:5173/`) work as usual.
 
+## Spawning session containers from this devcontainer
+
+The host runs rootless Docker as a non-root user, but this devcontainer
+runs as root and stores `~/.claude*` under `/root/.claude*`. When kanban
+forwards Claude config into a session container it tells dockerd to bind
+`source=/root/.claude` — a path the rootless dockerd on the host can't
+stat, so session start fails with `permission denied`. The same kind of
+path-aliasing issue affects the worktrees dir and any board whose
+`repo_path` doesn't resolve identically inside and outside this container.
+
+For tests where you only need an unprivileged shell session (no agent),
+disable claude config forwarding for that one server invocation:
+
+```bash
+wgo run . serve --in-memory --claude-config=false
+```
+
+The flag/env (`$KANBAN_CLAUDE_CONFIG`) overrides
+`.kanban.toml [devcontainer].claude_config` for that process only — the
+project toml stays as-is so other developers/sessions still get Claude
+forwarded normally.
+
+End-to-end terminal access from inside this devcontainer also requires
+the worktrees dir and the board's repo path to be same-path-bound on
+host. That part isn't fixed yet — see the
+`kanban/chore-support-terminal-access-from-container` branch.
+
 ## Tests / typecheck
 
 - Go: `go test ./...`

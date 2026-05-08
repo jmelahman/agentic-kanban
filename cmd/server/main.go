@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -78,6 +79,7 @@ func Root() *cobra.Command {
 	var portRangeStart int
 	var portRangeEnd int
 	var inMemory bool
+	var claudeConfig bool
 
 	cmd := &cobra.Command{
 		Use:     "kanban",
@@ -92,7 +94,8 @@ func Root() *cobra.Command {
 			if err := applyConfigPath(configPath); err != nil {
 				return err
 			}
-			return run(addr, dataDir, worktreesDir, portRangeStart, portRangeEnd, inMemory)
+			override := resolveClaudeConfigOverride(cmd, claudeConfig)
+			return run(addr, dataDir, worktreesDir, portRangeStart, portRangeEnd, inMemory, override)
 		},
 	}
 	serve.Flags().StringVar(&addr, "addr", ":7474", "HTTP listen address")
@@ -102,6 +105,7 @@ func Root() *cobra.Command {
 	serve.Flags().IntVar(&portRangeStart, "port-range-start", 13000, "First host port available for proxy allocation")
 	serve.Flags().IntVar(&portRangeEnd, "port-range-end", 13099, "Last host port available for proxy allocation (inclusive)")
 	serve.Flags().BoolVar(&inMemory, "in-memory", false, "Use an ephemeral in-memory SQLite database; all data is discarded on shutdown")
+	serve.Flags().BoolVar(&claudeConfig, "claude-config", true, "Forward host Claude Code config (~/.claude, ~/.claude.json) into built-in session containers. When set explicitly, overrides .kanban.toml [devcontainer].claude_config; otherwise the toml setting wins. Env: $KANBAN_CLAUDE_CONFIG.")
 
 	cmd.AddCommand(serve)
 
@@ -143,7 +147,23 @@ func applyConfigPath(p string) error {
 	return os.Setenv("KANBAN_CONFIG", abs)
 }
 
-func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd int, inMemory bool) error {
+// resolveClaudeConfigOverride collapses --claude-config and $KANBAN_CLAUDE_CONFIG
+// into the *bool the session manager expects: nil means "defer to .kanban.toml",
+// non-nil means "force this value regardless of toml".
+func resolveClaudeConfigOverride(cmd *cobra.Command, flagVal bool) *bool {
+	if cmd.Flags().Changed("claude-config") {
+		v := flagVal
+		return &v
+	}
+	if env := os.Getenv("KANBAN_CLAUDE_CONFIG"); env != "" {
+		if v, err := strconv.ParseBool(env); err == nil {
+			return &v
+		}
+	}
+	return nil
+}
+
+func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd int, inMemory bool, claudeConfigOverride *bool) error {
 	cfg, err := config.Load(dataDirOverride, worktreesDirOverride, portStart, portEnd)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
@@ -191,6 +211,7 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 
 	hookRunner := hooks.NewRunner(store)
 	sessionMgr := session.NewManager(store, dockerClient, hookRunner)
+	sessionMgr.SetClaudeConfigOverride(claudeConfigOverride)
 	apiBase := buildAPIBase(selfName, addr)
 	// Log the resolved callback URL so host-mode runs (selfName == "") are easy
 	// to spot: "host.docker.internal" only resolves under Docker Desktop or

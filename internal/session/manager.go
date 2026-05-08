@@ -22,9 +22,10 @@ type Manager struct {
 	docker *docker.Client
 	hooks  *hooks.Runner
 
-	proxies *docker.ProxyManager
-	brokers *brokerSet
-	apiBase string
+	proxies              *docker.ProxyManager
+	brokers              *brokerSet
+	apiBase              string
+	claudeConfigOverride *bool
 }
 
 func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
@@ -40,6 +41,10 @@ func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
 // SetAPIBase configures the URL session containers should use to call back
 // into the kanban API (e.g. http://kanban:7474).
 func (m *Manager) SetAPIBase(base string) { m.apiBase = base }
+
+// SetClaudeConfigOverride forces the built-in claude_config bind regardless of
+// .kanban.toml. Pass nil to defer to the toml setting (default true).
+func (m *Manager) SetClaudeConfigOverride(b *bool) { m.claudeConfigOverride = b }
 
 // Ensure creates a session row for a ticket if missing, allocating a worktree
 // only when the board is associated with a real git repo. For repo-less boards
@@ -126,7 +131,7 @@ func (m *Manager) Start(ctx context.Context, sessionID int64, onPullProgress doc
 		_ = m.store.UpdateSessionStatus(ctx, sess.ID, db.SessionStatusError)
 		return nil, err
 	}
-	applyKanbanDevcontainerOverrides(cfg, kanbantoml.Load(sess.WorktreePath).Devcontainer)
+	applyKanbanDevcontainerOverrides(cfg, kanbantoml.Load(sess.WorktreePath).Devcontainer, m.claudeConfigOverride)
 
 	_ = m.store.UpdateSessionStatus(ctx, sess.ID, db.SessionStatusStarting)
 
@@ -220,8 +225,11 @@ func resolveBranchPrefix(board *db.Board, repoPath string) string {
 // For built-in configs the docker_socket and claude_config flags (both
 // default true) control whether the host docker socket and Claude Code
 // config get bind-mounted. Hand-written devcontainer.json files manage
-// their own mounts and ignore the flags.
-func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanbantoml.DevcontainerSection) {
+// their own mounts and ignore the flags. claudeConfigOverride, when
+// non-nil, wins over .kanban.toml — it's set by the --claude-config flag
+// / $KANBAN_CLAUDE_CONFIG env so a single server invocation can disable
+// forwarding without editing config files.
+func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanbantoml.DevcontainerSection, claudeConfigOverride *bool) {
 	if cfg == nil {
 		return
 	}
@@ -238,6 +246,9 @@ func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanba
 		mountClaude := true
 		if dev != nil && dev.ClaudeConfig != nil {
 			mountClaude = *dev.ClaudeConfig
+		}
+		if claudeConfigOverride != nil {
+			mountClaude = *claudeConfigOverride
 		}
 		if mountClaude {
 			cfg.Mounts = append(cfg.Mounts, docker.ClaudeConfigMounts()...)

@@ -76,7 +76,7 @@ func TestApplyKanbanDevcontainerOverrides_AppendsAndMergesEnv(t *testing.T) {
 		},
 	}
 
-	applyKanbanDevcontainerOverrides(cfg, dev)
+	applyKanbanDevcontainerOverrides(cfg, dev, nil)
 
 	if got := len(cfg.RunArgs); got != 2 {
 		t.Errorf("len(RunArgs) = %d; want 2", got)
@@ -100,7 +100,7 @@ func TestApplyKanbanDevcontainerOverrides_AppendsAndMergesEnv(t *testing.T) {
 
 func TestApplyKanbanDevcontainerOverrides_NilDev(t *testing.T) {
 	cfg := &docker.DevcontainerConfig{RunArgs: []string{"--privileged"}}
-	applyKanbanDevcontainerOverrides(cfg, nil)
+	applyKanbanDevcontainerOverrides(cfg, nil, nil)
 	if len(cfg.RunArgs) != 1 || cfg.RunArgs[0] != "--privileged" {
 		t.Errorf("RunArgs mutated by nil dev: %v", cfg.RunArgs)
 	}
@@ -111,7 +111,7 @@ func TestApplyKanbanDevcontainerOverrides_InitializesEnvMap(t *testing.T) {
 	dev := &kanbantoml.DevcontainerSection{
 		ContainerEnv: map[string]string{"FOO": "bar"},
 	}
-	applyKanbanDevcontainerOverrides(cfg, dev)
+	applyKanbanDevcontainerOverrides(cfg, dev, nil)
 	if cfg.ContainerEnv["FOO"] != "bar" {
 		t.Errorf("ContainerEnv[FOO] = %q; want bar", cfg.ContainerEnv["FOO"])
 	}
@@ -142,7 +142,7 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
 
 	t.Run("default mounts socket on built-in", func(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{BuiltIn: true}
-		applyKanbanDevcontainerOverrides(cfg, nil)
+		applyKanbanDevcontainerOverrides(cfg, nil, nil)
 		if !hasSocket(cfg) {
 			t.Errorf("docker socket missing; mounts = %v", cfg.Mounts)
 		}
@@ -152,7 +152,7 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{BuiltIn: true}
 		applyKanbanDevcontainerOverrides(cfg, &kanbantoml.DevcontainerSection{
 			DockerSocket: boolPtr(false),
-		})
+		}, nil)
 		if hasSocket(cfg) {
 			t.Errorf("docker socket present despite docker_socket=false; mounts = %v", cfg.Mounts)
 		}
@@ -160,7 +160,7 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
 
 	t.Run("non-built-in configs are not auto-mounted", func(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{}
-		applyKanbanDevcontainerOverrides(cfg, nil)
+		applyKanbanDevcontainerOverrides(cfg, nil, nil)
 		if hasSocket(cfg) {
 			t.Errorf("hand-written config got auto-socket; mounts = %v", cfg.Mounts)
 		}
@@ -194,7 +194,7 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInClaudeConfig(t *testing.T) {
 
 	t.Run("default mounts claude config on built-in", func(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{BuiltIn: true}
-		applyKanbanDevcontainerOverrides(cfg, nil)
+		applyKanbanDevcontainerOverrides(cfg, nil, nil)
 		if !hasClaude(cfg) {
 			t.Errorf("claude config missing; mounts = %v", cfg.Mounts)
 		}
@@ -204,7 +204,7 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInClaudeConfig(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{BuiltIn: true}
 		applyKanbanDevcontainerOverrides(cfg, &kanbantoml.DevcontainerSection{
 			ClaudeConfig: boolPtr(false),
-		})
+		}, nil)
 		if hasClaude(cfg) {
 			t.Errorf("claude config present despite claude_config=false; mounts = %v", cfg.Mounts)
 		}
@@ -212,9 +212,29 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInClaudeConfig(t *testing.T) {
 
 	t.Run("non-built-in configs are not auto-mounted", func(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{}
-		applyKanbanDevcontainerOverrides(cfg, nil)
+		applyKanbanDevcontainerOverrides(cfg, nil, nil)
 		if hasClaude(cfg) {
 			t.Errorf("hand-written config got auto-claude; mounts = %v", cfg.Mounts)
+		}
+	})
+
+	t.Run("override=false beats claude_config=true in toml", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{BuiltIn: true}
+		applyKanbanDevcontainerOverrides(cfg, &kanbantoml.DevcontainerSection{
+			ClaudeConfig: boolPtr(true),
+		}, boolPtr(false))
+		if hasClaude(cfg) {
+			t.Errorf("claude config present despite override=false; mounts = %v", cfg.Mounts)
+		}
+	})
+
+	t.Run("override=true beats claude_config=false in toml", func(t *testing.T) {
+		cfg := &docker.DevcontainerConfig{BuiltIn: true}
+		applyKanbanDevcontainerOverrides(cfg, &kanbantoml.DevcontainerSection{
+			ClaudeConfig: boolPtr(false),
+		}, boolPtr(true))
+		if !hasClaude(cfg) {
+			t.Errorf("claude config missing despite override=true; mounts = %v", cfg.Mounts)
 		}
 	})
 }

@@ -47,6 +47,10 @@ board_name = "kanban-errors"
 # `container_env` merges with kanban values winning. `docker_socket` and
 # `claude_config` only affect the built-in fallback devcontainer (both default
 # to true) — hand-written devcontainer.json files manage their own mounts.
+# `claude_config` can also be forced from the CLI via `--claude-config` or
+# `$KANBAN_CLAUDE_CONFIG`, which take precedence over the toml value (useful
+# when running kanban inside a devcontainer that already mounts `~/.claude`
+# at a path the host's docker daemon can't see).
 [devcontainer]
 mounts        = ["type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock"]
 run_args      = ["--cap-add=SYS_PTRACE"]

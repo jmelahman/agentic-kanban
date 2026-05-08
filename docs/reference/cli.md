@@ -54,6 +54,7 @@ kanban serve [flags]
 | `--port-range-start` | `13000`                                       | First host port available for proxy allocation.                                                                                                          |
 | `--port-range-end`   | `13099`                                       | Last host port available for proxy allocation (inclusive).                                                                                               |
 | `--in-memory`        | `false`                                       | Dev/test only. Use an ephemeral in-memory SQLite database; **all data is discarded on shutdown**. The server logs `WARNING: --in-memory set` at startup. |
+| `--claude-config`    | `true`                                        | Forward host Claude Code config (`~/.claude`, `~/.claude.json`) into built-in session containers. When set explicitly (`--claude-config=false`), overrides `.kanban.toml [devcontainer].claude_config`; otherwise the toml setting wins. Env: `$KANBAN_CLAUDE_CONFIG`.                  |
 
 ## `mcp`
 
@@ -218,3 +219,4 @@ Stops a running session.
 | `KANBAN_CONFIG`        | `serve`                                       | User-level config path. Overridden by `--config` if set.        |
 | `KANBAN_DATA_DIR`      | `serve`                                       | Data directory. Overridden by `--data-dir` if set.              |
 | `KANBAN_WORKTREES_DIR` | `serve`                                       | Worktrees directory. Overridden by `--worktrees-dir` if set.    |
+| `KANBAN_CLAUDE_CONFIG` | `serve`                                       | Forces built-in `claude_config` forwarding on/off (parsed as bool). Overridden by `--claude-config` if explicitly set. Either source wins over `.kanban.toml`. |
