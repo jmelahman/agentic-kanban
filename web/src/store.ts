@@ -205,7 +205,14 @@ export async function fetchBoardStructure(
   });
 
   const newSessionIds = new Set(data.sessions.map((s) => s.id));
-  for (const s of data.sessions) sessionStore.set(s.id, s);
+  // SSE is the authoritative source for session status transitions. A
+  // boardState snapshot taken at request time can be stale by the time it
+  // lands — e.g. a session_updated("starting") event or an optimistic
+  // startMut.onMutate may have already advanced the entry past the snapshot's
+  // "stopped". Seed only entries we haven't seen yet; let SSE drive updates.
+  for (const s of data.sessions) {
+    if (!sessionStore.get(s.id)) sessionStore.set(s.id, s);
+  }
   sessionStore.forEach((s, id) => {
     if (newSessionIds.has(id)) return;
     // A session belongs to *this* board iff its ticket does. After we just
