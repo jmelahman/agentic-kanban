@@ -5,6 +5,9 @@ import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
+import { Tab } from "./Tab";
+
+type BoardSettingsTab = "general" | "git" | "danger";
 
 export function BoardSettings({
   open,
@@ -19,6 +22,7 @@ export function BoardSettings({
 }) {
   const qc = useQueryClient();
   const { push } = useToast();
+  const [tab, setTab] = useState<BoardSettingsTab>("general");
   const [name, setName] = useState(board.name);
   const [repo, setRepo] = useState(board.repo_path);
   const [mount, setMount] = useState(board.mount_path);
@@ -49,6 +53,10 @@ export function BoardSettings({
     board.git_author_name,
     board.git_author_email,
   ]);
+
+  useEffect(() => {
+    if (open) setTab("general");
+  }, [open]);
 
   const updateMut = useMutation({
     mutationFn: () =>
@@ -100,159 +108,176 @@ export function BoardSettings({
 
   return (
     <Modal open={open} onClose={onClose} title="Board settings" busy={busy}>
+      <div className="flex border-b border-border text-sm">
+        <Tab active={tab === "general"} onClick={() => setTab("general")} label="general" />
+        <Tab active={tab === "git"} onClick={() => setTab("git")} label="git" />
+        <Tab active={tab === "danger"} onClick={() => setTab("danger")} label="danger" />
+      </div>
       <form
-        className="flex flex-col gap-3 p-4 text-sm"
+        className="flex min-h-[420px] flex-col gap-3 p-4 text-sm"
         onSubmit={(e) => {
           e.preventDefault();
           if (!dirty || !valid) return;
           updateMut.mutate();
         }}
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Name</span>
-          <input
-            className="rounded bg-surface px-2 py-1"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Repository path</span>
-          <input
-            className="rounded bg-surface px-2 py-1 font-mono"
-            placeholder="/host/path/to/repo (optional)"
-            value={repo}
-            onChange={(e) => setRepo(e.target.value)}
-          />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Mount path</span>
-          <input
-            className="rounded bg-surface px-2 py-1 font-mono"
-            placeholder="host directory mounted into the container (defaults to repository)"
-            value={mount}
-            onChange={(e) => setMount(e.target.value)}
-          />
-        </label>
-        {hasRepo && (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Base branch</span>
-            <input
-              className="rounded bg-surface px-2 py-1"
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
-              required
-            />
-          </label>
-        )}
-        {hasRepo && (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Worktree root</span>
-            <input
-              className="rounded bg-surface px-2 py-1 font-mono"
-              placeholder="parent directory for this board's worktrees"
-              value={worktreeRoot}
-              onChange={(e) => setWorktreeRoot(e.target.value)}
-              required
-            />
-            {worktreeRootChanged && (
-              <span className="text-xs text-amber-400">
-                Existing sessions will keep their old worktree paths and won't be
-                cleaned up automatically when the board is deleted. Stop and destroy
-                them first if you want a clean switch.
-              </span>
-            )}
-          </label>
-        )}
-        {hasRepo && (
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Branch prefix</span>
-            <input
-              className="rounded bg-surface px-2 py-1 font-mono"
-              placeholder={`kanban/${board.slug}`}
-              value={branchPrefix}
-              onChange={(e) => setBranchPrefix(e.target.value)}
-            />
-            <span className="text-xs text-fg-muted">
-              New session branches are{" "}
-              <span className="font-mono">
-                {(branchPrefix.trim() || `kanban/${board.slug}`) + "/<ticket-slug>"}
-              </span>
-              . Existing sessions keep their original branch.
-            </span>
-          </label>
-        )}
-        {hasRepo && (
-          <fieldset className="flex flex-col gap-2 rounded border border-border p-3">
-            <legend className="px-1 text-xs text-fg-muted">Commit identity</legend>
+        {tab === "general" && (
+          <>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Author name</span>
+              <span className="text-xs text-fg-muted">Name</span>
               <input
                 className="rounded bg-surface px-2 py-1"
-                placeholder="leave blank to use the kanban container's git config"
-                value={gitAuthorName}
-                onChange={(e) => setGitAuthorName(e.target.value)}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Author email</span>
+              <span className="text-xs text-fg-muted">Mount path</span>
               <input
-                type="email"
                 className="rounded bg-surface px-2 py-1 font-mono"
-                placeholder="you@example.com"
-                value={gitAuthorEmail}
-                onChange={(e) => setGitAuthorEmail(e.target.value)}
+                placeholder="host directory mounted into the container (defaults to repository)"
+                value={mount}
+                onChange={(e) => setMount(e.target.value)}
               />
             </label>
-            <span className="text-xs text-fg-muted">
-              Used for merge/squash commits when finishing a session. Set both
-              fields to override; leave blank to fall back to whatever git can
-              auto-detect inside the kanban container.
-            </span>
-          </fieldset>
+            <div className="flex flex-col gap-1 text-xs text-fg-muted">
+              <span>slug: <span className="font-mono">{board.slug}</span></span>
+            </div>
+          </>
         )}
-        <div className="flex flex-col gap-1 text-xs text-fg-muted">
-          <span>slug: <span className="font-mono">{board.slug}</span></span>
-        </div>
-        <div className="mt-2 flex items-center justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-            disabled={busy}
-          >
-            cancel
-          </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            disabled={!dirty || !valid || busy}
-            pending={updateMut.isPending}
-            idleLabel="save"
-            pendingLabel="saving…"
-          />
-        </div>
+        {tab === "git" && (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Repository path</span>
+              <input
+                className="rounded bg-surface px-2 py-1 font-mono"
+                placeholder="/host/path/to/repo (optional)"
+                value={repo}
+                onChange={(e) => setRepo(e.target.value)}
+              />
+            </label>
+            {hasRepo && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-fg-muted">Base branch</span>
+                <input
+                  className="rounded bg-surface px-2 py-1"
+                  value={base}
+                  onChange={(e) => setBase(e.target.value)}
+                  required
+                />
+              </label>
+            )}
+            {hasRepo && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-fg-muted">Worktree root</span>
+                <input
+                  className="rounded bg-surface px-2 py-1 font-mono"
+                  placeholder="parent directory for this board's worktrees"
+                  value={worktreeRoot}
+                  onChange={(e) => setWorktreeRoot(e.target.value)}
+                  required
+                />
+                {worktreeRootChanged && (
+                  <span className="text-xs text-amber-400">
+                    Existing sessions will keep their old worktree paths and won't be
+                    cleaned up automatically when the board is deleted. Stop and destroy
+                    them first if you want a clean switch.
+                  </span>
+                )}
+              </label>
+            )}
+            {hasRepo && (
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-fg-muted">Branch prefix</span>
+                <input
+                  className="rounded bg-surface px-2 py-1 font-mono"
+                  placeholder={`kanban/${board.slug}`}
+                  value={branchPrefix}
+                  onChange={(e) => setBranchPrefix(e.target.value)}
+                />
+                <span className="text-xs text-fg-muted">
+                  New session branches are{" "}
+                  <span className="font-mono">
+                    {(branchPrefix.trim() || `kanban/${board.slug}`) + "/<ticket-slug>"}
+                  </span>
+                  . Existing sessions keep their original branch.
+                </span>
+              </label>
+            )}
+            {hasRepo && (
+              <fieldset className="flex flex-col gap-2 rounded border border-border p-3">
+                <legend className="px-1 text-xs text-fg-muted">Commit identity</legend>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-fg-muted">Author name</span>
+                  <input
+                    className="rounded bg-surface px-2 py-1"
+                    placeholder="leave blank to use the kanban container's git config"
+                    value={gitAuthorName}
+                    onChange={(e) => setGitAuthorName(e.target.value)}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-xs text-fg-muted">Author email</span>
+                  <input
+                    type="email"
+                    className="rounded bg-surface px-2 py-1 font-mono"
+                    placeholder="you@example.com"
+                    value={gitAuthorEmail}
+                    onChange={(e) => setGitAuthorEmail(e.target.value)}
+                  />
+                </label>
+                <span className="text-xs text-fg-muted">
+                  Used for merge/squash commits when finishing a session. Set both
+                  fields to override; leave blank to fall back to whatever git can
+                  auto-detect inside the kanban container.
+                </span>
+              </fieldset>
+            )}
+          </>
+        )}
+        {tab === "danger" && (
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-danger">Danger zone</h3>
+            <p className="mt-1 text-xs text-fg-muted">
+              Deletes this board, all its tickets, and stops/destroys every running session
+              (containers, worktrees, and branches).
+            </p>
+            <Button
+              type="button"
+              variant="danger"
+              size="lg"
+              className="mt-2 text-xs"
+              disabled={busy}
+              onClick={() => setConfirmDelete(true)}
+              pending={deleteMut.isPending}
+              idleLabel="delete board"
+              pendingLabel="deleting…"
+            />
+          </div>
+        )}
+        {tab !== "danger" && (
+          <div className="mt-auto flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onClose}
+              disabled={busy}
+            >
+              cancel
+            </Button>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              disabled={!dirty || !valid || busy}
+              pending={updateMut.isPending}
+              idleLabel="save"
+              pendingLabel="saving…"
+            />
+          </div>
+        )}
       </form>
-      <div className="border-t border-border p-4">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-danger">Danger zone</h3>
-        <p className="mt-1 text-xs text-fg-muted">
-          Deletes this board, all its tickets, and stops/destroys every running session
-          (containers, worktrees, and branches).
-        </p>
-        <Button
-          type="button"
-          variant="danger"
-          size="lg"
-          className="mt-2 text-xs"
-          disabled={busy}
-          onClick={() => setConfirmDelete(true)}
-          pending={deleteMut.isPending}
-          idleLabel="delete board"
-          pendingLabel="deleting…"
-        />
-      </div>
       <Modal
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
