@@ -17,7 +17,7 @@ import { CreateBoardForm } from "@/components/CreateBoardForm";
 import { useAccent } from "@/hooks/useAccent";
 import { useContrast } from "@/hooks/useContrast";
 import { useThemeMode } from "@/hooks/useThemeMode";
-import { CogIcon, HelpIcon, MenuIcon } from "@/icons";
+import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon } from "@/icons";
 import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
@@ -81,7 +81,7 @@ export default function App() {
   return (
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
-        <h1 className="text-lg font-semibold">Kanban</h1>
+        <h1 className="hidden text-lg font-semibold sm:block">Kanban</h1>
         <select
           className="min-w-0 max-w-[40vw] cursor-pointer rounded bg-surface px-2 py-1 text-sm"
           value={activeId ?? ""}
@@ -104,11 +104,14 @@ export default function App() {
           {activeId != null && (
             <Button
               variant="neutral"
-              size="sm"
-              className="inline-flex h-7 items-center justify-center whitespace-nowrap"
+              size="icon"
+              className="gap-1 sm:w-auto sm:px-2 sm:text-xs"
               onClick={() => setShowArchived(true)}
+              aria-label="Archived tickets"
+              title="Archived tickets"
             >
-              archived
+              <ArchiveIcon />
+              <span className="hidden sm:inline">archived</span>
             </Button>
           )}
           <a

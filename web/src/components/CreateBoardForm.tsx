@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, Board } from "@/api/client";
+import { PlusIcon } from "@/icons";
 import { Button } from "./Button";
 import { Modal } from "./Modal";
 
@@ -42,11 +43,14 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
     <>
       <Button
         variant="neutral"
-        size="sm"
-        className="inline-flex h-7 items-center justify-center whitespace-nowrap"
+        size="icon"
+        className="gap-1 sm:w-auto sm:px-2 sm:text-xs"
         onClick={() => setOpen(true)}
+        aria-label="New board"
+        title="New board"
       >
-        + new board
+        <PlusIcon />
+        <span className="hidden sm:inline">new board</span>
       </Button>
       <Modal open={open} onClose={close} title="New board" busy={createMut.isPending}>
         <form

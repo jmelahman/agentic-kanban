@@ -58,6 +58,25 @@ export function XIcon(props: IconProps) {
   );
 }
 
+export function PlusIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+
+export function ArchiveIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <rect x="3" y="3" width="18" height="5" rx="1" />
+      <path d="M5 8v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8" />
+      <line x1="10" y1="13" x2="14" y2="13" />
+    </svg>
+  );
+}
+
 export function FullscreenEnterIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>
