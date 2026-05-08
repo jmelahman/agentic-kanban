@@ -1,32 +1,28 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, Board } from "@/api/client";
+import { useBoardForm } from "@/hooks/useBoardForm";
 import { PlusIcon } from "@/icons";
 import { Button } from "./Button";
+import { FormField, FormInput } from "./FormField";
 import { Modal } from "./Modal";
 
 export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [repo, setRepo] = useState("");
-  const [mount, setMount] = useState("");
-  const [base, setBase] = useState("main");
+  const { fields, update, reset, hasRepo, hasMount } = useBoardForm();
 
   const createMut = useMutation({
     mutationFn: () =>
       api.createBoard({
-        name,
-        repo_path: repo.trim() || undefined,
-        mount_path: mount.trim() || undefined,
-        base_branch: repo.trim() ? base : undefined,
+        name: fields.name,
+        repo_path: fields.repo.trim() || undefined,
+        mount_path: fields.mount.trim() || undefined,
+        base_branch: hasRepo ? fields.base : undefined,
       }),
     onSuccess: (board) => {
       onCreated(board);
       setOpen(false);
-      setName("");
-      setRepo("");
-      setMount("");
-      setBase("main");
+      reset();
     },
   });
 
@@ -35,9 +31,7 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
     setOpen(false);
   };
 
-  const hasRepo = repo.trim() !== "";
-  const hasMount = mount.trim() !== "";
-  const canSubmit = name.trim() !== "" && (hasRepo || hasMount);
+  const canSubmit = fields.name.trim() !== "" && (hasRepo || hasMount);
 
   return (
     <>
@@ -61,45 +55,37 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
             createMut.mutate();
           }}
         >
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Name</span>
-            <input
-              className="rounded bg-surface px-2 py-1"
+          <FormField label="Name">
+            <FormInput
               placeholder="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
+              value={fields.name}
+              onChange={(e) => update("name", e.target.value)}
               required
               autoFocus
             />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Repository path</span>
-            <input
-              className="rounded bg-surface px-2 py-1"
+          </FormField>
+          <FormField label="Repository path">
+            <FormInput
               placeholder="/host/path/to/repo (optional)"
-              value={repo}
-              onChange={(e) => setRepo(e.target.value)}
+              value={fields.repo}
+              onChange={(e) => update("repo", e.target.value)}
             />
-          </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-fg-muted">Mount path</span>
-            <input
-              className="rounded bg-surface px-2 py-1"
+          </FormField>
+          <FormField label="Mount path">
+            <FormInput
               placeholder="host directory mounted into the container (defaults to repository)"
-              value={mount}
-              onChange={(e) => setMount(e.target.value)}
+              value={fields.mount}
+              onChange={(e) => update("mount", e.target.value)}
             />
-          </label>
+          </FormField>
           {hasRepo && (
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Base branch</span>
-              <input
-                className="rounded bg-surface px-2 py-1"
+            <FormField label="Base branch">
+              <FormInput
                 placeholder="base branch"
-                value={base}
-                onChange={(e) => setBase(e.target.value)}
+                value={fields.base}
+                onChange={(e) => update("base", e.target.value)}
               />
-            </label>
+            </FormField>
           )}
           {!hasRepo && !hasMount && (
             <p className="text-xs text-fg-muted">Provide at least a repository path or a mount path.</p>

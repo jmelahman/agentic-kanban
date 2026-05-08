@@ -421,20 +421,12 @@ func (h *handlers) archiveTicket(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
-		_ = h.sessions.Stop(r.Context(), sess.ID)
-	}
+	h.stopSessionForTicket(r.Context(), id)
 	if err := h.store.ArchiveTicket(r.Context(), id); err != nil {
 		h.httpError(w, err, 500)
 		return
 	}
-	h.bus.Publish(t.BoardID, "ticket_archived", t)
-	board, _ := h.store.GetBoard(r.Context(), t.BoardID)
-	if board != nil {
-		h.hooks.Fire(&board.ID, hooks.EventTicketArchived, map[string]string{
-			"ticket_id": fmt.Sprintf("%d", t.ID),
-		})
-	}
+	h.publishTicketArchived(t)
 	w.WriteHeader(204)
 }
 
@@ -481,9 +473,7 @@ func (h *handlers) deleteTicket(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, fmt.Errorf("ticket must be archived before deletion"), 400)
 		return
 	}
-	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
-		_ = h.sessions.Destroy(r.Context(), sess.ID)
-	}
+	h.destroySessionForTicket(r.Context(), id)
 	if err := h.store.DeleteTicket(r.Context(), id); err != nil {
 		h.httpError(w, err, 500)
 		return
@@ -503,20 +493,14 @@ func (h *handlers) archiveColumnTickets(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	for _, t := range tickets {
-		if sess, err := h.store.GetSessionByTicket(r.Context(), t.ID); err == nil && sess != nil {
-			_ = h.sessions.Stop(r.Context(), sess.ID)
-		}
+		h.stopSessionForTicket(r.Context(), t.ID)
 	}
 	if _, err := h.store.ArchiveTicketsInColumn(r.Context(), columnID); err != nil {
 		h.httpError(w, err, 500)
 		return
 	}
 	for i := range tickets {
-		t := tickets[i]
-		h.bus.Publish(t.BoardID, "ticket_archived", &t)
-		h.hooks.Fire(&t.BoardID, hooks.EventTicketArchived, map[string]string{
-			"ticket_id": fmt.Sprintf("%d", t.ID),
-		})
+		h.publishTicketArchived(&tickets[i])
 	}
 	w.WriteHeader(204)
 }
@@ -532,9 +516,7 @@ func (h *handlers) deleteAllArchived(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	for _, t := range tickets {
-		if sess, err := h.store.GetSessionByTicket(r.Context(), t.ID); err == nil && sess != nil {
-			_ = h.sessions.Destroy(r.Context(), sess.ID)
-		}
+		h.destroySessionForTicket(r.Context(), t.ID)
 	}
 	if _, err := h.store.DeleteAllArchivedTickets(r.Context(), boardID); err != nil {
 		h.httpError(w, err, 500)
@@ -752,6 +734,34 @@ func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+// stopSessionForTicket best-effort stops any session attached to ticketID.
+// No-op when no session exists; lookup or stop errors are swallowed since
+// callers use it as fire-and-forget before archiving.
+func (h *handlers) stopSessionForTicket(ctx context.Context, ticketID int64) {
+	if sess, err := h.store.GetSessionByTicket(ctx, ticketID); err == nil && sess != nil {
+		_ = h.sessions.Stop(ctx, sess.ID)
+	}
+}
+
+// destroySessionForTicket is the delete-time counterpart of
+// stopSessionForTicket: it tears down container + worktree rather than
+// just stopping the agent.
+func (h *handlers) destroySessionForTicket(ctx context.Context, ticketID int64) {
+	if sess, err := h.store.GetSessionByTicket(ctx, ticketID); err == nil && sess != nil {
+		_ = h.sessions.Destroy(ctx, sess.ID)
+	}
+}
+
+// publishTicketArchived emits the "ticket_archived" SSE and fires the
+// EventTicketArchived hook in one go — the standard pair after any
+// archive-ticket store mutation.
+func (h *handlers) publishTicketArchived(t *db.Ticket) {
+	h.bus.Publish(t.BoardID, "ticket_archived", t)
+	h.hooks.Fire(&t.BoardID, hooks.EventTicketArchived, map[string]string{
+		"ticket_id": fmt.Sprintf("%d", t.ID),
+	})
+}
+
 // publishSessionUpdated emits a "session_updated" event on the board's
 // channel. Best-effort: silently no-ops if the ticket lookup fails so
 // callers can use it as a fire-and-forget after any session mutation.
@@ -931,9 +941,7 @@ func (h *handlers) taskRunOutput(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, fmt.Errorf("streaming unsupported"), 500)
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	writeSSEHeaders(w)
 
 	ch, cancel := h.tasks.Subscribe(id)
 	defer cancel()
@@ -1226,6 +1234,14 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeSSEHeaders sets the standard Server-Sent Events response headers.
+// Call before the first Flush on any SSE handler.
+func writeSSEHeaders(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 }
 
 // httpError writes a JSON error response and, for 5xx codes, files a kanban

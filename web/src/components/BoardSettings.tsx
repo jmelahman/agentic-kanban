@@ -2,12 +2,27 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, Board } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { useBoardForm } from "@/hooks/useBoardForm";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
+import { FormField, FormInput } from "./FormField";
 import { Modal } from "./Modal";
 import { Tab } from "./Tab";
 
 type BoardSettingsTab = "general" | "git" | "danger";
+
+function fieldsFromBoard(board: Board) {
+  return {
+    name: board.name,
+    repo: board.repo_path,
+    mount: board.mount_path,
+    worktreeRoot: board.worktree_root,
+    base: board.base_branch,
+    branchPrefix: board.branch_prefix,
+    gitAuthorName: board.git_author_name,
+    gitAuthorEmail: board.git_author_email,
+  };
+}
 
 export function BoardSettings({
   open,
@@ -23,26 +38,13 @@ export function BoardSettings({
   const qc = useQueryClient();
   const { push } = useToast();
   const [tab, setTab] = useState<BoardSettingsTab>("general");
-  const [name, setName] = useState(board.name);
-  const [repo, setRepo] = useState(board.repo_path);
-  const [mount, setMount] = useState(board.mount_path);
-  const [worktreeRoot, setWorktreeRoot] = useState(board.worktree_root);
-  const [base, setBase] = useState(board.base_branch);
-  const [branchPrefix, setBranchPrefix] = useState(board.branch_prefix);
-  const [gitAuthorName, setGitAuthorName] = useState(board.git_author_name);
-  const [gitAuthorEmail, setGitAuthorEmail] = useState(board.git_author_email);
+  const { fields, update, reset, hasRepo, hasMount } = useBoardForm(fieldsFromBoard(board));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
-    setName(board.name);
-    setRepo(board.repo_path);
-    setMount(board.mount_path);
-    setWorktreeRoot(board.worktree_root);
-    setBase(board.base_branch);
-    setBranchPrefix(board.branch_prefix);
-    setGitAuthorName(board.git_author_name);
-    setGitAuthorEmail(board.git_author_email);
+    reset(fieldsFromBoard(board));
   }, [
+    reset,
     board.id,
     board.name,
     board.repo_path,
@@ -61,14 +63,14 @@ export function BoardSettings({
   const updateMut = useMutation({
     mutationFn: () =>
       api.updateBoard(board.id, {
-        name: name.trim(),
-        repo_path: repo.trim(),
-        mount_path: mount.trim(),
-        worktree_root: worktreeRoot.trim(),
-        base_branch: base.trim(),
-        branch_prefix: branchPrefix.trim(),
-        git_author_name: gitAuthorName.trim(),
-        git_author_email: gitAuthorEmail.trim(),
+        name: fields.name.trim(),
+        repo_path: fields.repo.trim(),
+        mount_path: fields.mount.trim(),
+        worktree_root: fields.worktreeRoot.trim(),
+        base_branch: fields.base.trim(),
+        branch_prefix: fields.branchPrefix.trim(),
+        git_author_name: fields.gitAuthorName.trim(),
+        git_author_email: fields.gitAuthorEmail.trim(),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.boards });
@@ -88,22 +90,20 @@ export function BoardSettings({
   });
 
   const dirty =
-    name.trim() !== board.name ||
-    repo.trim() !== board.repo_path ||
-    mount.trim() !== board.mount_path ||
-    worktreeRoot.trim() !== board.worktree_root ||
-    base.trim() !== board.base_branch ||
-    branchPrefix.trim() !== board.branch_prefix ||
-    gitAuthorName.trim() !== board.git_author_name ||
-    gitAuthorEmail.trim() !== board.git_author_email;
-  const hasRepo = repo.trim() !== "";
-  const hasMount = mount.trim() !== "";
+    fields.name.trim() !== board.name ||
+    fields.repo.trim() !== board.repo_path ||
+    fields.mount.trim() !== board.mount_path ||
+    fields.worktreeRoot.trim() !== board.worktree_root ||
+    fields.base.trim() !== board.base_branch ||
+    fields.branchPrefix.trim() !== board.branch_prefix ||
+    fields.gitAuthorName.trim() !== board.git_author_name ||
+    fields.gitAuthorEmail.trim() !== board.git_author_email;
   const valid =
-    name.trim() !== "" &&
+    fields.name.trim() !== "" &&
     (hasRepo || hasMount) &&
-    (!hasRepo || base.trim() !== "") &&
-    (!hasRepo || worktreeRoot.trim() !== "");
-  const worktreeRootChanged = worktreeRoot.trim() !== board.worktree_root;
+    (!hasRepo || fields.base.trim() !== "") &&
+    (!hasRepo || fields.worktreeRoot.trim() !== "");
+  const worktreeRootChanged = fields.worktreeRoot.trim() !== board.worktree_root;
   const busy = updateMut.isPending || deleteMut.isPending;
 
   return (
@@ -123,24 +123,21 @@ export function BoardSettings({
       >
         {tab === "general" && (
           <>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Name</span>
-              <input
-                className="rounded bg-surface px-2 py-1"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+            <FormField label="Name">
+              <FormInput
+                value={fields.name}
+                onChange={(e) => update("name", e.target.value)}
                 required
               />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Mount path</span>
-              <input
-                className="rounded bg-surface px-2 py-1 font-mono"
+            </FormField>
+            <FormField label="Mount path">
+              <FormInput
+                mono
                 placeholder="host directory mounted into the container (defaults to repository)"
-                value={mount}
-                onChange={(e) => setMount(e.target.value)}
+                value={fields.mount}
+                onChange={(e) => update("mount", e.target.value)}
               />
-            </label>
+            </FormField>
             <div className="flex flex-col gap-1 text-xs text-fg-muted">
               <span>slug: <span className="font-mono">{board.slug}</span></span>
             </div>
@@ -148,34 +145,30 @@ export function BoardSettings({
         )}
         {tab === "git" && (
           <>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Repository path</span>
-              <input
-                className="rounded bg-surface px-2 py-1 font-mono"
+            <FormField label="Repository path">
+              <FormInput
+                mono
                 placeholder="/host/path/to/repo (optional)"
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
+                value={fields.repo}
+                onChange={(e) => update("repo", e.target.value)}
               />
-            </label>
+            </FormField>
             {hasRepo && (
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-fg-muted">Base branch</span>
-                <input
-                  className="rounded bg-surface px-2 py-1"
-                  value={base}
-                  onChange={(e) => setBase(e.target.value)}
+              <FormField label="Base branch">
+                <FormInput
+                  value={fields.base}
+                  onChange={(e) => update("base", e.target.value)}
                   required
                 />
-              </label>
+              </FormField>
             )}
             {hasRepo && (
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-fg-muted">Worktree root</span>
-                <input
-                  className="rounded bg-surface px-2 py-1 font-mono"
+              <FormField label="Worktree root">
+                <FormInput
+                  mono
                   placeholder="parent directory for this board's worktrees"
-                  value={worktreeRoot}
-                  onChange={(e) => setWorktreeRoot(e.target.value)}
+                  value={fields.worktreeRoot}
+                  onChange={(e) => update("worktreeRoot", e.target.value)}
                   required
                 />
                 {worktreeRootChanged && (
@@ -185,48 +178,44 @@ export function BoardSettings({
                     them first if you want a clean switch.
                   </span>
                 )}
-              </label>
+              </FormField>
             )}
             {hasRepo && (
-              <label className="flex flex-col gap-1">
-                <span className="text-xs text-fg-muted">Branch prefix</span>
-                <input
-                  className="rounded bg-surface px-2 py-1 font-mono"
+              <FormField label="Branch prefix">
+                <FormInput
+                  mono
                   placeholder={`kanban/${board.slug}`}
-                  value={branchPrefix}
-                  onChange={(e) => setBranchPrefix(e.target.value)}
+                  value={fields.branchPrefix}
+                  onChange={(e) => update("branchPrefix", e.target.value)}
                 />
                 <span className="text-xs text-fg-muted">
                   New session branches are{" "}
                   <span className="font-mono">
-                    {(branchPrefix.trim() || `kanban/${board.slug}`) + "/<ticket-slug>"}
+                    {(fields.branchPrefix.trim() || `kanban/${board.slug}`) + "/<ticket-slug>"}
                   </span>
                   . Existing sessions keep their original branch.
                 </span>
-              </label>
+              </FormField>
             )}
             {hasRepo && (
               <fieldset className="flex flex-col gap-2 rounded border border-border p-3">
                 <legend className="px-1 text-xs text-fg-muted">Commit identity</legend>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-fg-muted">Author name</span>
-                  <input
-                    className="rounded bg-surface px-2 py-1"
+                <FormField label="Author name">
+                  <FormInput
                     placeholder="leave blank to use the kanban container's git config"
-                    value={gitAuthorName}
-                    onChange={(e) => setGitAuthorName(e.target.value)}
+                    value={fields.gitAuthorName}
+                    onChange={(e) => update("gitAuthorName", e.target.value)}
                   />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="text-xs text-fg-muted">Author email</span>
-                  <input
+                </FormField>
+                <FormField label="Author email">
+                  <FormInput
+                    mono
                     type="email"
-                    className="rounded bg-surface px-2 py-1 font-mono"
                     placeholder="you@example.com"
-                    value={gitAuthorEmail}
-                    onChange={(e) => setGitAuthorEmail(e.target.value)}
+                    value={fields.gitAuthorEmail}
+                    onChange={(e) => update("gitAuthorEmail", e.target.value)}
                   />
-                </label>
+                </FormField>
                 <span className="text-xs text-fg-muted">
                   Used for merge/squash commits when finishing a session. Set both
                   fields to override; leave blank to fall back to whatever git can

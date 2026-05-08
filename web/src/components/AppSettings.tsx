@@ -16,6 +16,7 @@ import {
 } from "@/hooks/useTerminalOrientation";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
+import { FormField, FormInput } from "./FormField";
 import { KeybindingsSettings } from "./KeybindingsSettings";
 import { Modal } from "./Modal";
 import { Tab } from "./Tab";
@@ -111,8 +112,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
       >
         {tab === "general" && (
           <>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Agent harness</span>
+            <FormField label="Agent harness">
               <select
                 className="rounded bg-surface px-2 py-1"
                 value={harness}
@@ -132,12 +132,12 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
                 Leave unset to fall back to the repo's <span className="font-mono">.kanban.toml</span>
                 {" "}or the default.
               </span>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Worktrees directory</span>
-              <input
+            </FormField>
+            <FormField label="Worktrees directory">
+              <FormInput
+                mono
                 type="text"
-                className="rounded bg-surface px-2 py-1 font-mono disabled:opacity-50"
+                className="disabled:opacity-50"
                 value={worktreesRoot}
                 placeholder={worktreesResolved || "~/.local/share/kanban/worktrees"}
                 onChange={(e) => setWorktreesRoot(e.target.value)}
@@ -158,9 +158,8 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
                   </>
                 )}
               </span>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-fg-muted">Terminal position</span>
+            </FormField>
+            <FormField label="Terminal position">
               <select
                 className="rounded bg-surface px-2 py-1"
                 value={orientation}
@@ -169,7 +168,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
                 <option value="vertical">vertical (right side)</option>
                 <option value="horizontal">horizontal (bottom)</option>
               </select>
-            </label>
+            </FormField>
           </>
         )}
         {tab === "appearance" && (

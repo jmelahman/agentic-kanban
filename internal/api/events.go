@@ -55,9 +55,7 @@ func (h *handlers) boardEvents(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, fmt.Errorf("streaming unsupported"), 500)
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
+	writeSSEHeaders(w)
 
 	ch, cancel := h.bus.subscribe(id)
 	defer cancel()

@@ -1,0 +1,27 @@
+import { InputHTMLAttributes, ReactNode } from "react";
+
+export function FormField({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs text-fg-muted">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+export function FormInput({
+  mono,
+  className,
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { mono?: boolean }) {
+  const cls = ["rounded bg-surface px-2 py-1", mono && "font-mono", className]
+    .filter(Boolean)
+    .join(" ");
+  return <input className={cls} {...props} />;
+}

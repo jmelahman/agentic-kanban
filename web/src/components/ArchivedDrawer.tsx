@@ -25,11 +25,15 @@ export function ArchivedDrawer({
     enabled: open,
   });
 
+  const invalidateBoard = () => {
+    qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
+    qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+  };
+
   const deleteMut = useMutation({
     mutationFn: (id: number) => api.deleteTicket(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
-      qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+      invalidateBoard();
       push("success", "Ticket and its resources deleted.");
       setConfirmTicket(null);
     },
@@ -42,8 +46,7 @@ export function ArchivedDrawer({
       return count;
     },
     onSuccess: (count) => {
-      qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
-      qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+      invalidateBoard();
       push("success", `Deleted ${count} archived ticket${count === 1 ? "" : "s"}.`);
       setConfirmDeleteAll(false);
     },
@@ -52,8 +55,7 @@ export function ArchivedDrawer({
   const unarchiveMut = useMutation({
     mutationFn: (id: number) => api.unarchiveTicket(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: queryKeys.archived(boardId) });
-      qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+      invalidateBoard();
       push("success", "Ticket unarchived.");
     },
   });
