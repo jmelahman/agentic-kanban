@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
@@ -6,6 +6,7 @@ import { useBoardSubscription } from "@/hooks/useBoardSubscription";
 import { fetchBoardStructure, useSession, useTicket } from "@/store";
 import type { BoardStructure } from "@/store";
 import { STATUS_BG, STATUS_BG_NONE } from "@/components/Ticket";
+import { Button } from "@/components/Button";
 import {
   loadCollapsedBoards,
   writeCollapsedBoards,
@@ -84,6 +85,20 @@ function BoardNode({
   // limit caveat.
   useBoardSubscription(boardId);
 
+  const qc = useQueryClient();
+  const [addingColumnId, setAddingColumnId] = useState<number | null>(null);
+  const [title, setTitle] = useState("");
+
+  const createMut = useMutation({
+    mutationFn: (columnId: number) =>
+      api.createTicket(boardId, { column_id: columnId, title }),
+    onSuccess: () => {
+      setTitle("");
+      setAddingColumnId(null);
+      qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+    },
+  });
+
   const totalTickets = structure
     ? Object.values(structure.ticketIdsByColumn).reduce(
         (n, ids) => n + ids.length,
@@ -110,23 +125,87 @@ function BoardNode({
         <div className="pb-1">
           {structure.columns.map((c) => {
             const ids = structure.ticketIdsByColumn[c.id] ?? [];
-            if (ids.length === 0) return null;
+            const isAdding = addingColumnId === c.id;
             return (
               <div key={c.id} className="px-3 py-1">
-                <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
-                  {c.name}
-                </h3>
-                <ul className="flex flex-col gap-0.5">
-                  {ids.map((tid) => (
-                    <TicketRow
-                      key={tid}
-                      ticketId={tid}
-                      boardId={boardId}
-                      sessionId={structure.sessionIdByTicket[tid] ?? null}
-                      onOpenTicket={onOpenTicket}
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                    {c.name}
+                  </h3>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    className="leading-none"
+                    title={`Add ticket to ${c.name}`}
+                    aria-label={`Add ticket to ${c.name}`}
+                    onClick={() => {
+                      setAddingColumnId(isAdding ? null : c.id);
+                      setTitle("");
+                    }}
+                  >
+                    +
+                  </Button>
+                </div>
+                {isAdding && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (title.trim() && !createMut.isPending) createMut.mutate(c.id);
+                    }}
+                    className="mb-1 flex flex-col gap-1"
+                  >
+                    <input
+                      autoFocus
+                      className="rounded bg-surface-2 px-2 py-1 text-sm"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setAddingColumnId(null);
+                          setTitle("");
+                        }
+                      }}
+                      placeholder="ticket title"
+                      disabled={createMut.isPending}
                     />
-                  ))}
-                </ul>
+                    <div className="flex gap-2 text-xs">
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        type="submit"
+                        pending={createMut.isPending}
+                        idleLabel="add"
+                        pendingLabel="adding…"
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={() => {
+                          setAddingColumnId(null);
+                          setTitle("");
+                        }}
+                        disabled={createMut.isPending}
+                      >
+                        cancel
+                      </Button>
+                    </div>
+                  </form>
+                )}
+                {ids.length > 0 && (
+                  <ul className="flex flex-col gap-0.5">
+                    {ids.map((tid) => (
+                      <TicketRow
+                        key={tid}
+                        ticketId={tid}
+                        boardId={boardId}
+                        sessionId={structure.sessionIdByTicket[tid] ?? null}
+                        onOpenTicket={onOpenTicket}
+                      />
+                    ))}
+                  </ul>
+                )}
               </div>
             );
           })}
