@@ -20,6 +20,10 @@ export type PersistedPanel = {
   // so we can restore on un-tile.
   tile?: SlotKey | null;
   floatRect?: { x: number; y: number; width: number; height: number };
+  // Slot to return to when un-maxing via double-click. Only meaningful when
+  // tile === "max" and the panel reached "max" via toggleMaximize from a
+  // previously tiled state.
+  prevTile?: SlotKey | null;
 };
 
 export function loadPanels(): PersistedPanel[] {
@@ -56,6 +60,7 @@ function isPanel(v: unknown): v is PersistedPanel {
     return false;
   }
   if (o.tile != null && !isSlotKey(o.tile)) return false;
+  if (o.prevTile != null && !isSlotKey(o.prevTile)) return false;
   if (o.floatRect != null) {
     const f = o.floatRect as Record<string, unknown>;
     if (

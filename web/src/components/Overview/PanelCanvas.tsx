@@ -5,7 +5,9 @@ import { Rnd } from "react-rnd";
 import { queryKeys } from "@/api/keys";
 import { fetchBoardStructure } from "@/store";
 import type { BoardStructure } from "@/store";
+import { Button } from "@/components/Button";
 import { SessionView } from "@/components/SessionView";
+import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
 import {
   findNeighborInDirection,
   nextSlot,
@@ -31,6 +33,7 @@ type DragState = {
   ticketId: number;
   tileZone: SlotKey | null;
   guides: SnapGuides;
+  didMove: boolean;
 };
 
 // Free-form workspace of draggable, resizable session panels. Each panel
@@ -163,7 +166,8 @@ export function PanelCanvas({
 
   // Apply (or clear) a tile slot. Captures the floating rect on first tile
   // so un-tile can restore it. Calling with slot=null restores from
-  // floatRect when present.
+  // floatRect when present. Always clears prevTile — that field is only
+  // meaningful within a toggleMaximize sequence.
   const applyTile = useCallback(
     (ticketId: number, slot: SlotKey | null) => {
       setPanels((prev) =>
@@ -180,25 +184,61 @@ export function PanelCanvas({
                 height: f.height,
                 tile: null,
                 floatRect: undefined,
+                prevTile: undefined,
               };
             }
-            return { ...p, tile: null, floatRect: undefined };
+            return { ...p, tile: null, floatRect: undefined, prevTile: undefined };
           }
           const floatRect = p.tile
             ? p.floatRect
             : { x: p.x, y: p.y, width: p.width, height: p.height };
-          return { ...p, tile: slot, floatRect };
+          return { ...p, tile: slot, floatRect, prevTile: undefined };
         }),
       );
     },
     [],
   );
 
+  // Toggle between "max" and the panel's previous state. Maximizing from a
+  // tiled slot remembers it in prevTile so the next toggle restores that
+  // slot rather than dropping back to floating.
+  const toggleMaximize = useCallback((ticketId: number) => {
+    setPanels((prev) =>
+      prev.map((p) => {
+        if (p.ticketId !== ticketId) return p;
+        if (p.tile === "max") {
+          if (p.prevTile) {
+            return { ...p, tile: p.prevTile, prevTile: undefined };
+          }
+          const f = p.floatRect;
+          if (f) {
+            return {
+              ...p,
+              x: f.x,
+              y: f.y,
+              width: f.width,
+              height: f.height,
+              tile: null,
+              floatRect: undefined,
+              prevTile: undefined,
+            };
+          }
+          return { ...p, tile: null, floatRect: undefined, prevTile: undefined };
+        }
+        const floatRect = p.tile
+          ? p.floatRect
+          : { x: p.x, y: p.y, width: p.width, height: p.height };
+        return { ...p, tile: "max", floatRect, prevTile: p.tile ?? undefined };
+      }),
+    );
+  }, []);
+
   const handleDragStart = useCallback((ticketId: number) => {
     setDragState({
       ticketId,
       tileZone: null,
       guides: { vertical: [], horizontal: [] },
+      didMove: false,
     });
   }, []);
 
@@ -230,7 +270,7 @@ export function PanelCanvas({
         );
         guides = res.guides;
       }
-      setDragState({ ticketId, tileZone, guides });
+      setDragState({ ticketId, tileZone, guides, didMove: true });
     },
     [panels, canvasSize.w, canvasSize.h, displayRect],
   );
@@ -241,6 +281,10 @@ export function PanelCanvas({
       setDragState(null);
       const panel = panels.find((p) => p.ticketId === ticketId);
       if (!panel) return;
+      // 0. Plain click on the drag handle (no movement) → no-op. Without this
+      //    the case-2 path below would un-tile any tiled panel on a single
+      //    click, which also breaks the double-click-to-maximize toggle.
+      if (!ds?.didMove) return;
       // 1. Drop into a tile zone → tile.
       if (ds?.tileZone) {
         applyTile(ticketId, ds.tileZone);
@@ -255,6 +299,7 @@ export function PanelCanvas({
         update(ticketId, {
           tile: null,
           floatRect: undefined,
+          prevTile: undefined,
           x: clampX(d.x, w, canvasSize.w),
           y: clampY(d.y, h, canvasSize.h),
           width: w,
@@ -282,6 +327,7 @@ export function PanelCanvas({
         ...rect,
         tile: null,
         floatRect: undefined,
+        prevTile: undefined,
       });
     },
     [update],
@@ -347,6 +393,7 @@ export function PanelCanvas({
             onDragStart={() => handleDragStart(p.ticketId)}
             onDrag={(d, e) => handleDrag(p.ticketId, d, e)}
             onDragStop={(d) => handleDragStop(p.ticketId, d)}
+            onToggleMaximize={() => toggleMaximize(p.ticketId)}
           />
         );
       })}
@@ -430,6 +477,7 @@ function Panel({
   onDragStart,
   onDrag,
   onDragStop,
+  onToggleMaximize,
 }: {
   panel: PersistedPanel;
   rect: Rect;
@@ -441,6 +489,7 @@ function Panel({
   onDragStart: () => void;
   onDrag: (d: { x: number; y: number }, e: DraggableEvent) => void;
   onDragStop: (d: { x: number; y: number }) => void;
+  onToggleMaximize: () => void;
 }) {
   const boardQ = useQuery({
     queryKey: queryKeys.board(panel.boardId),
@@ -500,7 +549,10 @@ function Panel({
         onMouseDown={onFocus}
         className="flex h-full flex-col outline-none"
       >
-        <div className="panel-drag-handle flex h-5 cursor-move items-center bg-surface-2 px-2 text-[10px] uppercase tracking-wide text-fg-muted">
+        <div
+          onDoubleClick={onToggleMaximize}
+          className="panel-drag-handle flex h-5 cursor-move items-center bg-surface-2 px-2 text-[10px] uppercase tracking-wide text-fg-muted"
+        >
           drag
         </div>
         <div className="min-h-0 flex-1">
@@ -513,6 +565,17 @@ function Panel({
             sessionIdByTicket={structure.sessionIdByTicket}
             onClose={onClose}
             shortcutsEnabled={focused}
+            headerExtras={
+              <Button
+                variant="neutral"
+                size="icon"
+                onClick={onToggleMaximize}
+                aria-label={panel.tile === "max" ? "Restore" : "Maximize"}
+                title={panel.tile === "max" ? "Restore" : "Maximize"}
+              >
+                {panel.tile === "max" ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+              </Button>
+            }
           />
         </div>
       </div>
