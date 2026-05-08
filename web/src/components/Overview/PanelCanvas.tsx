@@ -1,11 +1,22 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { DraggableEvent } from "react-draggable";
 import { Rnd } from "react-rnd";
-import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { fetchBoardStructure } from "@/store";
 import type { BoardStructure } from "@/store";
 import { SessionView } from "@/components/SessionView";
+import {
+  findNeighborInDirection,
+  nextSlot,
+  slotRect,
+  snapPosition,
+  tileZoneFromPoint,
+  type Direction,
+  type Rect,
+  type SlotKey,
+  type SnapGuides,
+} from "./tile";
 import { loadPanels, writePanels, type PersistedPanel } from "./storage";
 
 export type PanelCanvasHandle = {
@@ -16,11 +27,22 @@ const DEFAULT_W = 640;
 const DEFAULT_H = 480;
 const CASCADE_STEP = 28;
 
+type DragState = {
+  ticketId: number;
+  tileZone: SlotKey | null;
+  guides: SnapGuides;
+};
+
 // Free-form workspace of draggable, resizable session panels. Each panel
 // renders a SessionView for one ticket; multiple may be open at once.
 // Layout is persisted to localStorage and re-validated against the live
 // ticket set whenever a board structure refetches (covers archive/delete
 // in another tab).
+//
+// Panels can also be tiled to canvas slots (halves, quadrants, max) via
+// drag-to-edge zones or Ctrl+Shift+Alt+Arrow. While dragging, edges snap
+// to canvas mid/edges and to other panels' edges within 8px. Ctrl+Alt+Arrow
+// moves focus to the nearest panel in that direction.
 export function PanelCanvas({
   registerHandle,
 }: {
@@ -28,12 +50,30 @@ export function PanelCanvas({
 }) {
   const [panels, setPanels] = useState<PersistedPanel[]>(loadPanels);
   const [focusedTicketId, setFocusedTicketId] = useState<number | null>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const qc = useQueryClient();
 
-  // Persist on every layout change.
   useEffect(() => {
     writePanels(panels);
   }, [panels]);
+
+  // Track canvas size so tile rects follow viewport changes (sidebar resize,
+  // window resize). ResizeObserver fires synchronously on layout, so tiled
+  // panels reposition without a frame of stale geometry.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setCanvasSize({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   // Filter panels whose ticket no longer exists on its board. Re-runs when
   // any board query is added, removed, or invalidated; cheap because we
@@ -59,7 +99,6 @@ export function PanelCanvas({
       setPanels((prev) => {
         const idx = prev.findIndex((p) => p.ticketId === ticketId);
         if (idx >= 0) {
-          // Bring to front: splice to end of array.
           const next = prev.slice();
           const [moved] = next.splice(idx, 1);
           next.push(moved);
@@ -108,70 +147,336 @@ export function PanelCanvas({
     });
   }, []);
 
+  // Computed render rect: tile rect when tiled, otherwise the stored float rect.
+  const displayRect = useCallback(
+    (p: PersistedPanel): Rect => {
+      if (p.tile && canvasSize.w > 0 && canvasSize.h > 0) {
+        return slotRect(canvasSize.w, canvasSize.h, p.tile);
+      }
+      return { x: p.x, y: p.y, width: p.width, height: p.height };
+    },
+    [canvasSize.w, canvasSize.h],
+  );
+
+  // Apply (or clear) a tile slot. Captures the floating rect on first tile
+  // so un-tile can restore it. Calling with slot=null restores from
+  // floatRect when present.
+  const applyTile = useCallback(
+    (ticketId: number, slot: SlotKey | null) => {
+      setPanels((prev) =>
+        prev.map((p) => {
+          if (p.ticketId !== ticketId) return p;
+          if (slot === null) {
+            const f = p.floatRect;
+            if (f) {
+              return {
+                ...p,
+                x: f.x,
+                y: f.y,
+                width: f.width,
+                height: f.height,
+                tile: null,
+                floatRect: undefined,
+              };
+            }
+            return { ...p, tile: null, floatRect: undefined };
+          }
+          const floatRect = p.tile
+            ? p.floatRect
+            : { x: p.x, y: p.y, width: p.width, height: p.height };
+          return { ...p, tile: slot, floatRect };
+        }),
+      );
+    },
+    [],
+  );
+
+  const handleDragStart = useCallback((ticketId: number) => {
+    setDragState({
+      ticketId,
+      tileZone: null,
+      guides: { vertical: [], horizontal: [] },
+    });
+  }, []);
+
+  const handleDrag = useCallback(
+    (
+      ticketId: number,
+      d: { x: number; y: number },
+      e: DraggableEvent,
+    ) => {
+      const cv = canvasRef.current;
+      if (!cv) return;
+      const rect = cv.getBoundingClientRect();
+      const { x: cx, y: cy } = clientPoint(e);
+      const mx = cx - rect.left;
+      const my = cy - rect.top;
+      const panel = panels.find((p) => p.ticketId === ticketId);
+      if (!panel) return;
+      const tileZone = tileZoneFromPoint(mx, my, canvasSize.w, canvasSize.h);
+      // Snap guides only meaningful for floating panels.
+      let guides: SnapGuides = { vertical: [], horizontal: [] };
+      if (!panel.tile) {
+        const others = panels.filter((p) => p.ticketId !== ticketId);
+        const dr = displayRect(panel);
+        const res = snapPosition(
+          { x: d.x, y: d.y, width: dr.width, height: dr.height, ticketId },
+          others,
+          canvasSize.w,
+          canvasSize.h,
+        );
+        guides = res.guides;
+      }
+      setDragState({ ticketId, tileZone, guides });
+    },
+    [panels, canvasSize.w, canvasSize.h, displayRect],
+  );
+
+  const handleDragStop = useCallback(
+    (ticketId: number, d: { x: number; y: number }) => {
+      const ds = dragState;
+      setDragState(null);
+      const panel = panels.find((p) => p.ticketId === ticketId);
+      if (!panel) return;
+      // 1. Drop into a tile zone → tile.
+      if (ds?.tileZone) {
+        applyTile(ticketId, ds.tileZone);
+        return;
+      }
+      // 2. Tiled panel dragged outside any zone → un-tile, restore float
+      //    dimensions, place top-left at the drop point.
+      if (panel.tile) {
+        const f = panel.floatRect;
+        const w = f?.width ?? panel.width;
+        const h = f?.height ?? panel.height;
+        update(ticketId, {
+          tile: null,
+          floatRect: undefined,
+          x: clampX(d.x, w, canvasSize.w),
+          y: clampY(d.y, h, canvasSize.h),
+          width: w,
+          height: h,
+        });
+        return;
+      }
+      // 3. Floating panel → apply edge/midline/sibling snap.
+      const others = panels.filter((p) => p.ticketId !== ticketId);
+      const { x, y } = snapPosition(
+        { x: d.x, y: d.y, width: panel.width, height: panel.height, ticketId },
+        others,
+        canvasSize.w,
+        canvasSize.h,
+      );
+      update(ticketId, { x, y });
+    },
+    [dragState, panels, canvasSize.w, canvasSize.h, applyTile, update],
+  );
+
+  const handleResizeStop = useCallback(
+    (ticketId: number, rect: Rect) => {
+      // Manual resize untiles.
+      update(ticketId, {
+        ...rect,
+        tile: null,
+        floatRect: undefined,
+      });
+    },
+    [update],
+  );
+
+  // Ctrl+Alt+Arrow → focus neighbor; Ctrl+Shift+Alt+Arrow → re-tile focused.
+  // Bound at the window in capture phase so we run before the global key
+  // dispatcher (which uses Ctrl+Alt+Arrow for ticket/column navigation on
+  // the board view). When we own the chord we stopImmediatePropagation so
+  // those navigation actions don't also fire. Only mounted on the overview
+  // route since PanelCanvas only renders here.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!e.ctrlKey || !e.altKey) return;
+      const dir = arrowToDirection(e.key);
+      if (!dir) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
+        return;
+      }
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.shiftKey) {
+        if (focusedTicketId == null) return;
+        const focused = panels.find((p) => p.ticketId === focusedTicketId);
+        if (!focused) return;
+        applyTile(focusedTicketId, nextSlot(focused.tile, dir));
+      } else {
+        const startId = focusedTicketId ?? panels[panels.length - 1]?.ticketId;
+        if (startId == null) return;
+        const rects = panels.map((p) => ({ ticketId: p.ticketId, ...displayRect(p) }));
+        const neighborId = findNeighborInDirection(rects, startId, dir);
+        if (neighborId != null) {
+          setFocusedTicketId(neighborId);
+          bringToFront(neighborId);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [panels, focusedTicketId, applyTile, bringToFront, displayRect]);
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-surface">
+    <div ref={canvasRef} className="relative h-full w-full overflow-hidden bg-surface">
       {panels.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-fg-muted">
           Click a ticket on the left to open a session panel.
         </div>
       )}
-      {panels.map((p) => (
-        <Panel
-          key={p.ticketId}
-          panel={p}
-          focused={p.ticketId === focusedTicketId}
-          onClose={() => close(p.ticketId)}
-          onUpdate={(patch) => update(p.ticketId, patch)}
-          onBringToFront={() => bringToFront(p.ticketId)}
-          onFocus={() => setFocusedTicketId(p.ticketId)}
+      {panels.map((p) => {
+        const dr = displayRect(p);
+        return (
+          <Panel
+            key={p.ticketId}
+            panel={p}
+            rect={dr}
+            focused={p.ticketId === focusedTicketId}
+            onClose={() => close(p.ticketId)}
+            onResizeStop={(r) => handleResizeStop(p.ticketId, r)}
+            onBringToFront={() => bringToFront(p.ticketId)}
+            onFocus={() => setFocusedTicketId(p.ticketId)}
+            onDragStart={() => handleDragStart(p.ticketId)}
+            onDrag={(d, e) => handleDrag(p.ticketId, d, e)}
+            onDragStop={(d) => handleDragStop(p.ticketId, d)}
+          />
+        );
+      })}
+      {dragState?.tileZone && canvasSize.w > 0 && (
+        <TileZonePreview
+          slot={dragState.tileZone}
+          canvasW={canvasSize.w}
+          canvasH={canvasSize.h}
+        />
+      )}
+      {dragState?.guides.vertical.map((x) => (
+        <div
+          key={`v-${x}`}
+          className="pointer-events-none absolute top-0 bottom-0 w-px bg-accent-500/70"
+          style={{ left: `${x}px` }}
+        />
+      ))}
+      {dragState?.guides.horizontal.map((y) => (
+        <div
+          key={`h-${y}`}
+          className="pointer-events-none absolute left-0 right-0 h-px bg-accent-500/70"
+          style={{ top: `${y}px` }}
         />
       ))}
     </div>
   );
 }
 
+function TileZonePreview({
+  slot,
+  canvasW,
+  canvasH,
+}: {
+  slot: SlotKey;
+  canvasW: number;
+  canvasH: number;
+}) {
+  const r = slotRect(canvasW, canvasH, slot);
+  return (
+    <div
+      className="pointer-events-none absolute rounded border-2 border-accent-500 bg-accent-500/15"
+      style={{ left: r.x, top: r.y, width: r.width, height: r.height }}
+    />
+  );
+}
+
+function clientPoint(e: DraggableEvent): { x: number; y: number } {
+  if ("touches" in e) {
+    const t = e.touches[0] ?? ("changedTouches" in e ? e.changedTouches[0] : null);
+    return { x: t?.clientX ?? 0, y: t?.clientY ?? 0 };
+  }
+  return { x: e.clientX, y: e.clientY };
+}
+
+function arrowToDirection(key: string): Direction | null {
+  if (key === "ArrowLeft") return "L";
+  if (key === "ArrowRight") return "R";
+  if (key === "ArrowUp") return "U";
+  if (key === "ArrowDown") return "D";
+  return null;
+}
+
+function clampX(x: number, w: number, canvasW: number): number {
+  if (canvasW <= 0) return x;
+  return Math.max(0, Math.min(x, canvasW - w));
+}
+
+function clampY(y: number, h: number, canvasH: number): number {
+  if (canvasH <= 0) return y;
+  return Math.max(0, Math.min(y, canvasH - h));
+}
+
 function Panel({
   panel,
+  rect,
   focused,
   onClose,
-  onUpdate,
+  onResizeStop,
   onBringToFront,
   onFocus,
+  onDragStart,
+  onDrag,
+  onDragStop,
 }: {
   panel: PersistedPanel;
+  rect: Rect;
   focused: boolean;
   onClose: () => void;
-  onUpdate: (patch: Partial<PersistedPanel>) => void;
+  onResizeStop: (r: Rect) => void;
   onBringToFront: () => void;
   onFocus: () => void;
+  onDragStart: () => void;
+  onDrag: (d: { x: number; y: number }, e: DraggableEvent) => void;
+  onDragStop: (d: { x: number; y: number }) => void;
 }) {
-  // Each panel needs its board's config (mergeConfig, syncConfig, baseBranch,
-  // sessionIdByTicket). Same query key as the tree's BoardNode so requests
-  // dedupe; this just reads from the shared cache.
   const boardQ = useQuery({
     queryKey: queryKeys.board(panel.boardId),
     queryFn: () => fetchBoardStructure(panel.boardId),
   });
   const structure = boardQ.data;
 
+  const rndProps = {
+    position: { x: rect.x, y: rect.y },
+    size: { width: rect.width, height: rect.height },
+    bounds: "parent" as const,
+    minWidth: 320,
+    minHeight: 240,
+    dragHandleClassName: "panel-drag-handle",
+    onMouseDown: onBringToFront,
+    onDragStart: () => onDragStart(),
+    onDrag: (e: DraggableEvent, d: { x: number; y: number }) =>
+      onDrag({ x: d.x, y: d.y }, e),
+    onDragStop: (_e: DraggableEvent, d: { x: number; y: number }) =>
+      onDragStop({ x: d.x, y: d.y }),
+    onResizeStop: (
+      _e: MouseEvent | TouchEvent,
+      _dir: unknown,
+      ref: HTMLElement,
+      _delta: unknown,
+      pos: { x: number; y: number },
+    ) =>
+      onResizeStop({
+        width: ref.offsetWidth,
+        height: ref.offsetHeight,
+        x: pos.x,
+        y: pos.y,
+      }),
+  };
+
   if (!structure) {
     return (
       <Rnd
-        position={{ x: panel.x, y: panel.y }}
-        size={{ width: panel.width, height: panel.height }}
-        bounds="parent"
-        minWidth={320}
-        minHeight={240}
-        dragHandleClassName="panel-drag-handle"
-        onDragStop={(_e, d) => onUpdate({ x: d.x, y: d.y })}
-        onResizeStop={(_e, _dir, ref, _delta, pos) =>
-          onUpdate({
-            width: ref.offsetWidth,
-            height: ref.offsetHeight,
-            x: pos.x,
-            y: pos.y,
-          })
-        }
+        {...rndProps}
         className="rounded border border-border bg-bg shadow-lg"
       >
         <div className="flex h-full items-center justify-center text-sm text-fg-muted">
@@ -183,22 +488,7 @@ function Panel({
 
   return (
     <Rnd
-      position={{ x: panel.x, y: panel.y }}
-      size={{ width: panel.width, height: panel.height }}
-      bounds="parent"
-      minWidth={320}
-      minHeight={240}
-      dragHandleClassName="panel-drag-handle"
-      onMouseDown={onBringToFront}
-      onDragStop={(_e, d) => onUpdate({ x: d.x, y: d.y })}
-      onResizeStop={(_e, _dir, ref, _delta, pos) =>
-        onUpdate({
-          width: ref.offsetWidth,
-          height: ref.offsetHeight,
-          x: pos.x,
-          y: pos.y,
-        })
-      }
+      {...rndProps}
       className={`overflow-hidden rounded border bg-bg shadow-lg ${focused ? "border-accent-500" : "border-border"}`}
     >
       <div

@@ -2,6 +2,8 @@
 // quota / disabled storage / corrupt JSON returns the sane fallback rather
 // than throwing, mirroring the pattern in `src/storage.ts`.
 
+import { isSlotKey, type SlotKey } from "./tile";
+
 const PANELS_KEY = "overview.panels";
 const COLLAPSED_KEY = "overview.tree.collapsed";
 
@@ -12,6 +14,12 @@ export type PersistedPanel = {
   y: number;
   width: number;
   height: number;
+  // When set, the panel is tiled to this slot; x/y/width/height reflect the
+  // last computed slot rect but are recomputed against the live canvas size
+  // each render. floatRect captures the floating rect at the time of tiling
+  // so we can restore on un-tile.
+  tile?: SlotKey | null;
+  floatRect?: { x: number; y: number; width: number; height: number };
 };
 
 export function loadPanels(): PersistedPanel[] {
@@ -37,14 +45,29 @@ export function writePanels(panels: PersistedPanel[]): void {
 function isPanel(v: unknown): v is PersistedPanel {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  return (
-    typeof o.ticketId === "number" &&
-    typeof o.boardId === "number" &&
-    typeof o.x === "number" &&
-    typeof o.y === "number" &&
-    typeof o.width === "number" &&
-    typeof o.height === "number"
-  );
+  if (
+    typeof o.ticketId !== "number" ||
+    typeof o.boardId !== "number" ||
+    typeof o.x !== "number" ||
+    typeof o.y !== "number" ||
+    typeof o.width !== "number" ||
+    typeof o.height !== "number"
+  ) {
+    return false;
+  }
+  if (o.tile != null && !isSlotKey(o.tile)) return false;
+  if (o.floatRect != null) {
+    const f = o.floatRect as Record<string, unknown>;
+    if (
+      typeof f.x !== "number" ||
+      typeof f.y !== "number" ||
+      typeof f.width !== "number" ||
+      typeof f.height !== "number"
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function loadCollapsedBoards(): Set<number> {
