@@ -13,7 +13,10 @@ import { Overview } from "@/components/Overview/Overview";
 import { Tab } from "@/components/Tab";
 import { TerminalsRoot } from "@/components/TerminalsRoot";
 import { useAccent } from "@/hooks/useAccent";
-import { useBoardSubscription, type StreamStatus } from "@/hooks/useBoardSubscription";
+import {
+  useBoardSubscription,
+  type StreamStatus,
+} from "@/hooks/useBoardSubscription";
 import { useContrast } from "@/hooks/useContrast";
 import { useThemeMode } from "@/hooks/useThemeMode";
 import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon } from "@/icons";
@@ -37,7 +40,10 @@ export default function App() {
   useContrast();
   useAccent();
   const qc = useQueryClient();
-  const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
+  const boardsQ = useQuery({
+    queryKey: queryKeys.boards,
+    queryFn: api.listBoards,
+  });
   const [activeId, setActiveId] = useState<number | null>(null);
   const [view, setView] = useState<AppView>(loadInitialView);
   const [streamStatus, setStreamStatus] = useState<StreamStatus>("closed");
@@ -49,7 +55,10 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAppSettings, setShowAppSettings] = useState(false);
 
-  const activeBoard = activeId != null ? boardsQ.data?.find((b) => b.id === activeId) ?? null : null;
+  const activeBoard =
+    activeId != null
+      ? (boardsQ.data?.find((b) => b.id === activeId) ?? null)
+      : null;
   const noBoards = boardsQ.data?.length === 0;
 
   // When the board's mount path is a visible git repo but no repo_path is
@@ -70,7 +79,11 @@ export default function App() {
     if (activeId == null && boardsQ.data && boardsQ.data.length > 0) {
       const remembered = readActiveBoardId();
       const fallback = boardsQ.data[0].id;
-      setActiveId(remembered != null && boardsQ.data.some((b) => b.id === remembered) ? remembered : fallback);
+      setActiveId(
+        remembered != null && boardsQ.data.some((b) => b.id === remembered)
+          ? remembered
+          : fallback,
+      );
     }
   }, [boardsQ.data, activeId]);
 
@@ -107,7 +120,9 @@ export default function App() {
     setActiveId(boards[next].id);
   };
   useShortcut("board.next", () => cycleBoard(1), { enabled: view === "board" });
-  useShortcut("board.prev", () => cycleBoard(-1), { enabled: view === "board" });
+  useShortcut("board.prev", () => cycleBoard(-1), {
+    enabled: view === "board",
+  });
 
   // Drives the connection-status banner. Only meaningful in the board view —
   // overview manages its own per-board subscriptions inside the tree, and a
@@ -120,21 +135,23 @@ export default function App() {
         <h1 className="hidden text-lg font-semibold sm:block">Kanban</h1>
         <nav className="flex">
           <Tab
-            active={view === "board"}
-            onClick={() => setView("board")}
-            label="board"
-          />
-          <Tab
             active={view === "overview"}
             onClick={() => setView("overview")}
             label="overview"
+          />
+          <Tab
+            active={view === "board"}
+            onClick={() => setView("board")}
+            label="board"
           />
         </nav>
         {view === "board" && (
           <select
             className="min-w-0 max-w-[40vw] cursor-pointer rounded bg-surface px-2 py-1 text-sm"
             value={activeId ?? ""}
-            onChange={(e) => setActiveId(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) =>
+              setActiveId(e.target.value ? Number(e.target.value) : null)
+            }
           >
             <option value="">— select board —</option>
             {(boardsQ.data ?? []).map((b) => (
@@ -182,7 +199,11 @@ export default function App() {
                 size="icon"
                 onClick={() => setShowSettings(true)}
                 aria-label="Board settings"
-                title={suggestRepoLink ? "Board settings — git repo detected, link it for branches and pull requests" : "Board settings"}
+                title={
+                  suggestRepoLink
+                    ? "Board settings — git repo detected, link it for branches and pull requests"
+                    : "Board settings"
+                }
               >
                 <CogIcon />
               </Button>
@@ -223,7 +244,11 @@ export default function App() {
       </main>
       <TerminalsRoot />
       {view === "board" && activeId != null && showArchived && (
-        <ArchivedDrawer open boardId={activeId} onClose={() => setShowArchived(false)} />
+        <ArchivedDrawer
+          open
+          boardId={activeId}
+          onClose={() => setShowArchived(false)}
+        />
       )}
       {view === "board" && activeBoard && showSettings && (
         <BoardSettings
@@ -236,7 +261,9 @@ export default function App() {
           }}
         />
       )}
-      {showAppSettings && <AppSettings open onClose={() => setShowAppSettings(false)} />}
+      {showAppSettings && (
+        <AppSettings open onClose={() => setShowAppSettings(false)} />
+      )}
     </div>
   );
 }
