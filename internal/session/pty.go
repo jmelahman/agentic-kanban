@@ -65,7 +65,7 @@ func (m *Manager) attachKind(ctx context.Context, sess *db.Session, w http.Respo
 		_ = conn.WriteMessage(websocket.TextMessage, []byte("error: "+err.Error()))
 		return err
 	}
-	defer broker.unregister(conn)
+	defer broker.unregister(ctx, conn)
 
 	for {
 		msgType, data, err := conn.ReadMessage()

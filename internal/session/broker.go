@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -17,6 +18,11 @@ import (
 // reconnecting clients. 64 KiB comfortably covers a screenful or two of
 // output for a typical terminal.
 const replayBufferSize = 64 * 1024
+
+// clientWriteTimeout caps how long a single broadcast write to one client
+// may block. Keeps a stalled device (e.g. a mobile in a tunnel) from
+// backing up the read loop and starving the other attached clients.
+const clientWriteTimeout = 5 * time.Second
 
 // ringBuffer retains the most-recent bytes written to it, up to a fixed
 // capacity. Not safe for concurrent use; the caller serializes access.
@@ -71,25 +77,35 @@ func (r *ringBuffer) Snapshot() []byte {
 	return out
 }
 
+// clientView is the per-attached-client state held by a sessionPTY.
+// cols/rows are zero until the client sends its first resize control frame.
+type clientView struct {
+	cols uint
+	rows uint
+}
+
 // sessionPTY brokers a single docker exec PTY for a session. It owns the
 // hijacked exec connection and survives WebSocket attach/detach so that
 // clients can reconnect (e.g. after a page refresh) without killing the
 // underlying agent process.
 //
-// The single reader goroutine is the only writer of binary frames to the
-// active client. WS handlers call register/unregister/write/resize.
+// Multiple clients may attach concurrently; output is broadcast to every
+// attached client and stdin is accepted from any of them — shared-session
+// semantics, similar to `tmux attach`. The single reader goroutine is the
+// only writer of binary output frames; WS handlers call register / unregister
+// / write / resize.
 type sessionPTY struct {
 	key      brokerKey
 	attached *docker.AttachedExec
 	docker   *docker.Client
 	set      *brokerSet
 
-	mu     sync.Mutex
-	buf    *ringBuffer
-	cols   uint
-	rows   uint
-	client *websocket.Conn
-	closed bool
+	mu      sync.Mutex
+	buf     *ringBuffer
+	cols    uint // currently-applied PTY size (aggregated across clients)
+	rows    uint
+	clients map[*websocket.Conn]*clientView
+	closed  bool
 }
 
 // brokerKey identifies a broker by session id and kind ("agent", "shell"),
@@ -140,6 +156,7 @@ func (s *brokerSet) attach(ctx context.Context, sess *db.Session, kind string, c
 		docker:   s.docker,
 		set:      s,
 		buf:      newRingBuffer(replayBufferSize),
+		clients:  map[*websocket.Conn]*clientView{},
 	}
 	s.perSess[key] = b
 	s.mu.Unlock()
@@ -163,8 +180,9 @@ func (s *brokerSet) closeFor(sessionID int64) {
 	}
 }
 
-// readLoop pumps bytes from the docker exec into the ring buffer and the
-// active client. On read error / EOF it triggers a full shutdown.
+// readLoop pumps bytes from the docker exec into the ring buffer and fans
+// them out to every attached client. On read error / EOF it triggers a full
+// shutdown.
 func (b *sessionPTY) readLoop() {
 	defer b.shutdown()
 	buf := make([]byte, 4096)
@@ -178,15 +196,7 @@ func (b *sessionPTY) readLoop() {
 				return
 			}
 			b.buf.Write(chunk)
-			ws := b.client
-			if ws != nil {
-				if werr := ws.WriteMessage(websocket.BinaryMessage, chunk); werr != nil {
-					if b.client == ws {
-						b.client = nil
-					}
-					_ = ws.Close()
-				}
-			}
+			b.broadcastBinaryLocked(chunk)
 			b.mu.Unlock()
 		}
 		if err != nil {
@@ -198,7 +208,23 @@ func (b *sessionPTY) readLoop() {
 	}
 }
 
-// shutdown notifies the active client (if any), closes the hijacked exec
+// broadcastBinaryLocked writes a chunk to every attached client, dropping
+// any client whose write fails or times out. Caller must hold b.mu.
+func (b *sessionPTY) broadcastBinaryLocked(p []byte) {
+	var dead []*websocket.Conn
+	for ws := range b.clients {
+		_ = ws.SetWriteDeadline(time.Now().Add(clientWriteTimeout))
+		if err := ws.WriteMessage(websocket.BinaryMessage, p); err != nil {
+			dead = append(dead, ws)
+		}
+	}
+	for _, ws := range dead {
+		delete(b.clients, ws)
+		_ = ws.Close()
+	}
+}
+
+// shutdown notifies every attached client, closes the hijacked exec
 // connection, and removes the broker from the set. Idempotent.
 func (b *sessionPTY) shutdown() {
 	b.mu.Lock()
@@ -207,11 +233,12 @@ func (b *sessionPTY) shutdown() {
 		return
 	}
 	b.closed = true
-	ws := b.client
-	b.client = nil
+	clients := b.clients
+	b.clients = map[*websocket.Conn]*clientView{}
 	b.mu.Unlock()
 
-	if ws != nil {
+	for ws := range clients {
+		_ = ws.SetWriteDeadline(time.Now().Add(clientWriteTimeout))
 		_ = ws.WriteMessage(websocket.TextMessage, []byte("\r\n[session ended]\r\n"))
 		_ = ws.Close()
 	}
@@ -224,24 +251,20 @@ func (b *sessionPTY) shutdown() {
 	b.set.mu.Unlock()
 }
 
-// register makes ws the active client. Any prior client is kicked. The
-// recent output buffer is replayed to ws before this returns.
+// register adds ws to the set of attached clients and replays the recent
+// output buffer to it. Other already-attached clients are left alone — the
+// session is shared across all attached devices.
 func (b *sessionPTY) register(ws *websocket.Conn) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed {
 		return errors.New("session ended")
 	}
-	old := b.client
-	if old != nil && old != ws {
-		_ = old.WriteMessage(websocket.TextMessage, []byte("\r\n[replaced by another window]\r\n"))
-		_ = old.Close()
-	}
-	b.client = ws
+	_ = ws.SetWriteDeadline(time.Now().Add(clientWriteTimeout))
 	if err := ws.WriteMessage(websocket.BinaryMessage, replayPayload(b.buf.Snapshot())); err != nil {
-		b.client = nil
 		return err
 	}
+	b.clients[ws] = &clientView{}
 	return nil
 }
 
@@ -257,22 +280,39 @@ func replayPayload(snap []byte) []byte {
 	return append(out, snap...)
 }
 
-// unregister clears ws as the active client, but only if it still matches —
-// avoids racing with a concurrent register that already swapped in a newer
-// client.
-func (b *sessionPTY) unregister(ws *websocket.Conn) {
+// unregister removes ws from the attached set and reapplies the aggregated
+// PTY size now that this client's reported dimensions no longer constrain
+// the others.
+func (b *sessionPTY) unregister(ctx context.Context, ws *websocket.Conn) {
 	b.mu.Lock()
-	if b.client == ws {
-		b.client = nil
+	if _, ok := b.clients[ws]; !ok {
+		b.mu.Unlock()
+		return
 	}
+	delete(b.clients, ws)
+	cols, rows := b.aggregateSizeLocked()
+	apply := cols != 0 && rows != 0 && (cols != b.cols || rows != b.rows)
+	if apply {
+		b.cols = cols
+		b.rows = rows
+	}
+	execID := b.attached.ID
 	b.mu.Unlock()
+	if apply {
+		_ = b.docker.ResizeExec(ctx, execID, cols, rows)
+	}
 }
 
-// write forwards stdin from the active client to the docker exec. Writes
-// from a non-current client (kicked) are silently dropped.
+// write forwards stdin from an attached client to the docker exec. Any
+// currently-attached client may write — multiple devices share the session.
+// Writes from a connection that is no longer attached are silently dropped.
 func (b *sessionPTY) write(from *websocket.Conn, p []byte) error {
 	b.mu.Lock()
-	if b.closed || b.client != from {
+	if b.closed {
+		b.mu.Unlock()
+		return nil
+	}
+	if _, ok := b.clients[from]; !ok {
 		b.mu.Unlock()
 		return nil
 	}
@@ -282,17 +322,53 @@ func (b *sessionPTY) write(from *websocket.Conn, p []byte) error {
 	return err
 }
 
-// resize forwards a TTY resize and remembers the size for any subsequent
-// reattach. Resizes from a non-current client are dropped.
+// resize records this client's reported dimensions and applies the
+// aggregated PTY size (min cols, min rows across all attached clients) to
+// the docker exec. Aggregating to the minimum matches tmux's default
+// non-aggressive resize: every viewer sees complete output, the larger
+// device gets blank padding rather than the smaller one seeing wraparound.
 func (b *sessionPTY) resize(ctx context.Context, from *websocket.Conn, cols, rows uint) error {
+	if cols == 0 || rows == 0 {
+		return nil
+	}
 	b.mu.Lock()
-	if b.closed || b.client != from {
+	if b.closed {
 		b.mu.Unlock()
 		return nil
 	}
-	b.cols = cols
-	b.rows = rows
+	view, ok := b.clients[from]
+	if !ok {
+		b.mu.Unlock()
+		return nil
+	}
+	view.cols = cols
+	view.rows = rows
+	aggCols, aggRows := b.aggregateSizeLocked()
+	apply := aggCols != 0 && aggRows != 0 && (aggCols != b.cols || aggRows != b.rows)
+	if apply {
+		b.cols = aggCols
+		b.rows = aggRows
+	}
 	execID := b.attached.ID
 	b.mu.Unlock()
-	return b.docker.ResizeExec(ctx, execID, cols, rows)
+	if !apply {
+		return nil
+	}
+	return b.docker.ResizeExec(ctx, execID, aggCols, aggRows)
+}
+
+// aggregateSizeLocked returns the smallest non-zero cols and rows reported
+// across all attached clients. Returns (0, 0) when no client has reported a
+// size yet. Caller must hold b.mu.
+func (b *sessionPTY) aggregateSizeLocked() (uint, uint) {
+	var cols, rows uint
+	for _, v := range b.clients {
+		if v.cols != 0 && (cols == 0 || v.cols < cols) {
+			cols = v.cols
+		}
+		if v.rows != 0 && (rows == 0 || v.rows < rows) {
+			rows = v.rows
+		}
+	}
+	return cols, rows
 }
