@@ -50,12 +50,14 @@ func (h *handlers) version(w http.ResponseWriter, r *http.Request) {
 // Boards
 
 type createBoardReq struct {
-	Name         string `json:"name"`
-	RepoPath     string `json:"repo_path"`
-	MountPath    string `json:"mount_path"`
-	WorktreeRoot string `json:"worktree_root"`
-	BaseBranch   string `json:"base_branch"`
-	BranchPrefix string `json:"branch_prefix"`
+	Name           string `json:"name"`
+	RepoPath       string `json:"repo_path"`
+	MountPath      string `json:"mount_path"`
+	WorktreeRoot   string `json:"worktree_root"`
+	BaseBranch     string `json:"base_branch"`
+	BranchPrefix   string `json:"branch_prefix"`
+	GitAuthorName  string `json:"git_author_name"`
+	GitAuthorEmail string `json:"git_author_email"`
 }
 
 func (h *handlers) listBoards(w http.ResponseWriter, r *http.Request) {
@@ -91,13 +93,15 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 		req.WorktreeRoot = filepath.Join(h.config.WorktreesDir(), slugify(req.Name))
 	}
 	board := &db.Board{
-		Name:         req.Name,
-		Slug:         slugify(req.Name),
-		RepoPath:     req.RepoPath,
-		MountPath:    req.MountPath,
-		WorktreeRoot: req.WorktreeRoot,
-		BaseBranch:   req.BaseBranch,
-		BranchPrefix: strings.TrimSpace(req.BranchPrefix),
+		Name:           req.Name,
+		Slug:           slugify(req.Name),
+		RepoPath:       req.RepoPath,
+		MountPath:      req.MountPath,
+		WorktreeRoot:   req.WorktreeRoot,
+		BaseBranch:     req.BaseBranch,
+		BranchPrefix:   strings.TrimSpace(req.BranchPrefix),
+		GitAuthorName:  strings.TrimSpace(req.GitAuthorName),
+		GitAuthorEmail: strings.TrimSpace(req.GitAuthorEmail),
 	}
 	if err := h.store.CreateBoard(r.Context(), board); err != nil {
 		if isUniqueViolation(err) {
@@ -111,12 +115,14 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateBoardReq struct {
-	Name         *string `json:"name"`
-	RepoPath     *string `json:"repo_path"`
-	MountPath    *string `json:"mount_path"`
-	WorktreeRoot *string `json:"worktree_root"`
-	BaseBranch   *string `json:"base_branch"`
-	BranchPrefix *string `json:"branch_prefix"`
+	Name           *string `json:"name"`
+	RepoPath       *string `json:"repo_path"`
+	MountPath      *string `json:"mount_path"`
+	WorktreeRoot   *string `json:"worktree_root"`
+	BaseBranch     *string `json:"base_branch"`
+	BranchPrefix   *string `json:"branch_prefix"`
+	GitAuthorName  *string `json:"git_author_name"`
+	GitAuthorEmail *string `json:"git_author_email"`
 }
 
 func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +168,12 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.BranchPrefix != nil {
 		board.BranchPrefix = strings.TrimSpace(*req.BranchPrefix)
+	}
+	if req.GitAuthorName != nil {
+		board.GitAuthorName = strings.TrimSpace(*req.GitAuthorName)
+	}
+	if req.GitAuthorEmail != nil {
+		board.GitAuthorEmail = strings.TrimSpace(*req.GitAuthorEmail)
 	}
 	if err := h.store.UpdateBoard(r.Context(), board); err != nil {
 		h.httpError(w, err, 500)

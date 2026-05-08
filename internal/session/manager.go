@@ -398,6 +398,7 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 		return err
 	}
 
+	id := git.Identity{Name: board.GitAuthorName, Email: board.GitAuthorEmail}
 	if clean, err := git.IsClean(sess.WorktreePath); err != nil {
 		return fmt.Errorf("check worktree clean: %w", err)
 	} else if !clean {
@@ -411,7 +412,7 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 		} else {
 			log.Printf("merge: ai commit message unavailable, using ticket title: %v", err)
 		}
-		if err := git.Commit(sess.WorktreePath, msg); err != nil {
+		if err := git.Commit(sess.WorktreePath, msg, id); err != nil {
 			return fmt.Errorf("commit pending changes: %w", err)
 		}
 	}
@@ -434,13 +435,13 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 
 	switch strategy {
 	case "merge-commit":
-		if err := git.MergeNoFF(paths.RepoPath, sess.BranchName); err != nil {
+		if err := git.MergeNoFF(paths.RepoPath, sess.BranchName, id); err != nil {
 			git.MergeAbort(paths.RepoPath)
 			return fmt.Errorf("merge aborted: %w", err)
 		}
 	case "squash":
 		msg := fmt.Sprintf("%s (#%d)", ticket.Title, ticket.ID)
-		if err := git.MergeSquash(paths.RepoPath, sess.BranchName, msg); err != nil {
+		if err := git.MergeSquash(paths.RepoPath, sess.BranchName, msg, id); err != nil {
 			git.MergeAbort(paths.RepoPath)
 			git.ResetHard(paths.RepoPath, baseHead)
 			return fmt.Errorf("squash aborted: %w", err)

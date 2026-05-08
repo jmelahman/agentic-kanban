@@ -25,6 +25,8 @@ export function BoardSettings({
   const [worktreeRoot, setWorktreeRoot] = useState(board.worktree_root);
   const [base, setBase] = useState(board.base_branch);
   const [branchPrefix, setBranchPrefix] = useState(board.branch_prefix);
+  const [gitAuthorName, setGitAuthorName] = useState(board.git_author_name);
+  const [gitAuthorEmail, setGitAuthorEmail] = useState(board.git_author_email);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -34,6 +36,8 @@ export function BoardSettings({
     setWorktreeRoot(board.worktree_root);
     setBase(board.base_branch);
     setBranchPrefix(board.branch_prefix);
+    setGitAuthorName(board.git_author_name);
+    setGitAuthorEmail(board.git_author_email);
   }, [
     board.id,
     board.name,
@@ -42,6 +46,8 @@ export function BoardSettings({
     board.worktree_root,
     board.base_branch,
     board.branch_prefix,
+    board.git_author_name,
+    board.git_author_email,
   ]);
 
   const updateMut = useMutation({
@@ -53,6 +59,8 @@ export function BoardSettings({
         worktree_root: worktreeRoot.trim(),
         base_branch: base.trim(),
         branch_prefix: branchPrefix.trim(),
+        git_author_name: gitAuthorName.trim(),
+        git_author_email: gitAuthorEmail.trim(),
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.boards });
@@ -77,7 +85,9 @@ export function BoardSettings({
     mount.trim() !== board.mount_path ||
     worktreeRoot.trim() !== board.worktree_root ||
     base.trim() !== board.base_branch ||
-    branchPrefix.trim() !== board.branch_prefix;
+    branchPrefix.trim() !== board.branch_prefix ||
+    gitAuthorName.trim() !== board.git_author_name ||
+    gitAuthorEmail.trim() !== board.git_author_email;
   const hasRepo = repo.trim() !== "";
   const hasMount = mount.trim() !== "";
   const valid =
@@ -172,6 +182,35 @@ export function BoardSettings({
               . Existing sessions keep their original branch.
             </span>
           </label>
+        )}
+        {hasRepo && (
+          <fieldset className="flex flex-col gap-2 rounded border border-border p-3">
+            <legend className="px-1 text-xs text-fg-muted">Commit identity</legend>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Author name</span>
+              <input
+                className="rounded bg-surface px-2 py-1"
+                placeholder="leave blank to use the kanban container's git config"
+                value={gitAuthorName}
+                onChange={(e) => setGitAuthorName(e.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Author email</span>
+              <input
+                type="email"
+                className="rounded bg-surface px-2 py-1 font-mono"
+                placeholder="you@example.com"
+                value={gitAuthorEmail}
+                onChange={(e) => setGitAuthorEmail(e.target.value)}
+              />
+            </label>
+            <span className="text-xs text-fg-muted">
+              Used for merge/squash commits when finishing a session. Set both
+              fields to override; leave blank to fall back to whatever git can
+              auto-detect inside the kanban container.
+            </span>
+          </fieldset>
         )}
         <div className="flex flex-col gap-1 text-xs text-fg-muted">
           <span>slug: <span className="font-mono">{board.slug}</span></span>

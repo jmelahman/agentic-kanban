@@ -7,6 +7,8 @@ export type Board = {
   worktree_root: string;
   base_branch: string;
   branch_prefix: string;
+  git_author_name: string;
+  git_author_email: string;
   created_at: number;
 };
 
@@ -194,9 +196,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listBoards: () => request<Board[]>("/api/boards"),
-  createBoard: (input: { name: string; repo_path?: string; mount_path?: string; worktree_root?: string; base_branch?: string; branch_prefix?: string }) =>
+  createBoard: (input: { name: string; repo_path?: string; mount_path?: string; worktree_root?: string; base_branch?: string; branch_prefix?: string; git_author_name?: string; git_author_email?: string }) =>
     request<Board>("/api/boards", { method: "POST", body: JSON.stringify(input) }),
-  updateBoard: (id: number, input: { name?: string; repo_path?: string; mount_path?: string; worktree_root?: string; base_branch?: string; branch_prefix?: string }) =>
+  updateBoard: (id: number, input: { name?: string; repo_path?: string; mount_path?: string; worktree_root?: string; base_branch?: string; branch_prefix?: string; git_author_name?: string; git_author_email?: string }) =>
     request<Board>(`/api/boards/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   deleteBoard: (id: number) => request<void>(`/api/boards/${id}`, { method: "DELETE" }),
   boardState: (id: number) => request<BoardState>(`/api/boards/${id}/state`),

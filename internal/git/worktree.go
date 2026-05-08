@@ -7,6 +7,22 @@ import (
 	"strings"
 )
 
+// Identity is an optional commit author/committer override. When both fields
+// are non-empty, callers can pass it to commit-creating helpers to inject
+// `-c user.name=... -c user.email=...` flags so the commit doesn't depend on
+// whatever identity the kanban container's git can auto-detect.
+type Identity struct {
+	Name  string
+	Email string
+}
+
+func (i Identity) configArgs() []string {
+	if i.Name == "" || i.Email == "" {
+		return nil
+	}
+	return []string{"-c", "user.name=" + i.Name, "-c", "user.email=" + i.Email}
+}
+
 // AddWorktree creates a new worktree at path, creating a new branch from base.
 func AddWorktree(repoPath, branch, worktreePath, base string) error {
 	args := []string{"-C", repoPath, "worktree", "add", "-b", branch, worktreePath}
@@ -42,18 +58,24 @@ func Merge(worktreePath, ref string) error {
 }
 
 // MergeNoFF merges branch into the currently checked-out branch in repoPath
-// always creating a merge commit, even when fast-forward is possible.
-func MergeNoFF(repoPath, branch string) error {
-	return run("git", "-C", repoPath, "merge", "--no-ff", "--no-edit", branch)
+// always creating a merge commit, even when fast-forward is possible. When
+// id is set, its name/email override the commit author/committer.
+func MergeNoFF(repoPath, branch string, id Identity) error {
+	args := append([]string{}, id.configArgs()...)
+	args = append(args, "-C", repoPath, "merge", "--no-ff", "--no-edit", branch)
+	return run("git", args...)
 }
 
 // MergeSquash squashes branch into the index of repoPath without committing,
-// then creates a single commit with message.
-func MergeSquash(repoPath, branch, message string) error {
+// then creates a single commit with message. When id is set, its name/email
+// override the commit author/committer.
+func MergeSquash(repoPath, branch, message string, id Identity) error {
 	if err := run("git", "-C", repoPath, "merge", "--squash", branch); err != nil {
 		return err
 	}
-	return run("git", "-C", repoPath, "commit", "-m", message)
+	args := append([]string{}, id.configArgs()...)
+	args = append(args, "-C", repoPath, "commit", "-m", message)
+	return run("git", args...)
 }
 
 // MergeFFOnly fast-forwards the currently checked-out branch in repoPath to
@@ -99,9 +121,12 @@ func AddAll(worktreePath string) error {
 	return run("git", "-C", worktreePath, "add", "-A")
 }
 
-// Commit creates a commit with the given message in the worktree.
-func Commit(worktreePath, message string) error {
-	return run("git", "-C", worktreePath, "commit", "-m", message)
+// Commit creates a commit with the given message in the worktree. When id is
+// set, its name/email override the commit author/committer.
+func Commit(worktreePath, message string, id Identity) error {
+	args := append([]string{}, id.configArgs()...)
+	args = append(args, "-C", worktreePath, "commit", "-m", message)
+	return run("git", args...)
 }
 
 // IsClean reports whether the worktree has no uncommitted changes.

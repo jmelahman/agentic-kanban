@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS boards (
   worktree_root TEXT,
   base_branch TEXT NOT NULL DEFAULT 'main',
   branch_prefix TEXT,
+  git_author_name TEXT,
+  git_author_email TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
