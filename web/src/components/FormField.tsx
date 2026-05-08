@@ -2,15 +2,18 @@ import { InputHTMLAttributes, ReactNode } from "react";
 
 export function FormField({
   label,
+  hint,
   children,
 }: {
   label: string;
+  hint?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-xs text-fg-muted">{label}</span>
       {children}
+      {hint && <span className="text-xs text-fg-muted">{hint}</span>}
     </label>
   );
 }

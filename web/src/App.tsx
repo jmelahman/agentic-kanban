@@ -36,6 +36,20 @@ export default function App() {
   const activeBoard = activeId != null ? boardsQ.data?.find((b) => b.id === activeId) ?? null : null;
   const noBoards = boardsQ.data?.length === 0;
 
+  // When the board's mount path is a visible git repo but no repo_path is
+  // linked, badge the settings icon to nudge the user toward enabling git
+  // features. Skipped when the path isn't visible to the kanban container
+  // (state="unknown") — we can't know either way.
+  const mountPath = activeBoard?.mount_path ?? "";
+  const repoPath = activeBoard?.repo_path ?? "";
+  const fsCheckQ = useQuery({
+    queryKey: ["fsCheck", mountPath],
+    queryFn: () => api.fsCheck(mountPath),
+    enabled: !!mountPath && !repoPath,
+    staleTime: 30_000,
+  });
+  const suggestRepoLink = !repoPath && fsCheckQ.data?.state === "git";
+
   useEffect(() => {
     if (activeId == null && boardsQ.data && boardsQ.data.length > 0) {
       const remembered = readActiveBoardId();
@@ -125,15 +139,23 @@ export default function App() {
             <HelpIcon />
           </a>
           {activeBoard && (
-            <Button
-              variant="neutral"
-              size="icon"
-              onClick={() => setShowSettings(true)}
-              aria-label="Board settings"
-              title="Board settings"
-            >
-              <CogIcon />
-            </Button>
+            <span className="relative inline-flex">
+              <Button
+                variant="neutral"
+                size="icon"
+                onClick={() => setShowSettings(true)}
+                aria-label="Board settings"
+                title={suggestRepoLink ? "Board settings — git repo detected, link it for branches and pull requests" : "Board settings"}
+              >
+                <CogIcon />
+              </Button>
+              {suggestRepoLink && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent-500 ring-2 ring-bg"
+                />
+              )}
+            </span>
           )}
           <Button
             variant="neutral"

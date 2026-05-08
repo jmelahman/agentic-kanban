@@ -246,6 +246,9 @@ export const api = {
     request<AppSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(input) }),
   listHarnesses: () => request<Harness[]>("/api/harnesses"),
 
+  fsCheck: (path: string) =>
+    request<{ state: "git" | "not_git" | "unknown" }>(`/api/fs/check?path=${encodeURIComponent(path)}`),
+
   getVersion: () => request<Version>("/api/version"),
 };
 

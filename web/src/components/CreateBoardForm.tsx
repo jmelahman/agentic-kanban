@@ -9,15 +9,13 @@ import { Modal } from "./Modal";
 
 export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }) {
   const [open, setOpen] = useState(false);
-  const { fields, update, reset, hasRepo, hasMount } = useBoardForm();
+  const { fields, update, reset, hasMount } = useBoardForm();
 
   const createMut = useMutation({
     mutationFn: () =>
       api.createBoard({
         name: fields.name,
-        repo_path: fields.repo.trim() || undefined,
-        mount_path: fields.mount.trim() || undefined,
-        base_branch: hasRepo ? fields.base : undefined,
+        mount_path: fields.mount.trim(),
       }),
     onSuccess: (board) => {
       onCreated(board);
@@ -31,7 +29,7 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
     setOpen(false);
   };
 
-  const canSubmit = fields.name.trim() !== "" && (hasRepo || hasMount);
+  const canSubmit = fields.name.trim() !== "" && hasMount;
 
   return (
     <>
@@ -57,39 +55,24 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
         >
           <FormField label="Name">
             <FormInput
-              placeholder="name"
               value={fields.name}
               onChange={(e) => update("name", e.target.value)}
               required
               autoFocus
             />
           </FormField>
-          <FormField label="Repository path">
+          <FormField
+            label="Mount path"
+            hint="Working directory agent sessions start from."
+          >
             <FormInput
-              placeholder="/host/path/to/repo (optional)"
-              value={fields.repo}
-              onChange={(e) => update("repo", e.target.value)}
-            />
-          </FormField>
-          <FormField label="Mount path">
-            <FormInput
-              placeholder="host directory mounted into the container (defaults to repository)"
+              mono
+              placeholder="/host/path/to/folder"
               value={fields.mount}
               onChange={(e) => update("mount", e.target.value)}
+              required
             />
           </FormField>
-          {hasRepo && (
-            <FormField label="Base branch">
-              <FormInput
-                placeholder="base branch"
-                value={fields.base}
-                onChange={(e) => update("base", e.target.value)}
-              />
-            </FormField>
-          )}
-          {!hasRepo && !hasMount && (
-            <p className="text-xs text-fg-muted">Provide at least a repository path or a mount path.</p>
-          )}
           <div className="mt-2 flex items-center justify-end gap-2">
             <Button
               type="button"

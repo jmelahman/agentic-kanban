@@ -120,6 +120,10 @@ Sessions are the running container + worktree + harness for a ticket. The most u
 - `GET /api/sessions/{id}/ports` — list active port proxies.
 - `GET /api/sessions/{id}/pr-detail` — live snapshot of the linked GitHub PR: diff totals, rolled-up review decision, and check status (passed / failing / pending counts plus the names of failing checks). Hits the GitHub API on each call; returns `404` if the session has no PR and `502` if GitHub is unreachable. The session payload itself carries `pr_state`, `pr_number`, `pr_url`, and `pr_title` (refreshed by the GitHub poller).
 
+## Filesystem
+
+- `GET /api/fs/check?path=<path>` — returns `{ "state": "git" | "not_git" | "unknown" }` for the given path as seen from inside the kanban server. `git` means the path is a directory containing `.git`; `not_git` means it exists but isn't a repo; `unknown` means it isn't visible to the kanban container (it may still be a valid host path that dockerd can mount when a session spawns — kanban just can't `stat` it). Used by the UI to badge the board-settings icon when a board's mount path looks like a git repo but no `repo_path` is configured.
+
 ## Health & metadata
 
 - `GET /api/health` — returns `200 OK` once the server is ready.

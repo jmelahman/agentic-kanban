@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -1283,6 +1284,31 @@ func (h *handlers) reportFrontendError(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// fsCheck reports whether a host path is visible to the kanban server and, if
+// so, whether it looks like a git repo. Paths outside the kanban container's
+// mounts return "unknown" — they may still be valid host paths that dockerd
+// can mount; we just can't see them from here.
+func (h *handlers) fsCheck(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimSpace(r.URL.Query().Get("path"))
+	if path == "" {
+		h.httpError(w, fmt.Errorf("path required"), 400)
+		return
+	}
+	state := "unknown"
+	if info, err := os.Stat(path); err == nil {
+		if info.IsDir() {
+			if g, err := os.Stat(filepath.Join(path, ".git")); err == nil && (g.IsDir() || g.Mode().IsRegular()) {
+				state = "git"
+			} else {
+				state = "not_git"
+			}
+		} else {
+			state = "not_git"
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"state": state})
 }
 
 func isUniqueViolation(err error) bool {
