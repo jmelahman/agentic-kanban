@@ -90,6 +90,17 @@ Kanban understands `.vscode/tasks.json` in the target repo. When a task whose `l
 
 Adjust the proxy range with `--port-range-start` and `--port-range-end` on `kanban serve`.
 
+## Commit identity for merges
+
+When a session is merged or squash-merged, kanban shells out to `git commit` inside its own container. If that container has no `user.name` / `user.email` configured, git aborts with `Author identity unknown` — your host's `~/.gitconfig` isn't visible inside the container.
+
+Two ways to fix it, in order of preference:
+
+1. **Set it on the board.** In the board settings UI, fill in *Commit identity → Author name / Author email*. Both fields must be set; leaving either blank falls back to whatever `git config` resolves inside the kanban container. Stored per-board (so different repos can use different identities), persisted as `git_author_name` / `git_author_email` on the board, and passed through as `-c user.name=… -c user.email=…` on every commit kanban creates.
+2. **Mount your host gitconfig into the kanban container.** In `compose.yaml`, add `${HOME}/.gitconfig:/root/.gitconfig:ro` alongside the existing volumes. Useful if you want one identity across every board and don't mind the volume.
+
+The board-level setting wins when both are present (it's an explicit `-c` flag on the git invocation).
+
 ## See also
 
 - [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `list-boards`, `create-ticket`.

@@ -197,6 +197,8 @@ func toolDefinitions() []map[string]any {
 					"worktree_root": schemaProp("string", "Override the parent directory for new session worktrees"),
 					"base_branch":   schemaProp("string", "Branch session worktrees fork from (default: main)"),
 					"branch_prefix": schemaProp("string", "Optional prefix prepended to session branch names"),
+					"git_author_name":  schemaProp("string", "Author name used for merge commits (e.g. squash merges)"),
+					"git_author_email": schemaProp("string", "Author email used for merge commits"),
 				},
 				"required": []string{"name"},
 			},
@@ -225,6 +227,8 @@ func toolDefinitions() []map[string]any {
 					"worktree_root": schemaProp("string", "New worktree root"),
 					"base_branch":   schemaProp("string", "New base branch"),
 					"branch_prefix": schemaProp("string", "New branch prefix"),
+					"git_author_name":  schemaProp("string", "New commit author name"),
+					"git_author_email": schemaProp("string", "New commit author email"),
 				},
 				"required": []string{"board"},
 			},
@@ -451,13 +455,15 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 	// unmarshal args into a single big shape; tools only read the fields
 	// they care about.
 	var a struct {
-		Board        string  `json:"board"`
-		Name         string  `json:"name"`
-		RepoPath     string  `json:"repo_path"`
-		MountPath    string  `json:"mount_path"`
-		WorktreeRoot string  `json:"worktree_root"`
-		BaseBranch   string  `json:"base_branch"`
-		BranchPrefix string  `json:"branch_prefix"`
+		Board          string  `json:"board"`
+		Name           string  `json:"name"`
+		RepoPath       string  `json:"repo_path"`
+		MountPath      string  `json:"mount_path"`
+		WorktreeRoot   string  `json:"worktree_root"`
+		BaseBranch     string  `json:"base_branch"`
+		BranchPrefix   string  `json:"branch_prefix"`
+		GitAuthorName  string  `json:"git_author_name"`
+		GitAuthorEmail string  `json:"git_author_email"`
 		NamePtr      *string `json:"-"`
 		Title        string  `json:"title"`
 		Body         string  `json:"body"`
@@ -493,12 +499,14 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 
 	case "create_board":
 		raw, err := s.client.CreateBoard(ctx, client.CreateBoardArgs{
-			Name:         a.Name,
-			RepoPath:     a.RepoPath,
-			MountPath:    a.MountPath,
-			WorktreeRoot: a.WorktreeRoot,
-			BaseBranch:   a.BaseBranch,
-			BranchPrefix: a.BranchPrefix,
+			Name:           a.Name,
+			RepoPath:       a.RepoPath,
+			MountPath:      a.MountPath,
+			WorktreeRoot:   a.WorktreeRoot,
+			BaseBranch:     a.BaseBranch,
+			BranchPrefix:   a.BranchPrefix,
+			GitAuthorName:  a.GitAuthorName,
+			GitAuthorEmail: a.GitAuthorEmail,
 		})
 		return rawOrError(raw, err), nil
 
@@ -533,6 +541,12 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 		}
 		if hasField("branch_prefix") {
 			patch.BranchPrefix = &a.BranchPrefix
+		}
+		if hasField("git_author_name") {
+			patch.GitAuthorName = &a.GitAuthorName
+		}
+		if hasField("git_author_email") {
+			patch.GitAuthorEmail = &a.GitAuthorEmail
 		}
 		raw, err := s.client.UpdateBoard(ctx, id, patch)
 		return rawOrError(raw, err), nil

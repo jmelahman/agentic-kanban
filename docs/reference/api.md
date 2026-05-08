@@ -61,7 +61,24 @@ List all boards.
 
 ### `POST /api/boards`
 
-Create a new board. Body fields include `name`, `slug`, and `repo_path` (the local git repo the board tracks).
+Create a new board. Body fields:
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `name` | string | Required. Display name; the slug is derived from this. |
+| `repo_path` | string | Host path to the git repo. One of `repo_path` / `mount_path` is required. |
+| `mount_path` | string | Host directory mounted into session containers, when distinct from the repo. |
+| `worktree_root` | string | Parent directory for new session worktrees. Defaults to `<data_dir>/worktrees/<slug>`. |
+| `base_branch` | string | Branch session worktrees fork from. Defaults to `main`. |
+| `branch_prefix` | string | Prefix prepended to session branch names. |
+| `git_author_name` | string | Optional. Author name used for merge/squash commits the server creates. |
+| `git_author_email` | string | Optional. Author email used for merge/squash commits. |
+
+If both `git_author_name` and `git_author_email` are set, the server passes `-c user.name=… -c user.email=…` to `git commit` when finishing a session — needed when kanban runs in a container without a configured git identity. Leave both blank to fall back to whatever the kanban container's `git config` resolves.
+
+### `PATCH /api/boards/{id}`
+
+Patch any of the fields above. Pointer-style: omit a field to leave it untouched, send an empty string to clear it.
 
 ### `GET /api/boards/{id}`
 

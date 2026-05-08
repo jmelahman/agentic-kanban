@@ -104,6 +104,37 @@ func TestBoards_Lifecycle(t *testing.T) {
 		resp := e.get("/api/boards/9999/state")
 		assertStatus(t, resp, 404)
 	})
+
+	t.Run("git_author_round_trip", func(t *testing.T) {
+		resp := e.post("/api/boards", map[string]any{
+			"name":             "Identity Project",
+			"repo_path":        e.repoPath,
+			"git_author_name":  "Ada Lovelace",
+			"git_author_email": "ada@example.com",
+		})
+		assertStatus(t, resp, 201)
+		b := decodeJSON[db.Board](t, resp)
+		if b.GitAuthorName != "Ada Lovelace" || b.GitAuthorEmail != "ada@example.com" {
+			t.Fatalf("create: got name=%q email=%q", b.GitAuthorName, b.GitAuthorEmail)
+		}
+
+		resp = e.patch(fmt.Sprintf("/api/boards/%d", b.ID), map[string]any{
+			"git_author_name":  "Grace Hopper",
+			"git_author_email": "grace@example.com",
+		})
+		assertStatus(t, resp, 200)
+		patched := decodeJSON[db.Board](t, resp)
+		if patched.GitAuthorName != "Grace Hopper" || patched.GitAuthorEmail != "grace@example.com" {
+			t.Fatalf("patch: got name=%q email=%q", patched.GitAuthorName, patched.GitAuthorEmail)
+		}
+
+		resp = e.get(fmt.Sprintf("/api/boards/%d", b.ID))
+		assertStatus(t, resp, 200)
+		got := decodeJSON[db.Board](t, resp)
+		if got.GitAuthorName != "Grace Hopper" || got.GitAuthorEmail != "grace@example.com" {
+			t.Fatalf("get: got name=%q email=%q", got.GitAuthorName, got.GitAuthorEmail)
+		}
+	})
 }
 
 // ---------- Tickets ----------

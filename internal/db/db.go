@@ -64,6 +64,8 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE sessions ADD COLUMN pr_url TEXT`,
 		`ALTER TABLE sessions ADD COLUMN pr_title TEXT`,
 		`ALTER TABLE boards ADD COLUMN branch_prefix TEXT`,
+		`ALTER TABLE boards ADD COLUMN git_author_name TEXT`,
+		`ALTER TABLE boards ADD COLUMN git_author_email TEXT`,
 		`ALTER TABLE tickets ADD COLUMN fingerprint TEXT`,
 	}
 	for _, s := range stmts {

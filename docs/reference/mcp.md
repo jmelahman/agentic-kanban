@@ -35,6 +35,8 @@ Create a new board. The server seeds the default columns
 | `worktree_root`  | string | no       | Override the parent directory for new session worktrees.           |
 | `base_branch`    | string | no       | Branch session worktrees fork from. Defaults to `main`.            |
 | `branch_prefix`  | string | no       | Prefix for session branch names.                                   |
+| `git_author_name`  | string | no     | Author name used for merge/squash commits the server creates.     |
+| `git_author_email` | string | no     | Author email used for merge/squash commits.                       |
 
 #### `get_board`
 
@@ -55,6 +57,8 @@ Patch fields on a board. Only fields you supply are updated.
 | `worktree_root`  | string | no       | New worktree root.                 |
 | `base_branch`    | string | no       | New base branch.                   |
 | `branch_prefix`  | string | no       | New branch prefix.                 |
+| `git_author_name`  | string | no     | New commit author name.            |
+| `git_author_email` | string | no     | New commit author email.           |
 
 #### `delete_board`
 

@@ -1,15 +1,17 @@
 package db
 
 type Board struct {
-	ID           int64  `json:"id"`
-	Name         string `json:"name"`
-	Slug         string `json:"slug"`
-	RepoPath     string `json:"repo_path"`
-	MountPath    string `json:"mount_path"`
-	WorktreeRoot string `json:"worktree_root"`
-	BaseBranch   string `json:"base_branch"`
-	BranchPrefix string `json:"branch_prefix"`
-	CreatedAt    int64  `json:"created_at"`
+	ID             int64  `json:"id"`
+	Name           string `json:"name"`
+	Slug           string `json:"slug"`
+	RepoPath       string `json:"repo_path"`
+	MountPath      string `json:"mount_path"`
+	WorktreeRoot   string `json:"worktree_root"`
+	BaseBranch     string `json:"base_branch"`
+	BranchPrefix   string `json:"branch_prefix"`
+	GitAuthorName  string `json:"git_author_name"`
+	GitAuthorEmail string `json:"git_author_email"`
+	CreatedAt      int64  `json:"created_at"`
 }
 
 type Column struct {

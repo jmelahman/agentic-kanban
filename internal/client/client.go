@@ -50,23 +50,27 @@ type Ticket struct {
 // repo_path or mount_path are required by the server; everything else is
 // optional and falls back to server defaults.
 type CreateBoardArgs struct {
-	Name         string `json:"name"`
-	RepoPath     string `json:"repo_path,omitempty"`
-	MountPath    string `json:"mount_path,omitempty"`
-	WorktreeRoot string `json:"worktree_root,omitempty"`
-	BaseBranch   string `json:"base_branch,omitempty"`
-	BranchPrefix string `json:"branch_prefix,omitempty"`
+	Name           string `json:"name"`
+	RepoPath       string `json:"repo_path,omitempty"`
+	MountPath      string `json:"mount_path,omitempty"`
+	WorktreeRoot   string `json:"worktree_root,omitempty"`
+	BaseBranch     string `json:"base_branch,omitempty"`
+	BranchPrefix   string `json:"branch_prefix,omitempty"`
+	GitAuthorName  string `json:"git_author_name,omitempty"`
+	GitAuthorEmail string `json:"git_author_email,omitempty"`
 }
 
 // UpdateBoardArgs is the request body for PATCH /api/boards/{id}. Pointer
 // fields signal "include in patch"; nil leaves the value untouched.
 type UpdateBoardArgs struct {
-	Name         *string `json:"name,omitempty"`
-	RepoPath     *string `json:"repo_path,omitempty"`
-	MountPath    *string `json:"mount_path,omitempty"`
-	WorktreeRoot *string `json:"worktree_root,omitempty"`
-	BaseBranch   *string `json:"base_branch,omitempty"`
-	BranchPrefix *string `json:"branch_prefix,omitempty"`
+	Name           *string `json:"name,omitempty"`
+	RepoPath       *string `json:"repo_path,omitempty"`
+	MountPath      *string `json:"mount_path,omitempty"`
+	WorktreeRoot   *string `json:"worktree_root,omitempty"`
+	BaseBranch     *string `json:"base_branch,omitempty"`
+	BranchPrefix   *string `json:"branch_prefix,omitempty"`
+	GitAuthorName  *string `json:"git_author_name,omitempty"`
+	GitAuthorEmail *string `json:"git_author_email,omitempty"`
 }
 
 // CreateTicketArgs is the input shape for CreateTicket. Only Board and Title
