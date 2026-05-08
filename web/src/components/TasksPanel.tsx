@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, Session } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
+import { CheckIcon, CopyIcon } from "@/icons";
 import { Button } from "./Button";
 
 export function TasksPanel({ session }: { session: Session; boardId: number }) {
@@ -21,6 +22,24 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
   });
 
   const [openOutputId, setOpenOutputId] = useState<number | null>(null);
+  const [outputLines, setOutputLines] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    setCopied(false);
+    setOutputLines([]);
+    if (openOutputId === null) return;
+    const es = new EventSource(`/api/task-runs/${openOutputId}/output`);
+    es.onmessage = (e) => setOutputLines((prev) => [...prev.slice(-500), e.data]);
+    es.addEventListener("end", () => es.close());
+    return () => es.close();
+  }, [openOutputId]);
+
+  const onCopy = () => {
+    navigator.clipboard.writeText(outputLines.join("\n"));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const startMut = useMutation({
     mutationFn: (label: string) => api.startTaskRun(session.id, label),
@@ -104,8 +123,19 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
                   <div className="text-xs text-fg-muted">{r.status}{r.exit_code != null ? ` (exit ${r.exit_code})` : ""}</div>
                 </div>
                 <div className="flex gap-2">
+                  {openOutputId === r.id && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onCopy}
+                      aria-label={copied ? "copied" : "copy output"}
+                      title={copied ? "copied" : "copy output"}
+                    >
+                      {copied ? <CheckIcon /> : <CopyIcon />}
+                    </Button>
+                  )}
                   <Button variant="ghost" size="sm" onClick={() => setOpenOutputId(openOutputId === r.id ? null : r.id)}>
-                    {openOutputId === r.id ? "hide output" : "output"}
+                    {openOutputId === r.id ? "hide" : "output"}
                   </Button>
                   {r.status === "running" && (
                     <Button
@@ -119,7 +149,7 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
                   )}
                 </div>
               </div>
-              {openOutputId === r.id && <TaskOutput runId={r.id} />}
+              {openOutputId === r.id && <TaskOutput lines={outputLines} />}
             </li>
           ))}
         </ul>
@@ -128,38 +158,16 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
   );
 }
 
-function TaskOutput({ runId }: { runId: number }) {
-  const [lines, setLines] = useState<string[]>([]);
-  const [copied, setCopied] = useState(false);
+function TaskOutput({ lines }: { lines: string[] }) {
   const ref = useRef<HTMLPreElement>(null);
-
-  useEffect(() => {
-    const es = new EventSource(`/api/task-runs/${runId}/output`);
-    es.onmessage = (e) => setLines((prev) => [...prev.slice(-500), e.data]);
-    es.addEventListener("end", () => es.close());
-    return () => es.close();
-  }, [runId]);
 
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
   }, [lines]);
 
-  const onCopy = () => {
-    navigator.clipboard.writeText(lines.join("\n"));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
   return (
-    <div className="mt-2">
-      <div className="mb-1 flex justify-end">
-        <Button variant="ghost" size="sm" onClick={onCopy}>
-          {copied ? "copied" : "copy"}
-        </Button>
-      </div>
-      <pre ref={ref} className="max-h-64 overflow-y-auto rounded bg-bg p-2 text-xs leading-tight text-fg [scrollbar-gutter:stable]">
-        {lines.join("\n")}
-      </pre>
-    </div>
+    <pre ref={ref} className="mt-2 max-h-64 overflow-y-auto rounded bg-bg p-2 text-xs leading-tight text-fg [scrollbar-gutter:stable]">
+      {lines.join("\n")}
+    </pre>
   );
 }
