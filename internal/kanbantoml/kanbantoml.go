@@ -62,6 +62,10 @@ type MergeSection struct {
 	AllowMergeCommit *bool `toml:"allow_merge_commit"`
 	AllowSquash      *bool `toml:"allow_squash"`
 	AllowRebase      *bool `toml:"allow_rebase"`
+	// AICommitMessage opts in to harness-generated commit messages for the
+	// auto-commit kanban makes when a session has uncommitted changes at merge
+	// time. Default false: kanban uses the ticket title.
+	AICommitMessage *bool `toml:"ai_commit_message"`
 }
 
 // DevcontainerSection augments the loaded devcontainer.json. Mounts and
@@ -256,6 +260,7 @@ func mergeMerge(p, u *MergeSection) *MergeSection {
 		out.AllowMergeCommit = p.AllowMergeCommit
 		out.AllowSquash = p.AllowSquash
 		out.AllowRebase = p.AllowRebase
+		out.AICommitMessage = p.AICommitMessage
 	}
 	if u != nil {
 		if u.AllowMergeCommit != nil {
@@ -266,6 +271,9 @@ func mergeMerge(p, u *MergeSection) *MergeSection {
 		}
 		if u.AllowRebase != nil {
 			out.AllowRebase = u.AllowRebase
+		}
+		if u.AICommitMessage != nil {
+			out.AICommitMessage = u.AICommitMessage
 		}
 	}
 	return &out

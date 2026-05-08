@@ -406,11 +406,13 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			return fmt.Errorf("stage pending changes: %w", err)
 		}
 		msg := ticket.Title
-		h := harness.Resolve(paths.RepoPath)
-		if generated, err := m.generateCommitMessage(ctx, sess, h, ticket.Title); err == nil {
-			msg = generated
-		} else {
-			log.Printf("merge: ai commit message unavailable, using ticket title: %v", err)
+		if mc := kanbantoml.Load(paths.RepoPath).Merge; mc != nil && mc.AICommitMessage != nil && *mc.AICommitMessage {
+			h := harness.Resolve(paths.RepoPath)
+			if generated, err := m.generateCommitMessage(ctx, sess, h, ticket.Title); err == nil {
+				msg = generated
+			} else {
+				log.Printf("merge: ai commit message unavailable, using ticket title: %v", err)
+			}
 		}
 		if err := git.Commit(sess.WorktreePath, msg, id); err != nil {
 			return fmt.Errorf("commit pending changes: %w", err)

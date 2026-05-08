@@ -129,6 +129,21 @@ allow_rebase = false
 	}
 }
 
+func TestLoad_MergeAICommitMessage(t *testing.T) {
+	withUserConfig(t, "")
+	repo := writeProject(t, `[merge]
+ai_commit_message = true
+`)
+
+	f := Load(repo)
+	if f.Merge == nil || f.Merge.AICommitMessage == nil {
+		t.Fatal("ai_commit_message missing")
+	}
+	if !*f.Merge.AICommitMessage {
+		t.Errorf("ai_commit_message = %v; want true", *f.Merge.AICommitMessage)
+	}
+}
+
 func TestLoad_UserOverridesProject_Harness(t *testing.T) {
 	withUserConfig(t, `[harness]
 id = "pi"

@@ -27,6 +27,7 @@ allow_merge  = true            # offer "merge base into branch"
 allow_merge_commit = true      # which strategies appear in the merge menu
 allow_squash       = true
 allow_rebase       = false
+ai_commit_message  = false     # opt in to harness-generated messages for the auto-commit (default off — uses ticket title)
 
 [github]
 auto_move     = true           # move tickets when the linked PR/issue changes state
@@ -100,6 +101,10 @@ Two ways to fix it, in order of preference:
 2. **Mount your host gitconfig into the kanban container.** In `compose.yaml`, add `${HOME}/.gitconfig:/root/.gitconfig:ro` alongside the existing volumes. Useful if you want one identity across every board and don't mind the volume.
 
 The board-level setting wins when both are present (it's an explicit `-c` flag on the git invocation).
+
+## AI-generated commit messages
+
+When kanban auto-commits a session's pending changes at merge time, it uses the ticket title as the message. Set `[merge].ai_commit_message = true` to instead invoke the session's harness (e.g. `claude --model haiku`) to generate a one-line message from the staged diff. The call is gated by a 90-second timeout and falls back to the ticket title on any error. Off by default because not every harness ships a working template, and the round-trip can be slow.
 
 ## See also
 
