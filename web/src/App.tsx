@@ -1,25 +1,36 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, PullProgress, Session, subscribeBoard, Ticket } from "@/api/client";
+import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-import {
-  activeTicketStore,
-  pullProgressStore,
-  sessionStore,
-  ticketStore,
-} from "@/store";
+import { activeTicketStore } from "@/store";
 import { AppSettings } from "@/components/AppSettings";
 import { ArchivedDrawer } from "@/components/ArchivedDrawer";
 import { Board } from "@/components/Board";
 import { BoardSettings } from "@/components/BoardSettings";
 import { Button } from "@/components/Button";
 import { CreateBoardForm } from "@/components/CreateBoardForm";
+import { Overview } from "@/components/Overview/Overview";
+import { Tab } from "@/components/Tab";
+import { TerminalsRoot } from "@/components/TerminalsRoot";
 import { useAccent } from "@/hooks/useAccent";
+import { useBoardSubscription, type StreamStatus } from "@/hooks/useBoardSubscription";
 import { useContrast } from "@/hooks/useContrast";
 import { useThemeMode } from "@/hooks/useThemeMode";
 import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon } from "@/icons";
 import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
+
+const VIEW_KEY = "app.view";
+type AppView = "board" | "overview";
+
+function loadInitialView(): AppView {
+  try {
+    const raw = localStorage.getItem(VIEW_KEY);
+    return raw === "overview" ? "overview" : "board";
+  } catch {
+    return "board";
+  }
+}
 
 export default function App() {
   useThemeMode();
@@ -28,7 +39,8 @@ export default function App() {
   const qc = useQueryClient();
   const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
   const [activeId, setActiveId] = useState<number | null>(null);
-  const [streamStatus, setStreamStatus] = useState<"open" | "error" | "closed">("closed");
+  const [view, setView] = useState<AppView>(loadInitialView);
+  const [streamStatus, setStreamStatus] = useState<StreamStatus>("closed");
   // EventSource fires a transient `onerror` during the initial connection
   // before `onopen` resolves, which would flash the banner on every refresh.
   // Only surface the banner if the error persists past a short grace window.
@@ -78,6 +90,14 @@ export default function App() {
     return () => clearTimeout(t);
   }, [streamStatus]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, view);
+    } catch {
+      // ignore
+    }
+  }, [view]);
+
   const cycleBoard = (delta: 1 | -1) => {
     const boards = boardsQ.data;
     if (!boards || boards.length < 2) return;
@@ -86,49 +106,53 @@ export default function App() {
     const next = (idx + delta + boards.length) % boards.length;
     setActiveId(boards[next].id);
   };
-  useShortcut("board.next", () => cycleBoard(1));
-  useShortcut("board.prev", () => cycleBoard(-1));
+  useShortcut("board.next", () => cycleBoard(1), { enabled: view === "board" });
+  useShortcut("board.prev", () => cycleBoard(-1), { enabled: view === "board" });
 
-  useEffect(() => {
-    if (activeId == null) return;
-    const key = queryKeys.board(activeId);
-    return subscribeBoard(activeId, {
-      onEvent: (type, data) => {
-        applyBoardEvent(activeId, type, data, () =>
-          qc.invalidateQueries({ queryKey: key }),
-        );
-        if (type === "ticket_archived" || type === "ticket_unarchived" || type === "ticket_deleted") {
-          qc.invalidateQueries({ queryKey: queryKeys.archived(activeId) });
-        }
-      },
-      onStatus: setStreamStatus,
-    });
-  }, [activeId, qc]);
+  // Drives the connection-status banner. Only meaningful in the board view —
+  // overview manages its own per-board subscriptions inside the tree, and a
+  // single banner across N streams would be misleading.
+  useBoardSubscription(view === "board" ? activeId : null, setStreamStatus);
 
   return (
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
         <h1 className="hidden text-lg font-semibold sm:block">Kanban</h1>
-        <select
-          className="min-w-0 max-w-[40vw] cursor-pointer rounded bg-surface px-2 py-1 text-sm"
-          value={activeId ?? ""}
-          onChange={(e) => setActiveId(e.target.value ? Number(e.target.value) : null)}
-        >
-          <option value="">— select board —</option>
-          {(boardsQ.data ?? []).map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+        <nav className="flex">
+          <Tab
+            active={view === "board"}
+            onClick={() => setView("board")}
+            label="board"
+          />
+          <Tab
+            active={view === "overview"}
+            onClick={() => setView("overview")}
+            label="overview"
+          />
+        </nav>
+        {view === "board" && (
+          <select
+            className="min-w-0 max-w-[40vw] cursor-pointer rounded bg-surface px-2 py-1 text-sm"
+            value={activeId ?? ""}
+            onChange={(e) => setActiveId(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">— select board —</option>
+            {(boardsQ.data ?? []).map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <CreateBoardForm
             onCreated={(b) => {
               qc.invalidateQueries({ queryKey: queryKeys.boards });
               setActiveId(b.id);
+              setView("board");
             }}
           />
-          {activeId != null && (
+          {view === "board" && activeId != null && (
             <Button
               variant="neutral"
               size="icon"
@@ -151,7 +175,7 @@ export default function App() {
           >
             <HelpIcon />
           </a>
-          {activeBoard && (
+          {view === "board" && activeBoard && (
             <span className="relative inline-flex">
               <Button
                 variant="neutral"
@@ -181,13 +205,15 @@ export default function App() {
           </Button>
         </div>
       </header>
-      {activeId != null && showStreamError && (
+      {view === "board" && activeId != null && showStreamError && (
         <div className="border-b border-amber-700 bg-amber-950/60 px-4 py-1 text-xs text-amber-200">
           Live updates disconnected — reconnecting…
         </div>
       )}
       <main className="min-h-0 flex-1 overflow-hidden">
-        {activeId != null ? (
+        {view === "overview" ? (
+          <Overview />
+        ) : activeId != null ? (
           <Board boardId={activeId} />
         ) : noBoards ? (
           <div className="flex h-full items-center justify-center p-4 text-sm text-fg-muted">
@@ -195,10 +221,11 @@ export default function App() {
           </div>
         ) : null}
       </main>
-      {activeId != null && showArchived && (
+      <TerminalsRoot />
+      {view === "board" && activeId != null && showArchived && (
         <ArchivedDrawer open boardId={activeId} onClose={() => setShowArchived(false)} />
       )}
-      {activeBoard && showSettings && (
+      {view === "board" && activeBoard && showSettings && (
         <BoardSettings
           open
           board={activeBoard}
@@ -212,65 +239,4 @@ export default function App() {
       {showAppSettings && <AppSettings open onClose={() => setShowAppSettings(false)} />}
     </div>
   );
-}
-
-// Routes an SSE event to the right cache. Per-id content updates flow
-// straight to the entity stores (no cascade). Structural changes — anything
-// that adds, removes, or reorders ticket-ids in a column — invalidate the
-// boardStructure query so it refetches and rebuilds the index.
-function applyBoardEvent(
-  boardId: number,
-  type: string,
-  data: unknown,
-  invalidateStructure: () => void,
-): void {
-  switch (type) {
-    case "ticket_updated": {
-      const t = data as Ticket | null;
-      if (t) ticketStore.set(t.id, t);
-      return;
-    }
-    case "ticket_created":
-    case "ticket_moved":
-    case "ticket_unarchived": {
-      const t = data as Ticket | null;
-      if (t) ticketStore.set(t.id, t);
-      invalidateStructure();
-      return;
-    }
-    case "ticket_archived":
-    case "ticket_deleted": {
-      const t = data as Ticket | null;
-      if (t && activeTicketStore.get() === t.id && t.board_id === boardId) {
-        activeTicketStore.set(null);
-      }
-      invalidateStructure();
-      return;
-    }
-    case "session_updated": {
-      const s = data as Session | null;
-      if (!s) return;
-      const prev = sessionStore.get(s.id);
-      sessionStore.set(s.id, s);
-      // Pull progress is only meaningful while the session is starting; clear
-      // it on any other status so the bar doesn't linger after a stop/restart.
-      if (s.status !== "starting") pullProgressStore.delete(s.id);
-      // New session: ticket → session map needs rebuild.
-      if (!prev) invalidateStructure();
-      return;
-    }
-    case "session_pull_progress": {
-      const p = data as PullProgress | null;
-      if (!p) return;
-      if (p.done) {
-        pullProgressStore.delete(p.session_id);
-      } else {
-        pullProgressStore.set(p.session_id, p);
-      }
-      return;
-    }
-    case "ready":
-    default:
-      return;
-  }
 }

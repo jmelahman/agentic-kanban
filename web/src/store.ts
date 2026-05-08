@@ -116,6 +116,43 @@ export const activeTicketStore = new ScalarStore<number | null>(null);
 // Holds the target column id; Columns reset it to null after reacting.
 export const addTicketRequestStore = new ScalarStore<number | null>(null);
 
+// Per-ticket DOM slots that the global TerminalsRoot portals PtyTerminals
+// into. Keyed by ticket id so the single PtyTerminal that exists per session
+// lands in whichever SessionView currently owns the visible slot for that
+// ticket. Board view and Overview view are mutually exclusive at the
+// top level, so a ticket has at most one live slot at any moment.
+export type TerminalSlot = {
+  agent: HTMLDivElement | null;
+  shell: HTMLDivElement | null;
+};
+export const terminalSlotStore = new EntityStore<TerminalSlot>();
+
+export function useTerminalSlot(
+  ticketId: number | null | undefined,
+): TerminalSlot | undefined {
+  return useEntity(terminalSlotStore, ticketId ?? -1);
+}
+
+// Set or clear one kind of slot for a ticket without clobbering the other.
+// Drops the entry once both kinds are null so we don't keep empty records.
+export function setTerminalSlot(
+  ticketId: number,
+  kind: "agent" | "shell",
+  el: HTMLDivElement | null,
+): void {
+  const prev = terminalSlotStore.get(ticketId);
+  const next: TerminalSlot = {
+    agent: prev?.agent ?? null,
+    shell: prev?.shell ?? null,
+    [kind]: el,
+  };
+  if (next.agent == null && next.shell == null) {
+    terminalSlotStore.delete(ticketId);
+    return;
+  }
+  terminalSlotStore.set(ticketId, next);
+}
+
 export function useTicket(id: number): Ticket | undefined {
   return useEntity(ticketStore, id);
 }

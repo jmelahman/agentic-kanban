@@ -8,7 +8,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
@@ -18,23 +18,13 @@ import {
   addTicketRequestStore,
   BoardStructure,
   fetchBoardStructure,
-  ScalarStore,
   ticketStore,
-  useIsActiveTicket,
-  useScalarStore,
   useSession,
   useTicket,
 } from "@/store";
 import { Column } from "./Column";
-import { PtyTerminal } from "./PtyTerminal";
 import { SessionPane } from "./SessionPane";
 import { TicketDragPreview } from "./Ticket";
-
-// Statuses where the container is up and the PTY broker can attach. We avoid
-// mounting PtyTerminal during "starting" (set optimistically by the create/start
-// flow) because the websocket would race the container spawn and the failed
-// handshake leaves a stray "[disconnected]" line in the terminal.
-const ATTACHABLE = new Set(["idle", "working", "awaiting_perm"]);
 
 type Direction = "up" | "down" | "left" | "right";
 
@@ -95,20 +85,6 @@ export function Board({ boardId }: { boardId: number }) {
     queryFn: () => fetchBoardStructure(boardId),
   });
   const [draggingId, setDraggingId] = useState<number | null>(null);
-  // Slots are SessionPane-owned DOM nodes that PtyTerminals portal into.
-  // Held in ScalarStores rather than `useState` so SessionPane mounting /
-  // unmounting its slot div doesn't re-render Board (and its 4 columns × N
-  // tickets). Only the few `SessionTerminals` instances that subscribe react.
-  const [agentSlotStore] = useState(() => new ScalarStore<HTMLDivElement | null>(null));
-  const [shellSlotStore] = useState(() => new ScalarStore<HTMLDivElement | null>(null));
-  const onAgentSlot = useCallback(
-    (el: HTMLDivElement | null) => agentSlotStore.set(el),
-    [agentSlotStore],
-  );
-  const onShellSlot = useCallback(
-    (el: HTMLDivElement | null) => shellSlotStore.set(el),
-    [shellSlotStore],
-  );
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const orientation = useTerminalOrientation();
 
@@ -239,66 +215,9 @@ export function Board({ boardId }: { boardId: number }) {
         mergeConfig={merge_config}
         syncConfig={sync_config}
         sessionIdByTicket={sessionIdByTicket}
-        onAgentSlot={onAgentSlot}
-        onShellSlot={onShellSlot}
         orientation={orientation}
       />
-      {Object.entries(sessionIdByTicket).map(([tIdStr, sId]) => (
-        <SessionTerminals
-          key={sId}
-          ticketId={Number(tIdStr)}
-          sessionId={sId}
-          agentSlotStore={agentSlotStore}
-          shellSlotStore={shellSlotStore}
-        />
-      ))}
     </div>
-  );
-}
-
-// Subscribes to one session's status. Status transitions (e.g. starting → idle)
-// notify only this instance, so the PtyTerminal can mount/unmount without the
-// rest of the board re-rendering.
-function SessionTerminals({
-  ticketId,
-  sessionId,
-  agentSlotStore,
-  shellSlotStore,
-}: {
-  ticketId: number;
-  sessionId: number;
-  agentSlotStore: ScalarStore<HTMLDivElement | null>;
-  shellSlotStore: ScalarStore<HTMLDivElement | null>;
-}) {
-  const session = useSession(sessionId);
-  const isActive = useIsActiveTicket(ticketId);
-  const agentSlot = useScalarStore(agentSlotStore);
-  const shellSlot = useScalarStore(shellSlotStore);
-  // The shell tab is lazy: we only spawn the shell PTY once the user has
-  // opened the shell tab at least once for *this* session (slot ref fires
-  // non-null while we're the active ticket).
-  const [shellEverOpened, setShellEverOpened] = useState(false);
-  useEffect(() => {
-    if (isActive && shellSlot) setShellEverOpened(true);
-  }, [isActive, shellSlot]);
-  if (!session || !ATTACHABLE.has(session.status)) return null;
-  return (
-    <>
-      <PtyTerminal
-        key={`agent:${session.started_at ?? 0}`}
-        sessionId={session.id}
-        kind="agent"
-        mountTarget={isActive ? agentSlot : null}
-      />
-      {shellEverOpened && (
-        <PtyTerminal
-          key={`shell:${session.started_at ?? 0}`}
-          sessionId={session.id}
-          kind="shell"
-          mountTarget={isActive ? shellSlot : null}
-        />
-      )}
-    </>
   );
 }
 

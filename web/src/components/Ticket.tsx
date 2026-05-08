@@ -11,7 +11,7 @@ import {
   useTicket,
 } from "@/store";
 
-const STATUS_COLOR: Record<string, string> = {
+export const STATUS_COLOR: Record<string, string> = {
   stopped: "text-fg-muted",
   starting: "text-amber-400",
   stopping: "text-amber-400",
@@ -20,6 +20,19 @@ const STATUS_COLOR: Record<string, string> = {
   awaiting_perm: "text-yellow-400",
   error: "text-danger",
 };
+
+export const STATUS_BG: Record<string, string> = {
+  stopped: "bg-fg-muted",
+  starting: "bg-amber-400",
+  stopping: "bg-amber-400",
+  idle: "bg-emerald-400",
+  working: "bg-sky-400",
+  awaiting_perm: "bg-yellow-400",
+  error: "bg-danger",
+};
+
+// Used when a ticket has no session at all yet.
+export const STATUS_BG_NONE = "bg-border";
 
 function TicketCard({
   ticket,
