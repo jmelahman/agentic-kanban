@@ -43,7 +43,7 @@ export function CreateBoardForm({ onCreated }: { onCreated: (b: Board) => void }
       <Button
         variant="neutral"
         size="sm"
-        className="inline-flex h-7 items-center justify-center"
+        className="inline-flex h-7 items-center justify-center whitespace-nowrap"
         onClick={() => setOpen(true)}
       >
         + new board

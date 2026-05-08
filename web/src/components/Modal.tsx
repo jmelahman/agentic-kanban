@@ -40,7 +40,7 @@ export function Drawer({
 }: Common) {
   return (
     <DialogShell open={open} onClose={onClose} busy={busy} flavor="drawer">
-      <aside className="flex w-[480px] flex-col border-l border-border bg-bg">
+      <aside className="flex w-[480px] max-w-[calc(100vw-2rem)] flex-col border-l border-border bg-bg">
         <DialogHeader title={title} onClose={onClose} busy={busy} />
         {children}
       </aside>

@@ -26,6 +26,7 @@ import {
 import { useToast } from "@/toast";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { TerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { useShortcut } from "@/keys/useShortcut";
 import { Button, Spinner } from "./Button";
@@ -125,6 +126,9 @@ export function SessionPane({
   const session = useSession(sessionId) ?? null;
   const pullProgress = usePullProgress(sessionId);
   const onClose = useCallback(() => activeTicketStore.set(null), []);
+  // On narrow viewports the side-by-side layout doesn't fit, so the pane takes
+  // over as a full-screen overlay (same chrome as the manual fullscreen mode).
+  const isMobile = useMediaQuery("(max-width: 767px)");
   const isHorizontal = orientation === "horizontal";
   const qc = useQueryClient();
   const toast = useToast();
@@ -402,12 +406,13 @@ export function SessionPane({
     status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
 
-  const paneClass = fullscreen
+  const overlay = fullscreen || isMobile;
+  const paneClass = overlay
     ? "fixed inset-0 z-40 flex flex-col bg-bg"
     : isHorizontal
       ? "relative flex flex-col border-t border-border bg-bg"
       : "relative flex flex-col border-l border-border bg-bg";
-  const paneStyle = fullscreen
+  const paneStyle = overlay
     ? undefined
     : isHorizontal
       ? { height: `${height}px`, flex: `0 0 ${height}px` }
@@ -421,8 +426,10 @@ export function SessionPane({
     interactive: boolean;
   }): ReactNode => (
     <>
-      <span className="font-medium">Ticket #{ticketId}</span>
-      <span className="text-fg-muted">{session?.branch_name}</span>
+      <span className="whitespace-nowrap font-medium">Ticket #{ticketId}</span>
+      {!compact && (
+        <span className="min-w-0 truncate text-fg-muted">{session?.branch_name}</span>
+      )}
       {session?.pr_number != null && session.pr_url && (
         <a
           href={session.pr_url}
@@ -704,15 +711,17 @@ export function SessionPane({
             title="mark as done"
           />
         )}
-        <Button
-          variant="neutral"
-          size="icon"
-          onClick={() => setFullscreen((v) => !v)}
-          aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
-          title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
-        >
-          {fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
-        </Button>
+        {!isMobile && (
+          <Button
+            variant="neutral"
+            size="icon"
+            onClick={() => setFullscreen((v) => !v)}
+            aria-label={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+            title={fullscreen ? "Exit fullscreen (Esc)" : "Fullscreen"}
+          >
+            {fullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
+          </Button>
+        )}
         <Button variant="neutral" size="icon" onClick={onClose}>
           ✕
         </Button>
@@ -722,7 +731,7 @@ export function SessionPane({
 
   return (
     <aside className={paneClass} style={paneStyle}>
-      {!fullscreen && (
+      {!overlay && (
         <div
           role="separator"
           aria-orientation={isHorizontal ? "horizontal" : "vertical"}

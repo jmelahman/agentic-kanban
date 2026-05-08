@@ -79,11 +79,11 @@ export default function App() {
   }, [activeId, qc]);
 
   return (
-    <div className="flex h-full flex-col">
-      <header className="flex items-center gap-4 border-b border-border px-3 py-2">
+    <div className="flex h-full min-w-0 flex-col">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
         <h1 className="text-lg font-semibold">Kanban</h1>
         <select
-          className="cursor-pointer rounded bg-surface px-2 py-1 text-sm"
+          className="min-w-0 max-w-[40vw] cursor-pointer rounded bg-surface px-2 py-1 text-sm"
           value={activeId ?? ""}
           onChange={(e) => setActiveId(e.target.value ? Number(e.target.value) : null)}
         >
@@ -94,7 +94,7 @@ export default function App() {
             </option>
           ))}
         </select>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           <CreateBoardForm
             onCreated={(b) => {
               qc.invalidateQueries({ queryKey: queryKeys.boards });
@@ -105,7 +105,7 @@ export default function App() {
             <Button
               variant="neutral"
               size="sm"
-              className="inline-flex h-7 items-center justify-center"
+              className="inline-flex h-7 items-center justify-center whitespace-nowrap"
               onClick={() => setShowArchived(true)}
             >
               archived

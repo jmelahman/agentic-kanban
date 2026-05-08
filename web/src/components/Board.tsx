@@ -206,14 +206,14 @@ export function Board({ boardId }: { boardId: number }) {
   }
 
   return (
-    <div className={`flex h-full ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}>
+    <div className={`flex h-full min-w-0 ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}>
       <DndContext
         sensors={sensors}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
         onDragCancel={() => setDraggingId(null)}
       >
-        <div data-board-area className="flex min-h-0 flex-1 gap-2 overflow-x-auto p-3">
+        <div data-board-area className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto p-3">
           {columns.map((c) => (
             <Column
               key={c.id}
