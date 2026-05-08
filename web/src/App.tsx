@@ -29,6 +29,10 @@ export default function App() {
   const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
   const [activeId, setActiveId] = useState<number | null>(null);
   const [streamStatus, setStreamStatus] = useState<"open" | "error" | "closed">("closed");
+  // EventSource fires a transient `onerror` during the initial connection
+  // before `onopen` resolves, which would flash the banner on every refresh.
+  // Only surface the banner if the error persists past a short grace window.
+  const [showStreamError, setShowStreamError] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAppSettings, setShowAppSettings] = useState(false);
@@ -64,6 +68,15 @@ export default function App() {
     // ticket-id from board A doesn't leak into board B's pane.
     activeTicketStore.set(null);
   }, [activeId]);
+
+  useEffect(() => {
+    if (streamStatus !== "error") {
+      setShowStreamError(false);
+      return;
+    }
+    const t = setTimeout(() => setShowStreamError(true), 1500);
+    return () => clearTimeout(t);
+  }, [streamStatus]);
 
   const cycleBoard = (delta: 1 | -1) => {
     const boards = boardsQ.data;
@@ -168,7 +181,7 @@ export default function App() {
           </Button>
         </div>
       </header>
-      {activeId != null && streamStatus === "error" && (
+      {activeId != null && showStreamError && (
         <div className="border-b border-amber-700 bg-amber-950/60 px-4 py-1 text-xs text-amber-200">
           Live updates disconnected — reconnecting…
         </div>
