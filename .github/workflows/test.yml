@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - id: set-modules
         run: echo "modules=$(go list -m -json | jq -s '.' | jq -c '[.[].Dir]')" >> "$GITHUB_OUTPUT"
 
@@ -37,6 +38,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: apt-get update && apt-get install -y --no-install-recommends libasound2-dev
       - run: go mod tidy
         working-directory: ${{ matrix.modules }}
@@ -62,6 +64,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: prek
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
