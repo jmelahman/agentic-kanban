@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { DraggableEvent } from "react-draggable";
 import { Rnd } from "react-rnd";
 import { queryKeys } from "@/api/keys";
-import { fetchBoardStructure } from "@/store";
+import { fetchBoardStructure, useTerminalSlot } from "@/store";
 import type { BoardStructure } from "@/store";
 import { Button } from "@/components/Button";
 import { SessionView } from "@/components/SessionView";
@@ -348,6 +348,22 @@ export function PanelCanvas({
     },
     [update],
   );
+
+  // Mirror the board view's behavior of focusing the terminal on pane switch.
+  // In the board view this falls out of PtyTerminal's mountTarget effect
+  // because the slot DOM remounts under the new ticketId. In overview every
+  // panel stays mounted, so mountTarget never changes — we focus explicitly
+  // when the focused ticket (or its registered slot) changes. Subscribing to
+  // the slot also handles freshly-opened panels: the slot ref fires after
+  // SessionView mounts (post board-structure load), and this effect re-runs.
+  const focusedSlot = useTerminalSlot(focusedTicketId);
+  useEffect(() => {
+    if (focusedTicketId == null) return;
+    const slotEl = focusedSlot?.agent ?? focusedSlot?.shell;
+    if (!slotEl) return;
+    const host = slotEl.querySelector<HTMLElement>("[data-terminal]");
+    host?.focus({ preventScroll: true });
+  }, [focusedTicketId, focusedSlot]);
 
   // Ctrl+Alt+Arrow → focus neighbor; Ctrl+Shift+Alt+Arrow → re-tile focused.
   // Bound at the window in capture phase so we run before the global key
