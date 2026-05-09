@@ -8,28 +8,27 @@ on:
 
 permissions: {}
 
-env:
-  GO_VERSION: stable
-
 jobs:
   detect-modules:
     runs-on: ubuntu-latest
+    container:
+      image: lahmanja/devcontainer@sha256:7bdf2d8e31b77b4e19359ec91a9029fab1d2c481ddefe1aff0d714cae1bbd4bf
+      options: --user root
     outputs:
       modules: ${{ steps.set-modules.outputs.modules }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
-      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: go.work.sum
       - id: set-modules
         run: echo "modules=$(go list -m -json | jq -s '.' | jq -c '[.[].Dir]')" >> "$GITHUB_OUTPUT"
 
   golang:
     needs: detect-modules
     runs-on: ubuntu-latest
+    container:
+      image: lahmanja/devcontainer@sha256:7bdf2d8e31b77b4e19359ec91a9029fab1d2c481ddefe1aff0d714cae1bbd4bf
+      options: --user root
     strategy:
       matrix:
         modules: ${{ fromJSON(needs.detect-modules.outputs.modules) }}
@@ -38,13 +37,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: daaku/gh-action-apt-install@92eea4f84f90c895b544aaec6ae21839127c84e5
-        with:
-          packages: libasound2-dev
-      - uses: actions/setup-go@4dc6199c7b1a012772edbd06daecab0f50c9053c
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: go.work.sum
+      - run: apt-get update && apt-get install -y --no-install-recommends libasound2-dev
       - run: go mod tidy
         working-directory: ${{ matrix.modules }}
       - run: git diff --exit-code go.mod go.sum
@@ -61,11 +54,18 @@ jobs:
 
   pre-commit:
     runs-on: ubuntu-latest
+    container:
+      image: lahmanja/devcontainer@sha256:7bdf2d8e31b77b4e19359ec91a9029fab1d2c481ddefe1aff0d714cae1bbd4bf
+      options: --user root
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
         with:
           persist-credentials: false
-      - uses: j178/prek-action@91fd7d7cf70ae1dee9f4f44e7dfa5d1073fe6623
-        with:
-          prek-version: "0.2.21"
-          extra-args: ${{ github.event_name == 'pull_request' && format('--from-ref {0} --to-ref {1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || '--all-files' }}
+          fetch-depth: 0
+      - name: prek
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            prek run --from-ref "${{ github.event.pull_request.base.sha }}" --to-ref "${{ github.event.pull_request.head.sha }}"
+          else
+            prek run --all-files
+          fi
