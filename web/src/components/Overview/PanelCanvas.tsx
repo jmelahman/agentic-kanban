@@ -8,6 +8,8 @@ import type { BoardStructure } from "@/store";
 import { Button } from "@/components/Button";
 import { SessionView } from "@/components/SessionView";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
+import { useShortcut } from "@/keys/useShortcut";
+import { NewTicketModal } from "./NewTicketModal";
 import {
   findNeighborInDirection,
   nextSlot,
@@ -233,6 +235,20 @@ export function PanelCanvas({
     );
   }, []);
 
+  // Board id of the focused panel — drives the F shortcut target and the
+  // default board for the new-ticket modal.
+  const focusedBoardId =
+    focusedTicketId != null
+      ? panels.find((p) => p.ticketId === focusedTicketId)?.boardId ?? null
+      : null;
+
+  useShortcut("session.fullscreen", () => {
+    if (focusedTicketId != null) toggleMaximize(focusedTicketId);
+  }, { enabled: focusedTicketId != null });
+
+  const [newTicketOpen, setNewTicketOpen] = useState(false);
+  useShortcut("ticket.create", () => setNewTicketOpen(true));
+
   const handleDragStart = useCallback((ticketId: number) => {
     setDragState({
       ticketId,
@@ -338,17 +354,14 @@ export function PanelCanvas({
   // dispatcher (which uses Ctrl+Alt+Arrow for ticket/column navigation on
   // the board view). When we own the chord we stopImmediatePropagation so
   // those navigation actions don't also fire. Only mounted on the overview
-  // route since PanelCanvas only renders here.
+  // route since PanelCanvas only renders here. The Ctrl+Alt prefix can't
+  // collide with text input, so we don't bail when the focus is in an
+  // editable element (e.g. an embedded terminal).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (!e.ctrlKey || !e.altKey) return;
       const dir = arrowToDirection(e.key);
       if (!dir) return;
-      const target = e.target as HTMLElement | null;
-      const tag = target?.tagName?.toLowerCase();
-      if (tag === "input" || tag === "textarea" || target?.isContentEditable) {
-        return;
-      }
       e.preventDefault();
       e.stopImmediatePropagation();
       if (e.shiftKey) {
@@ -418,6 +431,13 @@ export function PanelCanvas({
           style={{ top: `${y}px` }}
         />
       ))}
+      {newTicketOpen && (
+        <NewTicketModal
+          defaultBoardId={focusedBoardId}
+          onClose={() => setNewTicketOpen(false)}
+          onCreated={(ticketId, boardId) => open(boardId, ticketId)}
+        />
+      )}
     </div>
   );
 }
