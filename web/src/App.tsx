@@ -8,7 +8,8 @@ import { ArchivedDrawer } from "@/components/ArchivedDrawer";
 import { Board } from "@/components/Board";
 import { BoardSettings } from "@/components/BoardSettings";
 import { Button } from "@/components/Button";
-import { CreateBoardForm } from "@/components/CreateBoardForm";
+import { CreateBoardModal } from "@/components/CreateBoardForm";
+import { HeaderMobileMenu } from "@/components/HeaderMobileMenu";
 import { Overview } from "@/components/Overview/Overview";
 import { Tab } from "@/components/Tab";
 import { TerminalsRoot } from "@/components/TerminalsRoot";
@@ -18,8 +19,9 @@ import {
   type StreamStatus,
 } from "@/hooks/useBoardSubscription";
 import { useContrast } from "@/hooks/useContrast";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useThemeMode } from "@/hooks/useThemeMode";
-import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon } from "@/icons";
+import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon, PlusIcon } from "@/icons";
 import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
@@ -54,6 +56,14 @@ export default function App() {
   const [showArchived, setShowArchived] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAppSettings, setShowAppSettings] = useState(false);
+  const [createBoardOpen, setCreateBoardOpen] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 767px)");
+
+  const onBoardCreated = (b: { id: number }) => {
+    qc.invalidateQueries({ queryKey: queryKeys.boards });
+    setActiveId(b.id);
+    setView("board");
+  };
 
   const activeBoard =
     activeId != null
@@ -161,70 +171,94 @@ export default function App() {
             ))}
           </select>
         )}
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          <CreateBoardForm
-            onCreated={(b) => {
-              qc.invalidateQueries({ queryKey: queryKeys.boards });
-              setActiveId(b.id);
-              setView("board");
-            }}
-          />
-          {view === "board" && activeId != null && (
+        {isMobile ? (
+          <div className="ml-auto">
+            <HeaderMobileMenu
+              onNewBoard={() => setCreateBoardOpen(true)}
+              onArchived={
+                view === "board" && activeId != null
+                  ? () => setShowArchived(true)
+                  : null
+              }
+              onBoardSettings={
+                view === "board" && activeBoard
+                  ? () => setShowSettings(true)
+                  : null
+              }
+              onAppSettings={() => setShowAppSettings(true)}
+              suggestRepoLink={!!suggestRepoLink}
+            />
+          </div>
+        ) : (
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
             <Button
               variant="neutral"
               size="icon"
               className="gap-1 sm:w-auto sm:px-2 sm:text-xs"
-              onClick={() => setShowArchived(true)}
-              aria-label="Archived tickets"
-              title="Archived tickets"
+              onClick={() => setCreateBoardOpen(true)}
+              aria-label="New board"
+              title="New board"
             >
-              <ArchiveIcon />
-              <span className="hidden sm:inline">archived</span>
+              <PlusIcon />
+              <span className="hidden sm:inline">new board</span>
             </Button>
-          )}
-          <a
-            href="https://jamison.lahman.dev/agentic-kanban/guide/"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Help"
-            title="Help"
-            className="rounded cursor-pointer transition-colors duration-150 bg-surface-2 text-fg hover:bg-surface-3 inline-flex h-7 w-7 items-center justify-center"
-          >
-            <HelpIcon />
-          </a>
-          {view === "board" && activeBoard && (
-            <span className="relative inline-flex">
+            {view === "board" && activeId != null && (
               <Button
                 variant="neutral"
                 size="icon"
-                onClick={() => setShowSettings(true)}
-                aria-label="Board settings"
-                title={
-                  suggestRepoLink
-                    ? "Board settings — git repo detected, link it for branches and pull requests"
-                    : "Board settings"
-                }
+                className="gap-1 sm:w-auto sm:px-2 sm:text-xs"
+                onClick={() => setShowArchived(true)}
+                aria-label="Archived tickets"
+                title="Archived tickets"
               >
-                <CogIcon />
+                <ArchiveIcon />
+                <span className="hidden sm:inline">archived</span>
               </Button>
-              {suggestRepoLink && (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent-500 ring-2 ring-bg"
-                />
-              )}
-            </span>
-          )}
-          <Button
-            variant="neutral"
-            size="icon"
-            onClick={() => setShowAppSettings(true)}
-            aria-label="App settings"
-            title="App settings"
-          >
-            <MenuIcon />
-          </Button>
-        </div>
+            )}
+            <a
+              href="https://jamison.lahman.dev/agentic-kanban/guide/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Help"
+              title="Help"
+              className="rounded cursor-pointer transition-colors duration-150 bg-surface-2 text-fg hover:bg-surface-3 inline-flex h-7 w-7 items-center justify-center"
+            >
+              <HelpIcon />
+            </a>
+            {view === "board" && activeBoard && (
+              <span className="relative inline-flex">
+                <Button
+                  variant="neutral"
+                  size="icon"
+                  onClick={() => setShowSettings(true)}
+                  aria-label="Board settings"
+                  title={
+                    suggestRepoLink
+                      ? "Board settings — git repo detected, link it for branches and pull requests"
+                      : "Board settings"
+                  }
+                >
+                  <CogIcon />
+                </Button>
+                {suggestRepoLink && (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-accent-500 ring-2 ring-bg"
+                  />
+                )}
+              </span>
+            )}
+            <Button
+              variant="neutral"
+              size="icon"
+              onClick={() => setShowAppSettings(true)}
+              aria-label="App settings"
+              title="App settings"
+            >
+              <MenuIcon />
+            </Button>
+          </div>
+        )}
       </header>
       {view === "board" && activeId != null && showStreamError && (
         <div className="border-b border-amber-700 bg-amber-950/60 px-4 py-1 text-xs text-amber-200">
@@ -264,6 +298,11 @@ export default function App() {
       {showAppSettings && (
         <AppSettings open onClose={() => setShowAppSettings(false)} />
       )}
+      <CreateBoardModal
+        open={createBoardOpen}
+        onClose={() => setCreateBoardOpen(false)}
+        onCreated={onBoardCreated}
+      />
     </div>
   );
 }

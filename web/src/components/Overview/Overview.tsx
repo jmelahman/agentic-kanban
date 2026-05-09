@@ -1,4 +1,9 @@
 import { useCallback, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { queryKeys } from "@/api/keys";
+import { fetchBoardStructure } from "@/store";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { SessionView } from "@/components/SessionView";
 import { BoardTree } from "./BoardTree";
 import { PanelCanvas, type PanelCanvasHandle } from "./PanelCanvas";
 
@@ -28,6 +33,12 @@ function loadSidebarCollapsed(): boolean {
 }
 
 export function Overview() {
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  if (isMobile) return <MobileOverview />;
+  return <DesktopOverview />;
+}
+
+function DesktopOverview() {
   const handleRef = useRef<PanelCanvasHandle | null>(null);
   const registerHandle = useCallback((h: PanelCanvasHandle | null) => {
     handleRef.current = h;
@@ -117,6 +128,67 @@ export function Overview() {
           onOpenTicketsChange={setOpenTicketIds}
         />
       </div>
+    </div>
+  );
+}
+
+type MobileTicket = { boardId: number; ticketId: number };
+
+function MobileOverview() {
+  const [active, setActive] = useState<MobileTicket | null>(null);
+  const openIds = active ? new Set([active.ticketId]) : new Set<number>();
+
+  if (active) {
+    return (
+      <MobileSession
+        boardId={active.boardId}
+        ticketId={active.ticketId}
+        onBack={() => setActive(null)}
+      />
+    );
+  }
+  return (
+    <div className="flex h-full flex-col bg-bg">
+      <BoardTree
+        onOpenTicket={(boardId, ticketId) => setActive({ boardId, ticketId })}
+        openTicketIds={openIds}
+      />
+    </div>
+  );
+}
+
+function MobileSession({
+  boardId,
+  ticketId,
+  onBack,
+}: {
+  boardId: number;
+  ticketId: number;
+  onBack: () => void;
+}) {
+  const boardQ = useQuery({
+    queryKey: queryKeys.board(boardId),
+    queryFn: () => fetchBoardStructure(boardId),
+  });
+  const s = boardQ.data;
+  if (!s) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-fg-muted">
+        Loading board…
+      </div>
+    );
+  }
+  return (
+    <div className="h-full">
+      <SessionView
+        ticketId={ticketId}
+        boardId={boardId}
+        baseBranch={s.board.base_branch}
+        mergeConfig={s.merge_config}
+        syncConfig={s.sync_config}
+        sessionIdByTicket={s.sessionIdByTicket}
+        onClose={onBack}
+      />
     </div>
   );
 }
