@@ -195,25 +195,25 @@ export default function App() {
             <Button
               variant="neutral"
               size="icon"
-              className="gap-1 sm:w-auto sm:px-2 sm:text-xs"
+              className="gap-1 md:w-auto md:px-2 md:text-xs"
               onClick={() => setCreateBoardOpen(true)}
               aria-label="New board"
               title="New board"
             >
               <PlusIcon />
-              <span className="hidden sm:inline">new board</span>
+              <span className="hidden md:inline">new board</span>
             </Button>
             {view === "board" && activeId != null && (
               <Button
                 variant="neutral"
                 size="icon"
-                className="gap-1 sm:w-auto sm:px-2 sm:text-xs"
+                className="gap-1 md:w-auto md:px-2 md:text-xs"
                 onClick={() => setShowArchived(true)}
                 aria-label="Archived tickets"
                 title="Archived tickets"
               >
                 <ArchiveIcon />
-                <span className="hidden sm:inline">archived</span>
+                <span className="hidden md:inline">archived</span>
               </Button>
             )}
             <a
