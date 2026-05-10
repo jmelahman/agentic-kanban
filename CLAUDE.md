@@ -73,9 +73,18 @@ project toml stays as-is so other developers/sessions still get Claude
 forwarded normally.
 
 End-to-end terminal access from inside this devcontainer also requires
-the worktrees dir and the board's repo path to be same-path-bound on
-host. That part isn't fixed yet — see the
-`kanban/chore-support-terminal-access-from-container` branch.
+host-path translation: paths kanban sees as `/workspace/...` and
+`/root/.claude` need to be rewritten to the corresponding host paths
+before being handed to dockerd. Set these on the kanban process:
+
+```sh
+export KANBAN_HOST_WORKSPACE=/path/on/host/to/this/repo  # rewrites /workspace prefix
+export KANBAN_HOST_HOME=/path/on/host/to/your/home       # rewrites $HOME prefix
+```
+
+Both default to unset (no translation) so the host install is unaffected.
+See `docs/guide/configuration.md` § "Running kanban inside a container"
+for the full table.
 
 ## Tests / typecheck
 

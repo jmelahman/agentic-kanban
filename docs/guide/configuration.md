@@ -110,6 +110,36 @@ The board-level setting wins when both are present (it's an explicit `-c` flag o
 
 When kanban auto-commits a session's pending changes at merge time, it uses the ticket title as the message. Set `[merge].ai_commit_message = true` to instead invoke the session's harness (e.g. `claude --model haiku`) to generate a one-line message from the staged diff. The call is gated by a 90-second timeout and falls back to the ticket title on any error. Off by default because not every harness ships a working template, and the round-trip can be slow.
 
+## Running kanban inside a container
+
+When kanban itself runs inside a container (e.g. a devcontainer) but spawns
+session containers via the host's docker daemon, every bind-mount source
+kanban hands to dockerd needs to be a **host** path. Paths kanban sees as
+`/workspace/...` or `/root/.claude` mean nothing to the host's docker.
+
+Set these env vars on the kanban process to translate prefixes before they
+reach dockerd:
+
+| Env var | What it rewrites |
+| --- | --- |
+| `$KANBAN_HOST_WORKSPACE` | Host path of `/workspace` inside the kanban container. Covers board `repo_path`, `worktree_root`, and any `[devcontainer].mounts` whose source lives under `/workspace`. |
+| `$KANBAN_HOST_HOME` | Host path of the kanban container's `$HOME`. Covers `~/.claude` / `~/.claude.json` forwarding. |
+
+Example for a kanban devcontainer running as root with the project bind-mounted
+from `/home/jamison/code/kanban`:
+
+```sh
+export KANBAN_HOST_WORKSPACE=/home/jamison/code/kanban
+export KANBAN_HOST_HOME=/home/jamison
+```
+
+Both are unset (and the translation is a no-op) on the default host install.
+Paths that don't start with either prefix pass through untouched.
+
+For full end-to-end terminal access, the worktree root also needs to be
+reachable on the host at the translated path — i.e. `KANBAN_HOST_WORKSPACE`
+must point at a directory the host's docker daemon can stat.
+
 ## See also
 
 - [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `list-boards`, `create-ticket`.

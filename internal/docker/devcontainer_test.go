@@ -197,6 +197,59 @@ func TestBuildContainerConfig_SourceRepoGitMount(t *testing.T) {
 	}
 }
 
+func TestBuildContainerConfig_TranslatesHostPaths(t *testing.T) {
+	// When kanban runs inside a devcontainer, paths it sees as /workspace/...
+	// must be rewritten to the matching host path before being handed to
+	// dockerd (which only knows host paths).
+	t.Setenv("KANBAN_HOST_WORKSPACE", "/host/proj")
+
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := &DevcontainerConfig{
+		WorkspaceFolder: "/workspace",
+		Mounts:          []string{"type=bind,source=/workspace/extra,target=/extra"},
+	}
+	opts := SpawnOptions{
+		MountPath:        "/workspace/wt",
+		RepoWorktreePath: "/workspace/wt-repo",
+		SourceRepoPath:   repo, // outside the translation prefix; passes through
+		ContainerName:    "test",
+	}
+
+	hostCfg, _, _, err := buildContainerConfig(cfg, opts, "img", "")
+	if err != nil {
+		t.Fatalf("buildContainerConfig: %v", err)
+	}
+
+	wantSources := map[string]string{
+		"/workspace":            "", // workspace mount target
+		"/repository":           "", // repo worktree target
+		"/extra":                "", // user-supplied extra mount
+		filepath.Join(repo, ".git"): "", // .git target stays in-container
+	}
+	wantSources["/workspace"] = "/host/proj/wt"
+	wantSources["/repository"] = "/host/proj/wt-repo"
+	wantSources["/extra"] = "/host/proj/extra"
+	wantSources[filepath.Join(repo, ".git")] = filepath.Join(repo, ".git")
+
+	for _, m := range hostCfg.Mounts {
+		want, ok := wantSources[m.Target]
+		if !ok {
+			continue
+		}
+		if m.Source != want {
+			t.Errorf("mount target=%q: source = %q; want %q", m.Target, m.Source, want)
+		}
+		delete(wantSources, m.Target)
+	}
+	if len(wantSources) > 0 {
+		t.Errorf("missing mounts for targets: %v\n got: %#v", wantSources, hostCfg.Mounts)
+	}
+}
+
 func TestBuildContainerConfig_NoGitMountWhenSourceMissing(t *testing.T) {
 	cfg := &DevcontainerConfig{WorkspaceFolder: "/workspace"}
 	opts := SpawnOptions{WorktreePath: "/host/worktree", ContainerName: "test"}

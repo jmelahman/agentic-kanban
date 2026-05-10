@@ -411,20 +411,23 @@ func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef s
 		mountSource = opts.WorktreePath
 	}
 	mounts := []mount.Mount{
-		{Type: mount.TypeBind, Source: mountSource, Target: wsFolder, Consistency: mount.ConsistencyDelegated},
+		{Type: mount.TypeBind, Source: TranslateToHost(mountSource), Target: wsFolder, Consistency: mount.ConsistencyDelegated},
 	}
 	if opts.RepoWorktreePath != "" && opts.RepoWorktreePath != mountSource {
 		mounts = append(mounts, mount.Mount{
 			Type:        mount.TypeBind,
-			Source:      opts.RepoWorktreePath,
+			Source:      TranslateToHost(opts.RepoWorktreePath),
 			Target:      RepoMountTarget,
 			Consistency: mount.ConsistencyDelegated,
 		})
 	}
 	if gitDir, ok := resolveSourceGitDir(opts.SourceRepoPath); ok {
+		// Target stays as the in-container path so the worktree's gitdir
+		// pointer (an absolute path written by the host kanban container)
+		// resolves inside the session container.
 		mounts = append(mounts, mount.Mount{
 			Type:        mount.TypeBind,
-			Source:      gitDir,
+			Source:      TranslateToHost(gitDir),
 			Target:      gitDir,
 			Consistency: mount.ConsistencyDelegated,
 		})
@@ -433,6 +436,9 @@ func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef s
 		m, err := parseMountString(raw)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("parse mount %q: %w", raw, err)
+		}
+		if m.Type == mount.TypeBind {
+			m.Source = TranslateToHost(m.Source)
 		}
 		mounts = append(mounts, m)
 	}
