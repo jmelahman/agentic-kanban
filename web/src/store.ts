@@ -213,12 +213,16 @@ export async function fetchBoardStructure(
   for (const s of data.sessions) {
     if (!sessionStore.get(s.id)) sessionStore.set(s.id, s);
   }
+  // Symmetric to the seed guard above: only drop sessions whose ticket has
+  // actually disappeared. The ticket reconciliation immediately above is
+  // authoritative, so a missing ticket reliably means archive/delete and the
+  // session is orphan. A session whose ticket still exists but is absent from
+  // *this* snapshot is the stale-snapshot race — e.g. a refetch that started
+  // before ensureSession committed lands after we set the new session locally.
+  // Trust local state and let SSE drive any real deletion.
   sessionStore.forEach((s, id) => {
     if (newSessionIds.has(id)) return;
-    // A session belongs to *this* board iff its ticket does. After we just
-    // reconciled tickets above, lookup is authoritative.
-    const t = ticketStore.get(s.ticket_id);
-    if (!t || t.board_id === boardId) sessionStore.delete(id);
+    if (!ticketStore.get(s.ticket_id)) sessionStore.delete(id);
   });
 
   const ticketIdsByColumn: Record<number, number[]> = {};
