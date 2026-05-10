@@ -1,0 +1,13 @@
+package main
+import (
+  "fmt"
+  "github.com/jmelahman/kanban/internal/git"
+)
+func main() {
+  b, err := git.DefaultBranch("/workspace")
+  fmt.Println("workspace:", b, err)
+  b, err = git.DefaultBranch("/tmp/detect-test")
+  fmt.Println("no remote:", b, err)
+  b, err = git.DefaultBranch("/tmp/does-not-exist")
+  fmt.Println("missing:", b, err)
+}

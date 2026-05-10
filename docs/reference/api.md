@@ -69,7 +69,7 @@ Create a new board. Body fields:
 | `repo_path` | string | Host path to the git repo. One of `repo_path` / `mount_path` is required. |
 | `mount_path` | string | Host directory mounted into session containers, when distinct from the repo. |
 | `worktree_root` | string | Parent directory for new session worktrees. Defaults to `<data_dir>/worktrees/<slug>`. |
-| `base_branch` | string | Branch session worktrees fork from. Defaults to `main`. |
+| `base_branch` | string | Branch session worktrees fork from. When omitted, the server detects it from `repo_path` (`origin/HEAD`, falling back to the currently checked-out branch); if detection fails it defaults to `main`. |
 | `branch_prefix` | string | Prefix prepended to session branch names. |
 | `git_author_name` | string | Optional. Author name used for merge/squash commits the server creates. |
 | `git_author_email` | string | Optional. Author email used for merge/squash commits. |

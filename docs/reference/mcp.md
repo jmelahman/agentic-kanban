@@ -33,7 +33,7 @@ Create a new board. The server seeds the default columns
 | `repo_path`      | string | one of   | Host git repo path. Required if `mount_path` is empty.             |
 | `mount_path`     | string | one of   | Mount path inside session containers.                              |
 | `worktree_root`  | string | no       | Override the parent directory for new session worktrees.           |
-| `base_branch`    | string | no       | Branch session worktrees fork from. Defaults to `main`.            |
+| `base_branch`    | string | no       | Branch session worktrees fork from. Detected from `repo_path` (`origin/HEAD`, then current branch) when omitted; falls back to `main`. |
 | `branch_prefix`  | string | no       | Prefix for session branch names.                                   |
 | `git_author_name`  | string | no     | Author name used for merge/squash commits the server creates.     |
 | `git_author_email` | string | no     | Author email used for merge/squash commits.                       |

@@ -16,6 +16,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/errreport"
+	"github.com/jmelahman/kanban/internal/git"
 	gh "github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
@@ -86,6 +87,11 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 	if req.RepoPath == "" && req.MountPath == "" {
 		h.httpError(w, fmt.Errorf("at least one of repo_path or mount_path required"), 400)
 		return
+	}
+	if req.BaseBranch == "" && req.RepoPath != "" {
+		if b, err := git.DefaultBranch(req.RepoPath); err == nil {
+			req.BaseBranch = strings.TrimSpace(b)
+		}
 	}
 	if req.BaseBranch == "" {
 		req.BaseBranch = "main"

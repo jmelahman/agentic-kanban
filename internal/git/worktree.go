@@ -84,6 +84,21 @@ func MergeFFOnly(repoPath, branch string) error {
 	return run("git", "-C", repoPath, "merge", "--ff-only", branch)
 }
 
+// DefaultBranch returns the repo's default branch name. It prefers what
+// origin/HEAD points to (set by `git clone` or `git remote set-head`), and
+// falls back to the currently checked-out branch when no remote default is
+// configured. Returns ("", nil) if neither is available (e.g. detached HEAD
+// in a repo with no remote).
+func DefaultBranch(repoPath string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err == nil {
+		return strings.TrimPrefix(strings.TrimSpace(out.String()), "origin/"), nil
+	}
+	return CurrentBranch(repoPath)
+}
+
 // CurrentBranch returns the short branch name checked out in repoPath, or an
 // empty string if HEAD is detached.
 func CurrentBranch(repoPath string) (string, error) {
