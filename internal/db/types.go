@@ -50,6 +50,11 @@ type Session struct {
 	PRTitle       string  `json:"pr_title,omitempty"`
 	MountPath     string  `json:"mount_path,omitempty"`
 	RepoPath      string  `json:"repo_path,omitempty"`
+	// ClaudeSessionID is the UUID of the most recent Claude Code session
+	// captured via its SessionStart hook. When non-empty, `claude` is
+	// relaunched with `--resume <uuid>` so the conversation survives
+	// container/Kanban restarts.
+	ClaudeSessionID string `json:"claude_session_id,omitempty"`
 }
 
 type PortAllocation struct {

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -831,6 +832,45 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+type updateClaudeSessionIDReq struct {
+	ClaudeSessionID string `json:"claude_session_id"`
+}
+
+// claudeSessionIDPattern matches the UUID format Claude Code writes for its
+// per-conversation transcript filenames (`~/.claude/projects/.../<uuid>.jsonl`).
+// Strict-ish: hyphenated 8-4-4-4-12 hex, case-insensitive. Anything else is a
+// hook misconfiguration and we reject it so we never persist a value we can't
+// later pass to `claude --resume`.
+var claudeSessionIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// updateClaudeSessionID is called by the Claude Code SessionStart hook running
+// inside the session container to report the UUID of the active conversation.
+// Stored so subsequent `claude` launches resume the same transcript across
+// container/Kanban restarts. Same trust model as updateSessionStatus — the
+// session is identified by URL path, no auth.
+func (h *handlers) updateClaudeSessionID(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	req, err := decodeBody[updateClaudeSessionIDReq](r)
+	if err != nil {
+		h.httpError(w, err, 400)
+		return
+	}
+	uuid := strings.TrimSpace(req.ClaudeSessionID)
+	if !claudeSessionIDPattern.MatchString(uuid) {
+		h.httpError(w, fmt.Errorf("claude_session_id must be a UUID"), 400)
+		return
+	}
+	if err := h.store.UpdateClaudeSessionID(r.Context(), id, uuid); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			h.httpError(w, err, 404)
+			return
+		}
+		h.httpError(w, err, 500)
+		return
+	}
+	w.WriteHeader(204)
+}
+
 // Tasks
 
 type taskInfo struct {
@@ -1135,7 +1175,16 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 		repoPath = board.RepoPath
 	}
 	resolved := harness.Resolve(repoPath)
-	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, resolved.PTYCommand, "/workspace")
+	cmd := resolved.PTYCommand
+	// Resume the prior Claude Code conversation when we have its UUID. The
+	// SessionStart hook in .claude/settings.local.json captures the UUID on
+	// every launch, so this preserves the conversation across container
+	// restarts. Other harnesses don't have an equivalent flag, so this is
+	// gated on the resolved harness ID.
+	if resolved.ID == "claude" && sess.ClaudeSessionID != "" {
+		cmd = append(append([]string(nil), cmd...), "--resume", sess.ClaudeSessionID)
+	}
+	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, cmd, "/workspace")
 }
 
 func (h *handlers) wsShell(w http.ResponseWriter, r *http.Request) {

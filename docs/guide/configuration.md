@@ -95,6 +95,30 @@ Kanban understands `.vscode/tasks.json` in the target repo. When a task whose `l
 
 Adjust the proxy range with `--port-range-start` and `--port-range-end` on `kanban serve`.
 
+## Resuming Claude Code sessions across restarts
+
+When a session container is restarted (or kanban itself is restarted and the container has to be recreated), the next `claude` launch automatically resumes the prior conversation for that ticket. There's nothing to configure — the mechanism is on by default whenever `~/.claude` is bind-mounted into the session container (the built-in devcontainer does this; see `claude_config = true` above).
+
+How it works:
+
+- On every `claude` startup, the bundled `.claude/settings.local.json` `SessionStart` hook PATCHes `/api/sessions/{id}/claude-session` with the conversation's UUID.
+- Kanban stores the UUID on the session row.
+- The next time the agent terminal is attached, kanban launches `claude --resume <uuid>` instead of a bare `claude`, so the transcript at `~/.claude/projects/<cwd-hash>/<uuid>.jsonl` is reopened.
+
+To force a fresh conversation for a ticket, clear the stored UUID:
+
+```sh
+sqlite3 "$KANBAN_DATA_DIR/kanban.db" \
+  "UPDATE sessions SET claude_session_id = NULL WHERE id = <session_id>"
+```
+
+The next attach will start a brand-new Claude Code session.
+
+Caveats:
+
+- Users who hand-author `.claude/settings.local.json` in a worktree opt out — kanban won't overwrite an existing file, so the `SessionStart` hook isn't installed and no UUID is captured. To opt back in, delete the file and re-ensure the session.
+- Only the `claude` harness is wired up; other harnesses (`pi`) have no equivalent flag and launch fresh every time.
+
 ## Commit identity for merges
 
 When a session is merged or squash-merged, kanban shells out to `git commit` inside its own container. If that container has no `user.name` / `user.email` configured, git aborts with `Author identity unknown` — your host's `~/.gitconfig` isn't visible inside the container.

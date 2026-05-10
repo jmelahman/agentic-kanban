@@ -67,6 +67,7 @@ func migrate(db *sql.DB) error {
 		`ALTER TABLE boards ADD COLUMN git_author_name TEXT`,
 		`ALTER TABLE boards ADD COLUMN git_author_email TEXT`,
 		`ALTER TABLE tickets ADD COLUMN fingerprint TEXT`,
+		`ALTER TABLE sessions ADD COLUMN claude_session_id TEXT`,
 	}
 	for _, s := range stmts {
 		if _, err := db.Exec(s); err != nil {

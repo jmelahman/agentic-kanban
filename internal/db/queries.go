@@ -435,9 +435,9 @@ func (s *Store) DeleteAllArchivedTickets(ctx context.Context, boardID int64) (in
 func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 	if sess.ID == 0 {
 		res, err := s.db.ExecContext(ctx,
-			`INSERT INTO sessions (ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath),
+			`INSERT INTO sessions (ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), nullIfEmpty(sess.ClaudeSessionID),
 		)
 		if err != nil {
 			return err
@@ -450,8 +450,8 @@ func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 		return nil
 	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE sessions SET worktree_path=?, branch_name=?, container_id=?, container_name=?, status=?, started_at=?, stopped_at=?, pr_state=?, pr_number=?, pr_url=?, pr_title=?, mount_path=?, repo_path=? WHERE id=?`,
-		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), sess.ID,
+		`UPDATE sessions SET worktree_path=?, branch_name=?, container_id=?, container_name=?, status=?, started_at=?, stopped_at=?, pr_state=?, pr_number=?, pr_url=?, pr_title=?, mount_path=?, repo_path=?, claude_session_id=? WHERE id=?`,
+		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), nullIfEmpty(sess.ClaudeSessionID), sess.ID,
 	)
 	return err
 }
@@ -459,6 +459,21 @@ func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 func (s *Store) UpdateSessionStatus(ctx context.Context, id int64, status string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET status=? WHERE id=?`, status, id)
 	return err
+}
+
+// UpdateClaudeSessionID records the Claude Code session UUID for the given
+// Kanban session. Called by the SessionStart hook running inside the session
+// container so subsequent `claude` launches can `--resume <uuid>`. Passing an
+// empty uuid clears the stored value (treated as SQL NULL).
+func (s *Store) UpdateClaudeSessionID(ctx context.Context, id int64, uuid string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET claude_session_id=? WHERE id=?`,
+		nullIfEmpty(uuid), id,
+	)
+	if err != nil {
+		return err
+	}
+	return affectedOrNotFound(res)
 }
 
 func (s *Store) UpdateSessionPR(ctx context.Context, id int64, prState string, prNumber *int64, prURL, prTitle string) error {
@@ -471,7 +486,7 @@ func (s *Store) UpdateSessionPR(ctx context.Context, id int64, prState string, p
 
 func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 	sess, err := scanSession(s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path FROM sessions WHERE id=?`, id))
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id FROM sessions WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -480,7 +495,7 @@ func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 
 func (s *Store) GetSessionByTicket(ctx context.Context, ticketID int64) (*Session, error) {
 	sess, err := scanSession(s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path FROM sessions WHERE ticket_id=?`, ticketID))
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id FROM sessions WHERE ticket_id=?`, ticketID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -489,7 +504,7 @@ func (s *Store) GetSessionByTicket(ctx context.Context, ticketID int64) (*Sessio
 
 func (s *Store) ListSessionsByBoard(ctx context.Context, boardID int64) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state, s.pr_number, s.pr_url, s.pr_title, s.mount_path, s.repo_path
+		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state, s.pr_number, s.pr_url, s.pr_title, s.mount_path, s.repo_path, s.claude_session_id
          FROM sessions s JOIN tickets t ON t.id=s.ticket_id WHERE t.board_id=?`, boardID)
 	if err != nil {
 		return nil, err
@@ -712,14 +727,15 @@ func scanBoard(sc scanner) (*Board, error) {
 
 func scanSession(sc scanner) (*Session, error) {
 	var sess Session
-	var mount, repo, prURL, prTitle sql.NullString
-	if err := sc.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &sess.PRNumber, &prURL, &prTitle, &mount, &repo); err != nil {
+	var mount, repo, prURL, prTitle, claudeSessionID sql.NullString
+	if err := sc.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &sess.PRNumber, &prURL, &prTitle, &mount, &repo, &claudeSessionID); err != nil {
 		return nil, err
 	}
 	sess.PRURL = prURL.String
 	sess.PRTitle = prTitle.String
 	sess.MountPath = mount.String
 	sess.RepoPath = repo.String
+	sess.ClaudeSessionID = claudeSessionID.String
 	return &sess, nil
 }
 

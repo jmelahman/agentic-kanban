@@ -117,6 +117,7 @@ Sessions are the running container + worktree + harness for a ticket. The most u
 - `POST /api/tickets/{id}/session` — ensure a session exists for the ticket.
 - `POST /api/sessions/{id}/start` / `stop` / `restart`
 - `PATCH /api/sessions/{id}/status` — used by the harness to report state changes.
+- `PATCH /api/sessions/{id}/claude-session` — called by the Claude Code `SessionStart` hook with `{ "claude_session_id": "<uuid>" }` so kanban can `--resume` the same conversation on the next launch after a container/Kanban restart. Rejects non-UUID values with `400`. Clearing the stored UUID (to force a fresh conversation) is a manual `UPDATE sessions SET claude_session_id = NULL` on the DB.
 - `GET /api/sessions/{id}/ports` — list active port proxies.
 - `GET /api/sessions/{id}/pr-detail` — live snapshot of the linked GitHub PR: diff totals, rolled-up review decision, and check status (passed / failing / pending counts plus the names of failing checks). Hits the GitHub API on each call; returns `404` if the session has no PR and `502` if GitHub is unreachable. The session payload itself carries `pr_state`, `pr_number`, `pr_url`, and `pr_title` (refreshed by the GitHub poller).
 

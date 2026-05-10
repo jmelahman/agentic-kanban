@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -374,6 +375,41 @@ func TestSessions(t *testing.T) {
 		resp := e.post("/api/sessions/9999/stop", nil)
 		// no session row → store returns ErrNotFound; handler maps to 500.
 		assertStatus(t, resp, 500)
+	})
+
+	t.Run("claude_session_id_round_trip", func(t *testing.T) {
+		other := e.seedTicket(board, "ClaudeResume")
+		sess := e.seedSession(other)
+
+		uuid := "abcdef01-2345-6789-abcd-0123456789ab"
+		resp := e.patch(fmt.Sprintf("/api/sessions/%d/claude-session", sess.ID),
+			map[string]any{"claude_session_id": uuid})
+		assertStatus(t, resp, 204)
+
+		got, err := e.store.GetSession(context.Background(), sess.ID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if got.ClaudeSessionID != uuid {
+			t.Errorf("ClaudeSessionID = %q; want %q", got.ClaudeSessionID, uuid)
+		}
+	})
+
+	t.Run("claude_session_id_rejects_bad_uuid", func(t *testing.T) {
+		other := e.seedTicket(board, "ClaudeBadUUID")
+		sess := e.seedSession(other)
+
+		for _, bad := range []string{"", "not-a-uuid", "abc"} {
+			resp := e.patch(fmt.Sprintf("/api/sessions/%d/claude-session", sess.ID),
+				map[string]any{"claude_session_id": bad})
+			assertStatus(t, resp, 400)
+		}
+	})
+
+	t.Run("claude_session_id_unknown_session_404", func(t *testing.T) {
+		resp := e.patch("/api/sessions/9999/claude-session",
+			map[string]any{"claude_session_id": "abcdef01-2345-6789-abcd-0123456789ab"})
+		assertStatus(t, resp, 404)
 	})
 }
 

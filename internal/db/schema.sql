@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   pr_url TEXT,
   pr_title TEXT,
   mount_path TEXT,
-  repo_path TEXT
+  repo_path TEXT,
+  claude_session_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS port_allocations (
