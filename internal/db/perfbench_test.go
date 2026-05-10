@@ -116,13 +116,13 @@ func seedBench(t *testing.T, store *Store, tickets int) (boardID, sessionID int6
 			t.Fatal(err)
 		}
 		if i == 0 {
-			s := &Session{TicketID: tk.ID, WorktreePath: "/tmp/x", BranchName: "x"}
+			s := &Session{TicketID: tk.ID, WorktreePath: "/tmp/x", BranchName: "x", Status: SessionStatusStopped}
 			if err := store.UpsertSession(ctx, s); err != nil {
 				t.Fatal(err)
 			}
 			sessionID = s.ID
 			for j := 0; j < 200; j++ {
-				tr := &TaskRun{SessionID: s.ID, TaskLabel: "t", Command: "c", Status: "done"}
+				tr := &TaskRun{SessionID: s.ID, TaskLabel: "t", Command: "c", Status: TaskRunStatusExited}
 				if err := store.CreateTaskRun(ctx, tr); err != nil {
 					t.Fatal(err)
 				}
@@ -138,7 +138,7 @@ func seedBench(t *testing.T, store *Store, tickets int) (boardID, sessionID int6
 	for i := 0; i < 50; i++ {
 		_, err := store.DB().ExecContext(ctx,
 			`INSERT INTO hook_configs (board_id, event, command, enabled) VALUES (?, ?, ?, 1)`,
-			b.ID, fmt.Sprintf("event-%d", i%10), "noop")
+			b.ID, fmt.Sprintf("event-%d", i%10), fmt.Sprintf("noop-%d", i))
 		if err != nil {
 			t.Fatal(err)
 		}

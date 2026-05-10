@@ -437,7 +437,7 @@ func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 		res, err := s.db.ExecContext(ctx,
 			`INSERT INTO sessions (ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), nullIfEmpty(sess.ClaudeSessionID),
+			sess.TicketID, sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, nullIfEmpty(sess.PRState), sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), nullIfEmpty(sess.ClaudeSessionID),
 		)
 		if err != nil {
 			return err
@@ -451,7 +451,7 @@ func (s *Store) UpsertSession(ctx context.Context, sess *Session) error {
 	}
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET worktree_path=?, branch_name=?, container_id=?, container_name=?, status=?, started_at=?, stopped_at=?, pr_state=?, pr_number=?, pr_url=?, pr_title=?, mount_path=?, repo_path=?, claude_session_id=? WHERE id=?`,
-		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, sess.PRState, sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), nullIfEmpty(sess.ClaudeSessionID), sess.ID,
+		sess.WorktreePath, sess.BranchName, sess.ContainerID, sess.ContainerName, sess.Status, sess.StartedAt, sess.StoppedAt, nullIfEmpty(sess.PRState), sess.PRNumber, nullIfEmpty(sess.PRURL), nullIfEmpty(sess.PRTitle), nullIfEmpty(sess.MountPath), nullIfEmpty(sess.RepoPath), nullIfEmpty(sess.ClaudeSessionID), sess.ID,
 	)
 	return err
 }
@@ -479,7 +479,7 @@ func (s *Store) UpdateClaudeSessionID(ctx context.Context, id int64, uuid string
 func (s *Store) UpdateSessionPR(ctx context.Context, id int64, prState string, prNumber *int64, prURL, prTitle string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET pr_state=?, pr_number=?, pr_url=?, pr_title=? WHERE id=?`,
-		prState, prNumber, nullIfEmpty(prURL), nullIfEmpty(prTitle), id,
+		nullIfEmpty(prState), prNumber, nullIfEmpty(prURL), nullIfEmpty(prTitle), id,
 	)
 	return err
 }
@@ -727,10 +727,11 @@ func scanBoard(sc scanner) (*Board, error) {
 
 func scanSession(sc scanner) (*Session, error) {
 	var sess Session
-	var mount, repo, prURL, prTitle, claudeSessionID sql.NullString
-	if err := sc.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &sess.PRState, &sess.PRNumber, &prURL, &prTitle, &mount, &repo, &claudeSessionID); err != nil {
+	var prState, mount, repo, prURL, prTitle, claudeSessionID sql.NullString
+	if err := sc.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &prState, &sess.PRNumber, &prURL, &prTitle, &mount, &repo, &claudeSessionID); err != nil {
 		return nil, err
 	}
+	sess.PRState = prState.String
 	sess.PRURL = prURL.String
 	sess.PRTitle = prTitle.String
 	sess.MountPath = mount.String
