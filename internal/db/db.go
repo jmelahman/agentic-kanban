@@ -31,10 +31,11 @@ type Store struct {
 	db *sql.DB
 }
 
-// Open opens a Store backed by a SQLite database at path and applies the
-// embedded schema. The sentinel path ":memory:" opens a process-local
-// in-memory database (shared cache so the connection pool sees one DB) and
-// skips on-disk file setup; data is discarded when Close is called.
+// Open opens a Store backed by a SQLite database at path, applies the
+// embedded schema, and runs migrations. The sentinel path ":memory:" opens
+// a process-local in-memory database (shared cache so the connection pool
+// sees one DB) and skips on-disk file setup; data is discarded when Close
+// is called.
 func Open(path string) (*Store, error) {
 	var dsn string
 	if path == ":memory:" {
@@ -65,7 +66,20 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
+	if err := migrate(db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// migrate is a placeholder for post-v1.0 schema migrations. Pre-v1.0,
+// schema.sql is the single source of truth and existing databases must
+// match it; once v1.0 ships, add idempotent ALTER statements here in the
+// order they need to apply.
+func migrate(db *sql.DB) error {
+	_ = db
+	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
