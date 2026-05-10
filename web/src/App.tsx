@@ -57,7 +57,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAppSettings, setShowAppSettings] = useState(false);
   const [createBoardOpen, setCreateBoardOpen] = useState(false);
-  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isMobile = useMediaQuery("(max-width: 639px)");
 
   const onBoardCreated = (b: { id: number }) => {
     qc.invalidateQueries({ queryKey: queryKeys.boards });
@@ -195,25 +195,25 @@ export default function App() {
             <Button
               variant="neutral"
               size="icon"
-              className="gap-1 md:w-auto md:px-2 md:text-xs"
+              className="gap-1 lg:w-auto lg:px-2 lg:text-xs"
               onClick={() => setCreateBoardOpen(true)}
               aria-label="New board"
               title="New board"
             >
               <PlusIcon />
-              <span className="hidden md:inline">new board</span>
+              <span className="hidden lg:inline">new board</span>
             </Button>
             {view === "board" && activeId != null && (
               <Button
                 variant="neutral"
                 size="icon"
-                className="gap-1 md:w-auto md:px-2 md:text-xs"
+                className="gap-1 lg:w-auto lg:px-2 lg:text-xs"
                 onClick={() => setShowArchived(true)}
                 aria-label="Archived tickets"
                 title="Archived tickets"
               >
                 <ArchiveIcon />
-                <span className="hidden md:inline">archived</span>
+                <span className="hidden lg:inline">archived</span>
               </Button>
             )}
             <a
