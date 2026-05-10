@@ -89,8 +89,8 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 	} else if board.RepoPath != "" {
 		// User configured a repo path but kanban can't see it as a git repo —
 		// most often because the host path isn't bind-mounted into the kanban
-		// container. Fail loudly instead of silently degrading to a mount-only
-		// session, which previously left the user with an empty /workspace.
+		// container. Fail loudly rather than silently degrading to a mount-only
+		// session with an empty /workspace.
 		return nil, fmt.Errorf("repo_path %q is not a git repository visible to kanban (no .git found); make sure the path exists and is bind-mounted into the kanban container", board.RepoPath)
 	} else {
 		// No repo — use the resolved mount as the session's "worktree" so things

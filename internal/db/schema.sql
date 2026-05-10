@@ -104,3 +104,6 @@ CREATE INDEX IF NOT EXISTS idx_port_alloc_session
 -- duplicate hooks are rejected whether or not board_id is set.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_hook_configs
   ON hook_configs(event, command, COALESCE(board_id, 0));
+CREATE INDEX IF NOT EXISTS idx_tickets_fingerprint
+  ON tickets(board_id, fingerprint)
+  WHERE fingerprint IS NOT NULL AND archived_at IS NULL;

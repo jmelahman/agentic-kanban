@@ -43,8 +43,9 @@ func ResolvePaths(board *db.Board, sess *db.Session) ResolvedPaths {
 	hasRepo := repo != "" && isGitRepo(repo)
 
 	if mount == "" {
-		// Backwards compat: when the board pre-dates the mount_path field, the
-		// worktree was historically what got mounted at /workspace.
+		// MountPath is optional: when unset, mount the session's worktree so
+		// /workspace points at the branch-isolated checkout, or fall back to
+		// the bare repo path.
 		if hasRepo && sess != nil && sess.WorktreePath != "" {
 			mount = sess.WorktreePath
 		} else if repo != "" {

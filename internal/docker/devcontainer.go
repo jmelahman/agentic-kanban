@@ -86,9 +86,8 @@ type PullProgressFunc func(PullProgress)
 // SpawnOptions configures a devcontainer spawn.
 type SpawnOptions struct {
 	// WorktreePath is the host path used for variable substitution in the
-	// devcontainer config (${localWorkspaceFolder}). Historically this was
-	// also what got bind-mounted at the workspace folder; that role is now
-	// played by MountPath, which defaults to WorktreePath when unset.
+	// devcontainer config (${localWorkspaceFolder}). The actual workspace
+	// bind mount uses MountPath, which defaults to WorktreePath when unset.
 	WorktreePath string
 	// MountPath is the host directory bind-mounted into the container at the
 	// devcontainer's workspaceFolder. May be a parent directory of multiple

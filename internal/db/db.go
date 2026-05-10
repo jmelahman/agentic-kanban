@@ -3,7 +3,6 @@ package db
 import (
 	_ "embed"
 	"fmt"
-	"strings"
 
 	"database/sql"
 
@@ -32,10 +31,10 @@ type Store struct {
 	db *sql.DB
 }
 
-// Open opens a Store backed by a SQLite database at path, applies the embedded
-// schema, and runs idempotent migrations. The sentinel path ":memory:" opens
-// a process-local in-memory database (shared cache so the connection pool sees
-// one DB) and skips on-disk file setup; data is discarded when Close is called.
+// Open opens a Store backed by a SQLite database at path and applies the
+// embedded schema. The sentinel path ":memory:" opens a process-local
+// in-memory database (shared cache so the connection pool sees one DB) and
+// skips on-disk file setup; data is discarded when Close is called.
 func Open(path string) (*Store, error) {
 	var dsn string
 	if path == ":memory:" {
@@ -66,42 +65,7 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	if err := migrate(db); err != nil {
-		_ = db.Close()
-		return nil, fmt.Errorf("migrate: %w", err)
-	}
 	return &Store{db: db}, nil
-}
-
-// migrate applies idempotent ALTER TABLE statements for columns added after
-// the original schema. SQLite's CREATE TABLE IF NOT EXISTS won't pick up new
-// columns on existing databases, so we ADD COLUMN here and ignore the
-// "duplicate column name" error that fires once the column is in place.
-func migrate(db *sql.DB) error {
-	stmts := []string{
-		`ALTER TABLE sessions ADD COLUMN pr_number INTEGER`,
-		`ALTER TABLE sessions ADD COLUMN pr_url TEXT`,
-		`ALTER TABLE sessions ADD COLUMN pr_title TEXT`,
-		`ALTER TABLE boards ADD COLUMN branch_prefix TEXT`,
-		`ALTER TABLE boards ADD COLUMN git_author_name TEXT`,
-		`ALTER TABLE boards ADD COLUMN git_author_email TEXT`,
-		`ALTER TABLE tickets ADD COLUMN fingerprint TEXT`,
-		`ALTER TABLE sessions ADD COLUMN claude_session_id TEXT`,
-	}
-	for _, s := range stmts {
-		if _, err := db.Exec(s); err != nil {
-			if strings.Contains(err.Error(), "duplicate column name") {
-				continue
-			}
-			return fmt.Errorf("%s: %w", s, err)
-		}
-	}
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_tickets_fingerprint
-		ON tickets(board_id, fingerprint)
-		WHERE fingerprint IS NOT NULL AND archived_at IS NULL`); err != nil {
-		return fmt.Errorf("create idx_tickets_fingerprint: %w", err)
-	}
-	return nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }

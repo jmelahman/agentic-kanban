@@ -44,8 +44,8 @@ func TestOpen_FreshFile(t *testing.T) {
 	assertBoardLifecycle(t, store)
 }
 
-// TestOpen_Reopen exercises the migrate path against an already-populated
-// schema, which is what production hits on every startup after the first one.
+// TestOpen_Reopen opens an already-populated DB a second time — the path
+// production hits on every startup after the first one.
 func TestOpen_Reopen(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "kanban.db")
 	first, err := db.Open(path)
