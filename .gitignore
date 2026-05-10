@@ -49,6 +49,7 @@ plans/
 !web/src/**/*.png
 !docs/public/**/*.png
 .claude-tmp/
+.claude/settings.local.json
 
 # python packaging
 dist/
