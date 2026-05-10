@@ -55,7 +55,7 @@ export function SessionPane({
   const onClose = useCallback(() => activeTicketStore.set(null), []);
   // On narrow viewports the side-by-side layout doesn't fit, so the pane takes
   // over as a full-screen overlay (same chrome as the manual fullscreen mode).
-  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isMobile = useMediaQuery("(max-width: 639px)");
   const isHorizontal = orientation === "horizontal";
   const [fullscreen, setFullscreen] = useState(false);
   const tabsEnabled = ticketId != null;
