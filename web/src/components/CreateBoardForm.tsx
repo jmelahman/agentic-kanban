@@ -14,13 +14,13 @@ export function CreateBoardModal({
   onClose: () => void;
   onCreated: (b: Board) => void;
 }) {
-  const { fields, update, reset, hasMount } = useBoardForm();
+  const { fields, update, reset, hasRepo } = useBoardForm();
 
   const createMut = useMutation({
     mutationFn: () =>
       api.createBoard({
         name: fields.name,
-        mount_path: fields.mount.trim(),
+        repo_path: fields.repo.trim(),
       }),
     onSuccess: (board) => {
       onCreated(board);
@@ -34,7 +34,7 @@ export function CreateBoardModal({
     onClose();
   };
 
-  const canSubmit = fields.name.trim() !== "" && hasMount;
+  const canSubmit = fields.name.trim() !== "" && hasRepo;
 
   return (
     <Modal open={open} onClose={handleClose} title="New board" busy={createMut.isPending}>
@@ -55,14 +55,14 @@ export function CreateBoardModal({
           />
         </FormField>
         <FormField
-          label="Mount path"
-          hint="Working directory agent sessions start from."
+          label="Repository path"
+          hint="Host path to the git repo this board tracks. Mount path defaults to this and can be customized in board settings."
         >
           <FormInput
             mono
-            placeholder="/host/path/to/folder"
-            value={fields.mount}
-            onChange={(e) => update("mount", e.target.value)}
+            placeholder="/host/path/to/repo"
+            value={fields.repo}
+            onChange={(e) => update("repo", e.target.value)}
             required
           />
         </FormField>
