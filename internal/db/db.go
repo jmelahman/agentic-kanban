@@ -66,33 +66,11 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	if err := requireCompatibleSchema(db); err != nil {
-		_ = db.Close()
-		return nil, err
-	}
 	if err := migrate(db); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 	return &Store{db: db}, nil
-}
-
-// requireCompatibleSchema rejects pre-release databases created before
-// sessions.pr_state was made nullable. CREATE TABLE IF NOT EXISTS leaves an
-// existing table's column definitions alone, so an old DB silently runs with
-// the wrong nullability — surface that loudly instead of letting it through.
-func requireCompatibleSchema(db *sql.DB) error {
-	var stale int
-	err := db.QueryRow(
-		`SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='pr_state' AND "notnull"=1`,
-	).Scan(&stale)
-	if err != nil {
-		return fmt.Errorf("inspect sessions schema: %w", err)
-	}
-	if stale > 0 {
-		return fmt.Errorf("database has the pre-release schema (sessions.pr_state NOT NULL); delete the DB file and restart to pick up the breaking schema change")
-	}
-	return nil
 }
 
 // migrate applies idempotent ALTER TABLE statements for columns added after
