@@ -72,13 +72,26 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 		}
 		worktreePath = filepath.Join(worktreeRoot, ticket.Slug)
 		if _, statErr := os.Stat(worktreePath); statErr == nil {
-			// Worktree directory already exists from a previous run; trust it.
+			// Worktree directory already exists. Trust it only when it actually
+			// is a git worktree (has a .git entry) — dockerd will auto-create a
+			// missing bind-mount source as an empty directory, and silently
+			// trusting that empty dir is how we'd end up mounting nothing into
+			// the session container.
+			if !isGitRepo(worktreePath) {
+				return nil, fmt.Errorf("worktree path %q exists but is not a git worktree (likely a stale empty directory from a prior failed start); remove it and try again", worktreePath)
+			}
 		} else if err := git.AddWorktree(paths.RepoPath, branch, worktreePath, board.BaseBranch); err != nil {
 			// Branch may already exist (orphaned). Try attaching it to a fresh worktree.
 			if err2 := git.AddWorktreeFromExisting(paths.RepoPath, branch, worktreePath); err2 != nil {
-				return nil, fmt.Errorf("create worktree: %w", err)
+				return nil, fmt.Errorf("create worktree at %s from %s base %q: %w", worktreePath, paths.RepoPath, board.BaseBranch, err)
 			}
 		}
+	} else if board.RepoPath != "" {
+		// User configured a repo path but kanban can't see it as a git repo —
+		// most often because the host path isn't bind-mounted into the kanban
+		// container. Fail loudly instead of silently degrading to a mount-only
+		// session, which previously left the user with an empty /workspace.
+		return nil, fmt.Errorf("repo_path %q is not a git repository visible to kanban (no .git found); make sure the path exists and is bind-mounted into the kanban container", board.RepoPath)
 	} else {
 		// No repo — use the resolved mount as the session's "worktree" so things
 		// like task discovery and claude settings have a host directory to act on.

@@ -55,6 +55,11 @@ func ResolvePaths(board *db.Board, sess *db.Session) ResolvedPaths {
 	return ResolvedPaths{MountPath: mount, RepoPath: repo, HasRepo: hasRepo}
 }
 
+// isGitRepo reports whether path contains a `.git` entry — either a directory
+// (primary repo) or a regular file (linked worktree pointing at a parent
+// gitdir). Used both to tell whether a board's repo_path is something git can
+// run against, and to tell a real worktree from an empty directory dockerd
+// auto-created on a prior failed bind-mount.
 func isGitRepo(path string) bool {
 	if path == "" {
 		return false

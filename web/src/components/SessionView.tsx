@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   api,
+  formatApiError,
   MergeConfig,
   PR_STATE_COLOR,
   PRState,
@@ -633,6 +634,14 @@ export function SessionView({
       </div>
       {status === "starting" && (
         <PullProgressBanner progress={pullProgress ?? null} />
+      )}
+      {!session && ensureMut.isError && (
+        <div className="border-b border-border bg-danger/10 px-3 py-2 text-xs text-danger">
+          <div className="font-medium">Couldn't create session</div>
+          <div className="mt-1 whitespace-pre-wrap break-words font-mono">
+            {formatApiError(ensureMut.error)}
+          </div>
+        </div>
       )}
       <div className="flex border-b border-border text-sm">
         <Tab
