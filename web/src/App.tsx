@@ -133,6 +133,7 @@ export default function App() {
   useShortcut("board.prev", () => cycleBoard(-1), {
     enabled: view === "board",
   });
+  useShortcut("board.create", () => setCreateBoardOpen(true));
 
   // Drives the connection-status banner. Only meaningful in the board view —
   // overview manages its own per-board subscriptions inside the tree, and a

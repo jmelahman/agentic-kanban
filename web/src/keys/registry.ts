@@ -20,6 +20,12 @@ export const ACTIONS: Action[] = [
     defaultBinding: { ctrl: false, alt: false, shift: false, meta: false, key: "F" },
   },
   {
+    id: "board.create",
+    label: "New board",
+    group: "Navigation",
+    defaultBinding: { ctrl: false, alt: false, shift: false, meta: false, key: "B" },
+  },
+  {
     id: "board.next",
     label: "Next board",
     group: "Navigation",
