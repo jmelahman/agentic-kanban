@@ -46,11 +46,14 @@ board_name = "kanban-errors"
 # spawns, using the ticket body as the prompt. Off by default — sessions boot
 # to an idle container and the agent only runs once a user attaches the PTY.
 # When on, kanban writes the ticket body to `.kanban/prompt.txt` inside the
-# worktree and execs the harness's start template (e.g. `claude -p ...
-# --dangerously-skip-permissions`) detached. Output is appended to
+# worktree and execs the harness's start template (e.g. `IS_SANDBOX=1 claude
+# -p ... --dangerously-skip-permissions`) detached. Output is appended to
 # `.kanban/agent.log` in the worktree. Tickets with an empty body are
 # skipped. Requires a harness with a non-empty start template (claude has
-# one; pi does not).
+# one; pi does not). Note: the session container runs as root to keep
+# rootless dockerd on the host working, and Claude Code refuses
+# `--dangerously-skip-permissions` as root unless `IS_SANDBOX=1` is set —
+# the claude harness template sets it for you.
 [agent]
 auto_start = false
 

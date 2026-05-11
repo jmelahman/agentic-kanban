@@ -42,8 +42,12 @@ var Registry = []Harness{
 		// immediately — start_session must not block on the loop.
 		// --dangerously-skip-permissions is required because there is no
 		// human at the PTY to approve tool calls; the session container is
-		// the isolation boundary.
-		StartCommandTemplate: `cd /workspace && mkdir -p .kanban && nohup claude -p "$(cat {{.PromptFile}})" --dangerously-skip-permissions >.kanban/agent.log 2>&1 </dev/null &`,
+		// the isolation boundary. IS_SANDBOX=1 is Claude Code's opt-in to
+		// allow --dangerously-skip-permissions while running as root (the
+		// devcontainer runs as uid 0 to support rootless dockerd on the
+		// host); without it claude exits with "cannot be used with
+		// root/sudo privileges".
+		StartCommandTemplate: `cd /workspace && mkdir -p .kanban && IS_SANDBOX=1 nohup claude -p "$(cat {{.PromptFile}})" --dangerously-skip-permissions >.kanban/agent.log 2>&1 </dev/null &`,
 	},
 	{
 		ID:                "pi",

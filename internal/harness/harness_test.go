@@ -23,6 +23,9 @@ func TestRenderStartScript_Claude(t *testing.T) {
 	if !strings.Contains(script, "--dangerously-skip-permissions") {
 		t.Errorf("script should pass --dangerously-skip-permissions; got:\n%s", script)
 	}
+	if !strings.Contains(script, "IS_SANDBOX=1") {
+		t.Errorf("script should set IS_SANDBOX=1 to bypass claude's root-uid refusal; got:\n%s", script)
+	}
 	if !strings.Contains(script, "nohup") || !strings.HasSuffix(strings.TrimSpace(script), "&") {
 		t.Errorf("script should background the agent (nohup ... &); got:\n%s", script)
 	}
