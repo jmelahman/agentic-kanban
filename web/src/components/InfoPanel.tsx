@@ -479,5 +479,5 @@ function formatTime(ts?: number): ReactNode {
   const ms = ts < 1e12 ? ts * 1000 : ts;
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return <Muted>—</Muted>;
-  return <span title={d.toISOString()}>{d.toLocaleString()}</span>;
+  return <span className="text-xs" title={d.toISOString()}>{d.toLocaleString()}</span>;
 }
