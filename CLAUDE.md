@@ -78,11 +78,16 @@ host-path translation: paths kanban sees as `/workspace/...` and
 before being handed to dockerd. Set these on the kanban process:
 
 ```sh
-export KANBAN_HOST_WORKSPACE=/path/on/host/to/this/repo  # rewrites /workspace prefix
-export KANBAN_HOST_HOME=/path/on/host/to/your/home       # rewrites $HOME prefix
+export KANBAN_HOST_WORKSPACE=/path/on/host/to/this/repo   # rewrites /workspace prefix
+export KANBAN_HOST_HOME=/path/on/host/to/your/home        # rewrites $HOME prefix
+export KANBAN_HOST_DOCKER_SOCK=/var/run/user/1000/docker.sock  # rootless docker socket
 ```
 
-Both default to unset (no translation) so the host install is unaffected.
+All three default to unset (no translation) so the host install is unaffected.
+`KANBAN_HOST_DOCKER_SOCK` is only needed on rootless-docker hosts where
+the devcontainer's `/var/run/docker.sock` is a bind of e.g.
+`/var/run/user/$UID/docker.sock` — handing the in-container path to the
+host's dockerd fails with `bind source path does not exist`.
 See `docs/guide/configuration.md` § "Running kanban inside a container"
 for the full table.
 

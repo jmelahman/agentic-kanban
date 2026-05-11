@@ -15,12 +15,19 @@ import (
 //     correctly when dockerd is running on the host.
 //   - KANBAN_HOST_HOME: host path of $HOME inside the kanban container. Lets
 //     ~/.claude (and similar) bind-mount correctly.
+//   - KANBAN_HOST_DOCKER_SOCK: host path of the docker socket that the
+//     built-in devcontainer auto-mount should use as the bind source.
+//     Needed when kanban runs inside a container whose own
+//     /var/run/docker.sock is a bind of the host's rootless socket (e.g.
+//     /var/run/user/1000/docker.sock) — the in-container path can't be
+//     handed to the host's dockerd as a mount source.
 //
-// Both are unset in the default (host) install — paths pass through
+// All three are unset in the default (host) install — paths pass through
 // unchanged.
 const (
-	envHostWorkspace = "KANBAN_HOST_WORKSPACE"
-	envHostHome      = "KANBAN_HOST_HOME"
+	envHostWorkspace  = "KANBAN_HOST_WORKSPACE"
+	envHostHome       = "KANBAN_HOST_HOME"
+	envHostDockerSock = "KANBAN_HOST_DOCKER_SOCK"
 
 	// containerWorkspacePrefix is the conventional in-container workspace
 	// folder for kanban itself. Boards created from inside the kanban

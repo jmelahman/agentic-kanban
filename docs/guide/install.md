@@ -27,12 +27,13 @@ docker run -d --name kanban \
   -e HOME=$HOME \
   -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
   -e KANBAN_DATA_DIR=$HOME/.local/share/kanban \
+  -e KANBAN_HOST_DOCKER_SOCK=${DOCKER_SOCK_PATH:-/var/run/docker.sock} \
   -e GH_TOKEN=$(gh auth token) \
   lahmanja/kanban:latest
 ```
 
 ::: tip Rootless Docker
-Set `DOCKER_SOCK_PATH` in your shell to point at your rootless socket — see the [rootless Docker docs](https://docs.docker.com/engine/security/rootless/).
+Set `DOCKER_SOCK_PATH` in your shell to point at your rootless socket — see the [rootless Docker docs](https://docs.docker.com/engine/security/rootless/). The same value flows into `KANBAN_HOST_DOCKER_SOCK` so the host path is used as the bind source when kanban spawns session containers.
 :::
 
 ## From GitHub Releases

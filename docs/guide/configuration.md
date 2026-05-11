@@ -148,6 +148,7 @@ reach dockerd:
 | --- | --- |
 | `$KANBAN_HOST_WORKSPACE` | Host path of `/workspace` inside the kanban container. Covers board `repo_path`, `worktree_root`, and any `[devcontainer].mounts` whose source lives under `/workspace`. |
 | `$KANBAN_HOST_HOME` | Host path of the kanban container's `$HOME`. Covers `~/.claude` / `~/.claude.json` forwarding. |
+| `$KANBAN_HOST_DOCKER_SOCK` | Host path of the docker socket. Needed when kanban's own `/var/run/docker.sock` is a bind of the host's rootless socket (e.g. `/var/run/user/1000/docker.sock`) — the in-container path is invalid as a bind source on the host. When unset, kanban probes `/var/run/docker.sock` then `$XDG_RUNTIME_DIR/docker.sock` directly. |
 
 Example for a kanban devcontainer running as root with the project bind-mounted
 from `/home/jamison/code/kanban`:
@@ -155,6 +156,8 @@ from `/home/jamison/code/kanban`:
 ```sh
 export KANBAN_HOST_WORKSPACE=/home/jamison/code/kanban
 export KANBAN_HOST_HOME=/home/jamison
+# Set on rootless-docker hosts where the socket isn't at /var/run/docker.sock:
+export KANBAN_HOST_DOCKER_SOCK=/var/run/user/1000/docker.sock
 ```
 
 Both are unset (and the translation is a no-op) on the default host install.

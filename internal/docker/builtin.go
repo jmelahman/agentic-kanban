@@ -67,11 +67,16 @@ func ClaudeConfigMounts() []string {
 
 // DockerSocketMount returns the host docker socket bind mount string applied
 // to built-in configs when DevcontainerSection.DockerSocket is unset or true.
-// It probes /var/run/docker.sock first, then $XDG_RUNTIME_DIR/docker.sock for
-// rootless installs, and returns "" when neither exists. Hand-written
-// devcontainer.json files manage their own socket mount and are unaffected by
-// the flag.
+// It prefers $KANBAN_HOST_DOCKER_SOCK when set (for kanban-in-a-container
+// installs where the local probe would resolve a path that's invalid on the
+// host), then probes /var/run/docker.sock, then $XDG_RUNTIME_DIR/docker.sock
+// for rootless installs. Returns "" when nothing is set and neither candidate
+// exists. Hand-written devcontainer.json files manage their own socket mount
+// and are unaffected by the flag.
 func DockerSocketMount() string {
+	if src := os.Getenv(envHostDockerSock); src != "" {
+		return "type=bind,source=" + src + ",target=/var/run/docker.sock"
+	}
 	for _, src := range dockerSocketCandidates() {
 		if _, err := os.Stat(src); err == nil {
 			return "type=bind,source=" + src + ",target=/var/run/docker.sock"

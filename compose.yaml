@@ -31,6 +31,11 @@ services:
       GH_TOKEN: ${GH_TOKEN:-}
       DEVCONTAINER_REMOTE_USER: ${DEVCONTAINER_REMOTE_USER:-}
       SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:-}
+      # Host path of the docker socket, used as the bind source when kanban
+      # spawns session containers. Without this, kanban would emit
+      # source=/var/run/docker.sock — a path that exists inside this
+      # container but not on a rootless-docker host.
+      KANBAN_HOST_DOCKER_SOCK: ${XDG_RUNTIME_DIR}/docker.sock
     volumes:
       - ${XDG_RUNTIME_DIR}/docker.sock:/var/run/docker.sock
       # Agent config dir. Claude Code reads ~/.claude; for other
