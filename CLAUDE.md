@@ -135,6 +135,29 @@ bundled Chromium under `$PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`.
 - `.devcontainer/` — image, firewall (allowlists `storage.googleapis.com`,
   `registry.npmjs.org`, GitHub, `proxy.golang.org`, anthropic, etc.).
 
+## Recurring regression notes
+
+Short entries on bugs that have bitten us before. When you fix a regression
+that fits a pattern below, extend the entry; when you fix something new and
+likely to recur, add a fresh one. Keep each entry short — state the rule,
+not the war story.
+
+### `sessions` row has multiple writers
+
+Two independent paths write to the `sessions` row: the session manager
+(lifecycle columns — `status`, `container_id`, `started_at`, `stopped_at`)
+and the GitHub poller (`pr_state`, `pr_number`, `pr_url`, `pr_title`).
+Anything that loads the row, mutates a few fields, then writes the whole
+row back will silently clobber whatever the other writer just committed.
+Rules:
+
+- Use column-scoped updates (`UpdateSessionLifecycle`, `UpdateSessionPR`).
+  Don't `UpsertSession` from a path that doesn't own every column.
+- Before publishing `session_updated` over SSE, refetch from the DB so the
+  wire payload reflects what's persisted. HTTP handlers funnel through
+  `publishSessionUpdated(ctx, sessionID)` which refetches; the poller
+  refetches in `applyTransition`'s defer.
+
 ## Documentation upkeep
 
 User-facing changes need a docs update in the same PR. Match the change to
