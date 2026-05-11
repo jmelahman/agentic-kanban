@@ -27,7 +27,18 @@ import {
 import { useToast } from "@/toast";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useShortcut } from "@/keys/useShortcut";
-import { Button, Spinner } from "./Button";
+import {
+  ArchiveIcon,
+  CheckIcon,
+  MergeIcon,
+  PlayIcon,
+  PlusIcon,
+  PullIcon,
+  RestartIcon,
+  StopIcon,
+} from "@/icons";
+import { ActionButton } from "./ActionButton";
+import { Button } from "./Button";
 import { InfoPanel } from "./InfoPanel";
 import { Tab } from "./Tab";
 import { TasksPanel } from "./TasksPanel";
@@ -365,147 +376,82 @@ export function SessionView({
         </a>
       )}
       <div className="ml-auto flex gap-2">
-        {!session &&
-          (compact ? (
-            <Button
-              variant="primary"
-              size="icon"
-              onClick={() => ensureMut.mutate()}
-              disabled={ensureMut.isPending}
-              aria-label="create session"
-              title="create session"
-            >
-              {ensureMut.isPending ? <Spinner /> : <PlusIcon />}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={() => ensureMut.mutate()}
-              pending={ensureMut.isPending}
-              idleLabel="create session"
-              pendingLabel="creating session…"
-            />
-          ))}
-        {canStart &&
-          (compact ? (
-            <Button
-              variant="primary"
-              size="icon"
-              onClick={() => startMut.mutate(session.id)}
-              disabled={startMut.isPending || status === "starting"}
-              aria-label="start"
-              title="start"
-            >
-              {startMut.isPending || status === "starting" ? (
-                <Spinner />
-              ) : (
-                <PlayIcon />
-              )}
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              onClick={() => startMut.mutate(session.id)}
-              pending={startMut.isPending || status === "starting"}
-              idleLabel="start"
-              pendingLabel="starting…"
-            />
-          ))}
-        {session &&
-          isRunning &&
-          (compact ? (
-            <Button
-              variant="secondary"
-              size="icon"
-              onClick={() => stopMut.mutate()}
-              disabled={stopMut.isPending || status === "stopping"}
-              aria-label="stop"
-              title="stop"
-            >
-              {stopMut.isPending || status === "stopping" ? (
-                <Spinner />
-              ) : (
-                <StopIcon />
-              )}
-            </Button>
-          ) : (
-            <Button
-              variant="secondary"
-              onClick={() => stopMut.mutate()}
-              pending={stopMut.isPending || status === "stopping"}
-              idleLabel="stop"
-              pendingLabel="stopping…"
-            />
-          ))}
-        {session &&
-          isRunning &&
-          (compact ? (
-            <Button
-              variant="neutral"
-              size="icon"
-              onClick={() => restartMut.mutate()}
-              disabled={restartMut.isPending}
-              aria-label="restart container"
-              title="restart container"
-            >
-              {restartMut.isPending ? <Spinner /> : <RestartIcon />}
-            </Button>
-          ) : (
-            <Button
-              variant="neutral"
-              onClick={() => restartMut.mutate()}
-              pending={restartMut.isPending}
-              idleLabel="restart container"
-              pendingLabel="restarting…"
-              title="restart container"
-            />
-          ))}
-        {session &&
-          syncStrategies.length === 1 &&
-          (compact ? (
-            <Button
-              variant="neutral"
-              size="icon"
-              onClick={() => syncMut.mutate(syncStrategies[0])}
-              disabled={syncMut.isPending}
-              aria-label={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
-              title={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
-            >
-              {syncMut.isPending ? <Spinner /> : <PullIcon />}
-            </Button>
-          ) : (
-            <Button
-              variant="neutral"
-              onClick={() => syncMut.mutate(syncStrategies[0])}
-              pending={syncMut.isPending}
-              idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
-              pendingLabel="syncing…"
-              title={`update from ${baseBranch}`}
-            />
-          ))}
+        {!session && (
+          <ActionButton
+            compact={compact}
+            variant="primary"
+            pending={ensureMut.isPending}
+            onClick={() => ensureMut.mutate()}
+            icon={<PlusIcon />}
+            idleLabel="create session"
+            pendingLabel="creating session…"
+            ariaLabel="create session"
+          />
+        )}
+        {canStart && (
+          <ActionButton
+            compact={compact}
+            variant="primary"
+            pending={startMut.isPending || status === "starting"}
+            onClick={() => startMut.mutate(session.id)}
+            icon={<PlayIcon />}
+            idleLabel="start"
+            pendingLabel="starting…"
+            ariaLabel="start"
+          />
+        )}
+        {session && isRunning && (
+          <ActionButton
+            compact={compact}
+            variant="secondary"
+            pending={stopMut.isPending || status === "stopping"}
+            onClick={() => stopMut.mutate()}
+            icon={<StopIcon />}
+            idleLabel="stop"
+            pendingLabel="stopping…"
+            ariaLabel="stop"
+          />
+        )}
+        {session && isRunning && (
+          <ActionButton
+            compact={compact}
+            variant="neutral"
+            pending={restartMut.isPending}
+            onClick={() => restartMut.mutate()}
+            icon={<RestartIcon />}
+            idleLabel="restart container"
+            pendingLabel="restarting…"
+            ariaLabel="restart container"
+            title="restart container"
+          />
+        )}
+        {session && syncStrategies.length === 1 && (
+          <ActionButton
+            compact={compact}
+            variant="neutral"
+            pending={syncMut.isPending}
+            onClick={() => syncMut.mutate(syncStrategies[0])}
+            icon={<PullIcon />}
+            idleLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+            pendingLabel="syncing…"
+            ariaLabel={`${SYNC_STRATEGY_LABELS[syncStrategies[0]]} ${baseBranch}`}
+            title={`update from ${baseBranch}`}
+          />
+        )}
         {session && syncStrategies.length > 1 && (
           <div className="relative" ref={interactive ? syncMenuRef : undefined}>
-            {compact ? (
-              <Button
-                variant="neutral"
-                size="icon"
-                onClick={() => setSyncMenuOpen((v) => !v)}
-                disabled={syncMut.isPending}
-                aria-label="sync"
-                title={`update from ${baseBranch}`}
-              >
-                {syncMut.isPending ? <Spinner /> : <PullIcon />}
-              </Button>
-            ) : (
-              <Button
-                variant="neutral"
-                onClick={() => setSyncMenuOpen((v) => !v)}
-                pending={syncMut.isPending}
-                idleLabel="sync ▾"
-                pendingLabel="syncing…"
-                title={`update from ${baseBranch}`}
-              />
-            )}
+            <ActionButton
+              compact={compact}
+              variant="neutral"
+              pending={syncMut.isPending}
+              onClick={() => setSyncMenuOpen((v) => !v)}
+              icon={<PullIcon />}
+              idleLabel="sync ▾"
+              pendingLabel="syncing…"
+              ariaLabel="sync"
+              title={`update from ${baseBranch}`}
+              compactTitle={`update from ${baseBranch}`}
+            />
             {interactive && syncMenuOpen && (
               <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded border border-border bg-surface p-1 text-xs shadow-lg">
                 {syncStrategies.map((s) => (
@@ -523,55 +469,36 @@ export function SessionView({
             )}
           </div>
         )}
-        {session &&
-          mergeStrategies.length === 1 &&
-          (compact ? (
-            <Button
-              variant="neutral"
-              size="icon"
-              onClick={() => mergeMut.mutate(mergeStrategies[0])}
-              disabled={mergeMut.isPending}
-              aria-label={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
-              title={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
-            >
-              {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
-            </Button>
-          ) : (
-            <Button
-              variant="neutral"
-              onClick={() => mergeMut.mutate(mergeStrategies[0])}
-              pending={mergeMut.isPending}
-              idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
-              pendingLabel="merging…"
-              title={`integrate into ${baseBranch}`}
-            />
-          ))}
+        {session && mergeStrategies.length === 1 && (
+          <ActionButton
+            compact={compact}
+            variant="neutral"
+            pending={mergeMut.isPending}
+            onClick={() => mergeMut.mutate(mergeStrategies[0])}
+            icon={<MergeIcon />}
+            idleLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+            pendingLabel="merging…"
+            ariaLabel={MERGE_STRATEGY_LABELS[mergeStrategies[0]]}
+            title={`integrate into ${baseBranch}`}
+          />
+        )}
         {session && mergeStrategies.length > 1 && (
           <div
             className="relative"
             ref={interactive ? mergeMenuRef : undefined}
           >
-            {compact ? (
-              <Button
-                variant="neutral"
-                size="icon"
-                onClick={() => setMergeMenuOpen((v) => !v)}
-                disabled={mergeMut.isPending}
-                aria-label="merge"
-                title={`integrate into ${baseBranch}`}
-              >
-                {mergeMut.isPending ? <Spinner /> : <MergeIcon />}
-              </Button>
-            ) : (
-              <Button
-                variant="neutral"
-                onClick={() => setMergeMenuOpen((v) => !v)}
-                pending={mergeMut.isPending}
-                idleLabel="merge ▾"
-                pendingLabel="merging…"
-                title={`integrate into ${baseBranch}`}
-              />
-            )}
+            <ActionButton
+              compact={compact}
+              variant="neutral"
+              pending={mergeMut.isPending}
+              onClick={() => setMergeMenuOpen((v) => !v)}
+              icon={<MergeIcon />}
+              idleLabel="merge ▾"
+              pendingLabel="merging…"
+              ariaLabel="merge"
+              title={`integrate into ${baseBranch}`}
+              compactTitle={`integrate into ${baseBranch}`}
+            />
             {interactive && mergeMenuOpen && (
               <div className="absolute right-0 top-full z-10 mt-1 w-64 rounded border border-border bg-surface p-1 text-xs shadow-lg">
                 {mergeStrategies.map((s) => (
@@ -588,47 +515,28 @@ export function SessionView({
             )}
           </div>
         )}
-        {compact ? (
-          <Button
-            variant="neutral"
-            size="icon"
-            onClick={() => archiveMut.mutate()}
-            disabled={archiveMut.isPending}
-            aria-label="archive"
-            title="archive"
-          >
-            {archiveMut.isPending ? <Spinner /> : <ArchiveIcon />}
-          </Button>
-        ) : (
-          <Button
-            variant="neutral"
-            onClick={() => archiveMut.mutate()}
-            pending={archiveMut.isPending}
-            idleLabel="archive"
-            pendingLabel="archiving…"
-          />
-        )}
-        {compact ? (
-          <Button
-            variant="primary"
-            size="icon"
-            onClick={() => doneMut.mutate()}
-            disabled={doneMut.isPending}
-            aria-label="done"
-            title="mark as done"
-          >
-            {doneMut.isPending ? <Spinner /> : <CheckIcon />}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            onClick={() => doneMut.mutate()}
-            pending={doneMut.isPending}
-            idleLabel="done"
-            pendingLabel="finishing…"
-            title="mark as done"
-          />
-        )}
+        <ActionButton
+          compact={compact}
+          variant="neutral"
+          pending={archiveMut.isPending}
+          onClick={() => archiveMut.mutate()}
+          icon={<ArchiveIcon />}
+          idleLabel="archive"
+          pendingLabel="archiving…"
+          ariaLabel="archive"
+        />
+        <ActionButton
+          compact={compact}
+          variant="primary"
+          pending={doneMut.isPending}
+          onClick={() => doneMut.mutate()}
+          icon={<CheckIcon />}
+          idleLabel="done"
+          pendingLabel="finishing…"
+          ariaLabel="done"
+          title="mark as done"
+          compactTitle="mark as done"
+        />
         {headerExtras}
         <Button variant="neutral" size="icon" onClick={onClose}>
           ✕
@@ -775,96 +683,3 @@ function formatBytes(n: number): string {
   return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
 }
 
-function PullIcon() {
-  return (
-    <svg {...iconProps()}>
-      <circle cx="6" cy="4" r="2" />
-      <line x1="6" y1="6" x2="6" y2="18" />
-      <circle cx="6" cy="20" r="2" fill="currentColor" />
-      <circle cx="18" cy="20" r="2" fill="currentColor" />
-      <line x1="18" y1="18" x2="18" y2="8" />
-      <path d="M 18 8 Q 18 4 13 4" fill="none" />
-      <polyline points="13 1 10 4 13 7" />
-    </svg>
-  );
-}
-
-function RestartIcon() {
-  return (
-    <svg {...iconProps()} viewBox="-3 -3 30 30">
-      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
-      <path d="M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
-      <path d="M3 21v-5h5" />
-    </svg>
-  );
-}
-
-function MergeIcon() {
-  return (
-    <svg {...iconProps()} viewBox="-3 -3 30 30">
-      <circle cx="6" cy="6" r="3" />
-      <circle cx="6" cy="18" r="3" />
-      <circle cx="18" cy="9" r="3" />
-      <path d="M6 9v6" />
-      <path d="M6 15a9 9 0 0 0 9-6" />
-    </svg>
-  );
-}
-
-function iconProps() {
-  return {
-    xmlns: "http://www.w3.org/2000/svg",
-    width: "14",
-    height: "14",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: "2",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-  };
-}
-
-function PlayIcon() {
-  return (
-    <svg {...iconProps()} fill="currentColor" stroke="none">
-      <path d="M6 4l14 8-14 8V4z" />
-    </svg>
-  );
-}
-
-function StopIcon() {
-  return (
-    <svg {...iconProps()} fill="currentColor" stroke="none">
-      <rect x="6" y="6" width="12" height="12" rx="1" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg {...iconProps()}>
-      <line x1="12" y1="5" x2="12" y2="19" />
-      <line x1="5" y1="12" x2="19" y2="12" />
-    </svg>
-  );
-}
-
-function ArchiveIcon() {
-  return (
-    <svg {...iconProps()}>
-      <rect x="3" y="3" width="18" height="5" rx="1" />
-      <path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8" />
-      <line x1="10" y1="13" x2="14" y2="13" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg {...iconProps()}>
-      <polyline points="20 6 9 17 4 12" />
-    </svg>
-  );
-}

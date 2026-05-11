@@ -7,7 +7,7 @@ import { queryKeys } from "@/api/keys";
 import { addTicketRequestStore, useScalarSelector } from "@/store";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
-import { Modal } from "./Modal";
+import { ConfirmModal } from "./Modal";
 import { Ticket } from "./Ticket";
 
 export function Column(props: {
@@ -130,42 +130,25 @@ export function Column(props: {
           + add ticket
         </Button>
       )}
-      <Modal
+      <ConfirmModal
         open={confirmArchive}
         onClose={() => setConfirmArchive(false)}
         title={`Archive all in ${props.column.name}?`}
-        busy={archiveAllMut.isPending}
-      >
-        <div className="p-4">
-          <p className="text-sm">
-            Archive all <span className="font-medium">{ticketCount}</span> ticket{ticketCount === 1 ? "" : "s"} in{" "}
-            <span className="font-medium">{props.column.name}</span>? Their sessions will be stopped.
-          </p>
-          <p className="mt-2 text-xs text-fg-muted">
-            Tickets can be restored from the archive.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setConfirmArchive(false)}
-              disabled={archiveAllMut.isPending}
-            >
-              cancel
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="lg"
-              onClick={() => archiveAllMut.mutate()}
-              disabled={archiveAllMut.isPending}
-              pending={archiveAllMut.isPending}
-              idleLabel="archive all"
-              pendingLabel="archiving…"
-            />
-          </div>
-        </div>
-      </Modal>
+        description={
+          <>
+            Archive all <span className="font-medium">{ticketCount}</span>{" "}
+            ticket{ticketCount === 1 ? "" : "s"} in{" "}
+            <span className="font-medium">{props.column.name}</span>? Their
+            sessions will be stopped.
+          </>
+        }
+        consequence="Tickets can be restored from the archive."
+        onConfirm={() => archiveAllMut.mutate()}
+        confirmLabel="archive all"
+        confirmPendingLabel="archiving…"
+        confirmVariant="primary"
+        pending={archiveAllMut.isPending}
+      />
     </div>
   );
 }

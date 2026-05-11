@@ -6,7 +6,7 @@ import { useBoardForm } from "@/hooks/useBoardForm";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
 import { FormField, FormInput } from "./FormField";
-import { Modal } from "./Modal";
+import { ConfirmModal, Modal } from "./Modal";
 import { Tab } from "./Tab";
 
 type BoardSettingsTab = "general" | "git" | "danger";
@@ -267,42 +267,22 @@ export function BoardSettings({
           </div>
         )}
       </form>
-      <Modal
+      <ConfirmModal
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         title="Permanently delete board?"
-        busy={deleteMut.isPending}
-      >
-        <div className="p-4">
-          <p className="text-sm">
-            Permanently delete board <span className="font-medium">"{board.name}"</span>?
-          </p>
-          <p className="mt-2 text-xs text-fg-muted">
-            This stops all containers, removes worktrees, deletes branches, and removes
-            every ticket.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setConfirmDelete(false)}
-              disabled={deleteMut.isPending}
-            >
-              cancel
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              size="lg"
-              onClick={() => deleteMut.mutate()}
-              disabled={deleteMut.isPending}
-              pending={deleteMut.isPending}
-              idleLabel="delete board"
-              pendingLabel="deleting…"
-            />
-          </div>
-        </div>
-      </Modal>
+        description={
+          <>
+            Permanently delete board{" "}
+            <span className="font-medium">"{board.name}"</span>?
+          </>
+        }
+        consequence="This stops all containers, removes worktrees, deletes branches, and removes every ticket."
+        onConfirm={() => deleteMut.mutate()}
+        confirmLabel="delete board"
+        confirmPendingLabel="deleting…"
+        pending={deleteMut.isPending}
+      />
     </Modal>
   );
 }

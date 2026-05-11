@@ -112,6 +112,59 @@ export function CheckIcon(props: IconProps) {
   );
 }
 
+export function PlayIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)} fill="currentColor" stroke="none">
+      <path d="M6 4l14 8-14 8V4z" />
+    </svg>
+  );
+}
+
+export function StopIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)} fill="currentColor" stroke="none">
+      <rect x="6" y="6" width="12" height="12" rx="1" />
+    </svg>
+  );
+}
+
+export function PullIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="6" cy="4" r="2" />
+      <line x1="6" y1="6" x2="6" y2="18" />
+      <circle cx="6" cy="20" r="2" fill="currentColor" />
+      <circle cx="18" cy="20" r="2" fill="currentColor" />
+      <line x1="18" y1="18" x2="18" y2="8" />
+      <path d="M 18 8 Q 18 4 13 4" fill="none" />
+      <polyline points="13 1 10 4 13 7" />
+    </svg>
+  );
+}
+
+export function RestartIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)} viewBox="-3 -3 30 30">
+      <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+      <path d="M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15 6.7L3 16" />
+      <path d="M3 21v-5h5" />
+    </svg>
+  );
+}
+
+export function MergeIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)} viewBox="-3 -3 30 30">
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <circle cx="18" cy="9" r="3" />
+      <path d="M6 9v6" />
+      <path d="M6 15a9 9 0 0 0 9-6" />
+    </svg>
+  );
+}
+
 export function FullscreenEnterIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>

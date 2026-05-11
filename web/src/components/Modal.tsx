@@ -48,6 +48,67 @@ export function Drawer({
   );
 }
 
+type ConfirmModalProps = {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  // Main prompt; ReactNode so callers can embed <span className="font-medium">
+  // emphasis or interpolated values.
+  description: ReactNode;
+  // Smaller secondary line describing consequences. Omit to skip it entirely.
+  consequence?: ReactNode;
+  onConfirm: () => void;
+  confirmLabel: string;
+  confirmPendingLabel: string;
+  // Visual treatment of the confirm action. Defaults to "danger".
+  confirmVariant?: "danger" | "primary";
+  pending: boolean;
+};
+
+export function ConfirmModal({
+  open,
+  onClose,
+  title,
+  description,
+  consequence,
+  onConfirm,
+  confirmLabel,
+  confirmPendingLabel,
+  confirmVariant = "danger",
+  pending,
+}: ConfirmModalProps) {
+  return (
+    <Modal open={open} onClose={onClose} title={title} busy={pending}>
+      <div className="p-4">
+        <p className="text-sm">{description}</p>
+        {consequence != null && (
+          <p className="mt-2 text-xs text-fg-muted">{consequence}</p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={onClose}
+            disabled={pending}
+          >
+            cancel
+          </Button>
+          <Button
+            type="button"
+            variant={confirmVariant}
+            size="lg"
+            onClick={onConfirm}
+            disabled={pending}
+            pending={pending}
+            idleLabel={confirmLabel}
+            pendingLabel={confirmPendingLabel}
+          />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function DialogShell({
   open,
   onClose,
