@@ -682,4 +682,3 @@ function formatBytes(n: number): string {
   }
   return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
 }
-

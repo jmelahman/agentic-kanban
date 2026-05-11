@@ -86,10 +86,14 @@ Both default to unset (no translation) so the host install is unaffected.
 See `docs/guide/configuration.md` § "Running kanban inside a container"
 for the full table.
 
-## Tests / typecheck
+## Tests / typecheck / lint
 
 - Go: `go test ./...`
 - Frontend types: `cd web && npm run typecheck`
+- Pre-commit hooks: `prek run --all-files` (run before committing). The
+  `actionlint` hook tries to `go install` from `proxy.golang.org`, which
+  rotates IPs out of the devcontainer firewall — if it fails to install,
+  skip it with `SKIP=actionlint prek run --all-files`.
 
 ## Perf benchmark
 
