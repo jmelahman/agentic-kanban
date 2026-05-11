@@ -33,7 +33,7 @@ function loadSidebarCollapsed(): boolean {
 }
 
 export function Overview() {
-  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isMobile = useMediaQuery("(max-width: 639px)");
   if (isMobile) return <MobileOverview />;
   return <DesktopOverview />;
 }
