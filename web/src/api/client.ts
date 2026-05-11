@@ -49,6 +49,7 @@ export type Session = {
   pr_number?: number;
   pr_url?: string;
   pr_title?: string;
+  claude_session_id?: string;
 };
 
 export type PRReviewDecision =

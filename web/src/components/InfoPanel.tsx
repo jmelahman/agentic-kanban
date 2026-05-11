@@ -29,6 +29,12 @@ export function InfoPanel({ session }: { session: Session }) {
       <Section title="Session">
         <Row label="Status" value={<StatusValue status={session.status} />} />
         <Row label="Session ID" value={<Mono>{session.id}</Mono>} />
+        {session.claude_session_id && (
+          <Row
+            label="Claude session"
+            value={<Copyable text={session.claude_session_id} />}
+          />
+        )}
         <Row label="Started" value={formatTime(session.started_at)} />
         {session.stopped_at != null && (
           <Row label="Stopped" value={formatTime(session.stopped_at)} />
