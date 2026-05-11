@@ -381,6 +381,15 @@ func TestSessions(t *testing.T) {
 		other := e.seedTicket(board, "ClaudeResume")
 		sess := e.seedSession(other)
 
+		// Subscribe to board events before the PATCH so we can assert the
+		// handler broadcasts session_updated. Without that broadcast, the
+		// frontend InfoPanel never reflects the captured UUID until a hard
+		// refetch — which is how the resume feature looks broken on views
+		// (e.g. the overview canvas) that keep panels open across sessions.
+		events := e.subscribeBoardEvents(board.ID)
+		defer events.close()
+		events.waitReady(t)
+
 		uuid := "abcdef01-2345-6789-abcd-0123456789ab"
 		resp := e.patch(fmt.Sprintf("/api/sessions/%d/claude-session", sess.ID),
 			map[string]any{"claude_session_id": uuid})
@@ -392,6 +401,21 @@ func TestSessions(t *testing.T) {
 		}
 		if got.ClaudeSessionID != uuid {
 			t.Errorf("ClaudeSessionID = %q; want %q", got.ClaudeSessionID, uuid)
+		}
+
+		ev := events.next(t)
+		if ev.Type != "session_updated" {
+			t.Fatalf("expected session_updated event, got %q", ev.Type)
+		}
+		payload, _ := ev.Data["data"].(map[string]any)
+		if payload == nil {
+			t.Fatalf("event has no data payload: %#v", ev.Data)
+		}
+		if payload["id"] != float64(sess.ID) {
+			t.Errorf("event session id = %v; want %d", payload["id"], sess.ID)
+		}
+		if payload["claude_session_id"] != uuid {
+			t.Errorf("event claude_session_id = %v; want %q", payload["claude_session_id"], uuid)
 		}
 	})
 

@@ -18,9 +18,9 @@ import (
 // dependency assumed) — Claude Code passes the canonical UUID first in the
 // payload object.
 //
-// Users who hand-author .claude/settings.local.json opt out of this hook
-// wiring (writeClaudeSettings won't overwrite an existing file), which means
-// they also opt out of automatic resume.
+// writeClaudeSettings only writes when no file exists, so any pre-existing
+// settings.local.json (hand-authored or shipped before the resume feature)
+// is left alone and opts out of resume.
 const claudeSettings = `{
   "hooks": {
     "SessionStart": [
@@ -67,9 +67,11 @@ const claudeSettings = `{
 }
 `
 
-// writeClaudeSettings writes .claude/settings.local.json into the worktree if
-// it does not already exist. Existing files are left alone so user-authored
-// hook configuration is preserved.
+// writeClaudeSettings writes .claude/settings.local.json into the worktree
+// when no file is already present. Any existing file is left untouched, so
+// hand-authored settings and worktrees that pre-date newer hook wiring keep
+// their original file (and opt out of any features those newer hooks
+// enabled, e.g. automatic resume).
 func writeClaudeSettings(worktreePath string) error {
 	dir := filepath.Join(worktreePath, ".claude")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -78,6 +80,8 @@ func writeClaudeSettings(worktreePath string) error {
 	path := filepath.Join(dir, "settings.local.json")
 	if _, err := os.Stat(path); err == nil {
 		return nil
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	return os.WriteFile(path, []byte(claudeSettings), 0o644)
 }

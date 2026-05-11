@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jmelahman/kanban/internal/api"
 	"github.com/jmelahman/kanban/internal/config"
@@ -224,5 +226,83 @@ func assertStatus(t *testing.T, resp *http.Response, want int) {
 		body, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		t.Fatalf("status = %d; want %d. body: %s", resp.StatusCode, want, body)
+	}
+}
+
+// SSE testing
+
+type sseEvent struct {
+	Type string
+	Data map[string]any
+}
+
+type sseConn struct {
+	resp   *http.Response
+	cancel context.CancelFunc
+	r      *bufio.Reader
+}
+
+// subscribeBoardEvents opens an SSE subscription to a board's event stream.
+// The returned conn buffers events; callers should defer close() and use
+// waitReady to drain the initial "ready" hello before triggering work that
+// is expected to publish.
+func (e *testEnv) subscribeBoardEvents(boardID int64) *sseConn {
+	e.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, "GET",
+		fmt.Sprintf("%s/api/boards/%d/events", e.srv.URL, boardID), nil)
+	if err != nil {
+		cancel()
+		e.t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		cancel()
+		e.t.Fatal(err)
+	}
+	return &sseConn{resp: resp, cancel: cancel, r: bufio.NewReader(resp.Body)}
+}
+
+func (s *sseConn) close() {
+	s.cancel()
+	s.resp.Body.Close()
+}
+
+// waitReady reads events until the initial "ready" hello arrives, so tests
+// know the subscription is registered with the bus.
+func (s *sseConn) waitReady(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		ev := s.next(t)
+		if ev.Type == "ready" {
+			return
+		}
+	}
+	t.Fatal("never received ready event from SSE stream")
+}
+
+// next reads the next SSE event from the stream. Fails the test on read
+// error or malformed framing. Blocks; rely on the test's overall timeout.
+func (s *sseConn) next(t *testing.T) sseEvent {
+	t.Helper()
+	var typ string
+	for {
+		line, err := s.r.ReadString('\n')
+		if err != nil {
+			t.Fatalf("read SSE: %v", err)
+		}
+		line = strings.TrimRight(line, "\r\n")
+		switch {
+		case strings.HasPrefix(line, "event: "):
+			typ = strings.TrimPrefix(line, "event: ")
+		case strings.HasPrefix(line, "data: "):
+			payload := strings.TrimPrefix(line, "data: ")
+			var data map[string]any
+			if err := json.Unmarshal([]byte(payload), &data); err != nil {
+				t.Fatalf("decode SSE data %q: %v", payload, err)
+			}
+			return sseEvent{Type: typ, Data: data}
+		}
 	}
 }

@@ -868,6 +868,13 @@ func (h *handlers) updateClaudeSessionID(w http.ResponseWriter, r *http.Request)
 		h.httpError(w, err, 500)
 		return
 	}
+	// Push the updated session out over SSE so the InfoPanel's "Claude
+	// session" row reflects the UUID without a page reload. Without this,
+	// stores seeded from a stale boardState fetch keep displaying the
+	// pre-UUID session and the "resume" plumbing looks broken to users.
+	if sess, err := h.store.GetSession(r.Context(), id); err == nil {
+		h.publishSessionUpdated(r.Context(), sess)
+	}
 	w.WriteHeader(204)
 }
 

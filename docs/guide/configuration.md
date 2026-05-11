@@ -116,7 +116,7 @@ The next attach will start a brand-new Claude Code session.
 
 Caveats:
 
-- Users who hand-author `.claude/settings.local.json` in a worktree opt out — kanban won't overwrite an existing file, so the `SessionStart` hook isn't installed and no UUID is captured. To opt back in, delete the file and re-ensure the session.
+- Kanban only writes `.claude/settings.local.json` when no file is present. If one already exists — either hand-authored or shipped by an older kanban that didn't install the `SessionStart` hook — it's left untouched, no UUID is captured, and resume is silently off. To opt in, delete the file and re-ensure the session.
 - Only the `claude` harness is wired up; other harnesses (`pi`) have no equivalent flag and launch fresh every time.
 
 ## Commit identity for merges
