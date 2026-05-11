@@ -12,7 +12,7 @@ A containerized development environment.
 - Playwright + headless Chromium (shared at `/ms-playwright`) for browser-based UI testing
 - Shell tools: zsh, fzf, ripgrep, fd, neovim, less, jq
 - `socat`, `openssh-client`, `gh` CLI
-- Network firewall (default-deny, whitelists only npm, GitHub, Anthropic, Sentry, Go module proxy, and VS Code update servers)
+- Optional network firewall (off by default; set `DEVCONTAINER_FIREWALL=true` to opt in to a default-deny allowlist of npm, GitHub, Anthropic, Sentry, Go module proxy, and VS Code update servers)
 
 ## Usage
 
@@ -50,7 +50,7 @@ The container attaches to the `kanban-net` Docker network so it can reach siblin
 
 ## Firewall
 
-The container starts with a default-deny firewall (`init-firewall.sh`) that only allows outbound traffic to:
+The container ships with an opt-in default-deny firewall (`init-firewall.sh`). It's off by default; set `DEVCONTAINER_FIREWALL=true` in your host shell before launching the container to enable it. When enabled, it only allows outbound traffic to:
 
 - npm registry
 - GitHub (API IP ranges fetched from `api.github.com/meta`, plus `github.com`)
@@ -63,6 +63,6 @@ The container starts with a default-deny firewall (`init-firewall.sh`) that only
 
 This requires the `NET_ADMIN` and `NET_RAW` capabilities, which are added via `runArgs` in `devcontainer.json`.
 
-To disable the firewall for a container (e.g. when working against a host or network the allowlist doesn't cover), set `DEVCONTAINER_FIREWALL=false` in your host shell before launching the container. `init-firewall.sh` short-circuits and the container runs with no outbound filtering. Default is `true`; leave it unset for the standard default-deny setup.
+Any value other than `true` (including unset) leaves the firewall off and the container runs with no outbound filtering. When kanban itself spawns this devcontainer as a session, the value is read from the kanban server's environment via `${localEnv:DEVCONTAINER_FIREWALL}` — set it on the kanban process (e.g. in `compose.yaml`'s `environment:` block) for it to propagate into sessions.
 
 Inbound traffic on the loopback interface is always allowed, which is what enables the `docker exec ... socat - TCP:127.0.0.1:<port>` tunneling pattern (see `kanban/`) to publish container ports to the host without poking holes in the firewall.
