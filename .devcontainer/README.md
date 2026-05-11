@@ -63,4 +63,6 @@ The container starts with a default-deny firewall (`init-firewall.sh`) that only
 
 This requires the `NET_ADMIN` and `NET_RAW` capabilities, which are added via `runArgs` in `devcontainer.json`.
 
+To disable the firewall for a container (e.g. when working against a host or network the allowlist doesn't cover), set `DEVCONTAINER_FIREWALL=false` in your host shell before launching the container. `init-firewall.sh` short-circuits and the container runs with no outbound filtering. Default is `true`; leave it unset for the standard default-deny setup.
+
 Inbound traffic on the loopback interface is always allowed, which is what enables the `docker exec ... socat - TCP:127.0.0.1:<port>` tunneling pattern (see `kanban/`) to publish container ports to the host without poking holes in the firewall.

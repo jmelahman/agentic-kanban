@@ -20,12 +20,13 @@
   ],
   "containerEnv": {
     "COLORTERM": "truecolor",
+    "DEVCONTAINER_FIREWALL": "${localEnv:DEVCONTAINER_FIREWALL}",
     "GH_TOKEN": "${localEnv:GH_TOKEN}",
     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
   },
   "remoteUser": "root",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postStartCommand": "mkdir -p /root/.ssh && ssh-add -L > /root/.ssh/id_rsa.pub && sudo bash -c 'if [ -f /workspace/.devcontainer/init-firewall.sh ]; then bash /workspace/.devcontainer/init-firewall.sh; else /usr/local/bin/init-firewall.sh; fi'",
+  "postStartCommand": "mkdir -p /root/.ssh && ssh-add -L > /root/.ssh/id_rsa.pub && sudo --preserve-env=DEVCONTAINER_FIREWALL bash -c 'if [ -f /workspace/.devcontainer/init-firewall.sh ]; then bash /workspace/.devcontainer/init-firewall.sh; else /usr/local/bin/init-firewall.sh; fi'",
   "waitFor": "postStartCommand"
 }

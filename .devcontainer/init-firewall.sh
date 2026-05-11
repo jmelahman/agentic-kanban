@@ -2,6 +2,11 @@
 
 set -euo pipefail
 
+if [[ "${DEVCONTAINER_FIREWALL:-true}" == "false" ]]; then
+    echo "Firewall disabled (DEVCONTAINER_FIREWALL=false); skipping setup."
+    exit 0
+fi
+
 echo "Setting up firewall..."
 
 # Only flush the filter table. The nat table holds Docker's redirect for the
