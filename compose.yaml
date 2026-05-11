@@ -29,6 +29,7 @@ services:
       XDG_RUNTIME_DIR: ${XDG_RUNTIME_DIR}
       KANBAN_DATA_DIR: ${HOME}/.local/share/kanban
       GH_TOKEN: ${GH_TOKEN:-}
+      DEVCONTAINER_FIREWALL: ${DEVCONTAINER_FIREWALL:-}
       DEVCONTAINER_REMOTE_USER: ${DEVCONTAINER_REMOTE_USER:-}
       SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:-}
       # Host path of the docker socket, used as the bind source when kanban
