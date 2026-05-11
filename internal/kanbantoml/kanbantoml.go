@@ -27,6 +27,7 @@ type File struct {
 	Branches     *BranchesSection     `toml:"branches"`
 	Devcontainer *DevcontainerSection `toml:"devcontainer"`
 	Errors       *ErrorsSection       `toml:"errors"`
+	Agent        *AgentSection        `toml:"agent"`
 	Tasks        []TaskEntry          `toml:"task"`
 }
 
@@ -43,6 +44,16 @@ type WorktreesSection struct {
 // branch name. Per-board overrides in the boards table take precedence.
 type BranchesSection struct {
 	Prefix *string `toml:"prefix"`
+}
+
+// AgentSection toggles agent auto-start on session boot. When AutoStart is
+// true and the ticket body is non-empty, kanban writes the body to
+// .kanban/prompt.txt inside the worktree and execs the harness's
+// StartCommandTemplate inside the container after spawn. Default false:
+// sessions boot to an idle container and the agent only runs once a user
+// attaches to the PTY.
+type AgentSection struct {
+	AutoStart *bool `toml:"auto_start"`
 }
 
 // ErrorsSection toggles the in-process error-to-ticket reporter. Disabled by
@@ -164,6 +175,7 @@ func merge(project, user File) File {
 	out.Branches = mergeBranches(project.Branches, user.Branches)
 	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
 	out.Errors = mergeErrors(project.Errors, user.Errors)
+	out.Agent = mergeAgent(project.Agent, user.Agent)
 	out.Tasks = mergeTasks(project.Tasks, user.Tasks)
 
 	return out
@@ -193,6 +205,20 @@ func mergeBranches(p, u *BranchesSection) *BranchesSection {
 	}
 	if u != nil && u.Prefix != nil {
 		out.Prefix = u.Prefix
+	}
+	return &out
+}
+
+func mergeAgent(p, u *AgentSection) *AgentSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := AgentSection{}
+	if p != nil {
+		out.AutoStart = p.AutoStart
+	}
+	if u != nil && u.AutoStart != nil {
+		out.AutoStart = u.AutoStart
 	}
 	return &out
 }

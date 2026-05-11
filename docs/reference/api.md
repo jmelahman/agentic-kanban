@@ -115,7 +115,7 @@ Useful for keeping a dashboard or another integration in sync without polling.
 Sessions are the running container + worktree + harness for a ticket. The most useful endpoints:
 
 - `POST /api/tickets/{id}/session` — ensure a session exists for the ticket.
-- `POST /api/sessions/{id}/start` / `stop` / `restart`
+- `POST /api/sessions/{id}/start` / `stop` / `restart`. When the merged `.kanban.toml` sets `[agent].auto_start = true` and the ticket body is non-empty, `start` (and `restart`, since it goes through the same `Start` path) additionally writes the ticket body to `<worktree>/.kanban/prompt.txt` and execs the harness's start template inside the just-spawned container detached. The HTTP call still returns the session record immediately; the agent runs in the background and appends to `.kanban/agent.log`.
 - `PATCH /api/sessions/{id}/status` — used by the harness to report state changes.
 - `PATCH /api/sessions/{id}/claude-session` — called by the Claude Code `SessionStart` hook with `{ "claude_session_id": "<uuid>" }` so kanban can `--resume` the same conversation on the next launch after a container/Kanban restart. Rejects non-UUID values with `400`. Clearing the stored UUID (to force a fresh conversation) is a manual `UPDATE sessions SET claude_session_id = NULL` on the DB.
 - `GET /api/sessions/{id}/ports` — list active port proxies.

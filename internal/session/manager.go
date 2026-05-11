@@ -210,7 +210,55 @@ func (m *Manager) Start(ctx context.Context, sessionID int64, onPullProgress doc
 		"ticket_id":  fmt.Sprintf("%d", sess.TicketID),
 	})
 
+	m.maybeAutoStartAgent(ctx, sess)
+
 	return sess, nil
+}
+
+// maybeAutoStartAgent kicks off the harness's start script inside the just-
+// spawned container when the merged kanban.toml opts into [agent].auto_start
+// and the ticket body is non-empty. Failures are logged but do not fail the
+// caller — the container is already up, so an attached PTY can still drive
+// the agent interactively.
+func (m *Manager) maybeAutoStartAgent(ctx context.Context, sess *db.Session) {
+	if sess.ContainerID == nil || *sess.ContainerID == "" {
+		return
+	}
+	cfg := kanbantoml.Load(sess.WorktreePath)
+	if cfg.Agent == nil || cfg.Agent.AutoStart == nil || !*cfg.Agent.AutoStart {
+		return
+	}
+	ticket, err := m.store.GetTicket(ctx, sess.TicketID)
+	if err != nil {
+		log.Printf("auto-start agent: load ticket %d: %v", sess.TicketID, err)
+		return
+	}
+	body := strings.TrimSpace(ticket.Body)
+	if body == "" {
+		return
+	}
+	kanbanDir := filepath.Join(sess.WorktreePath, ".kanban")
+	if err := os.MkdirAll(kanbanDir, 0o755); err != nil {
+		log.Printf("auto-start agent: mkdir %s: %v", kanbanDir, err)
+		return
+	}
+	promptPath := filepath.Join(kanbanDir, "prompt.txt")
+	if err := os.WriteFile(promptPath, []byte(body), 0o644); err != nil {
+		log.Printf("auto-start agent: write prompt: %v", err)
+		return
+	}
+	h := harness.Resolve(sess.WorktreePath)
+	script, err := h.RenderStartScript("/workspace/.kanban/prompt.txt")
+	if err != nil {
+		log.Printf("auto-start agent: render start script: %v", err)
+		return
+	}
+	if script == "" {
+		return
+	}
+	if _, err := m.docker.ExecRun(ctx, *sess.ContainerID, []string{"sh", "-lc", script}); err != nil {
+		log.Printf("auto-start agent: exec: %v", err)
+	}
 }
 
 // resolveBranchPrefix picks the literal branch prefix for new sessions on a
