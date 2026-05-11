@@ -91,9 +91,6 @@ for the full table.
 - Go: `go test ./...`
 - Frontend types: `cd web && npm run typecheck`
 - Pre-commit hooks: `prek run --all-files` (run before committing).
-  `actionlint` and `ripsecrets` are pre-installed in the devcontainer
-  image and wired up as `language: system` in `.pre-commit-config.yaml`
-  so prek doesn't try to fetch them through the firewall.
 
 ## Perf benchmark
 
