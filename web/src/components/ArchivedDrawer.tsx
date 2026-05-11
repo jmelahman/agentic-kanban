@@ -4,7 +4,7 @@ import { api, Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
-import { Drawer, Modal } from "./Modal";
+import { ConfirmModal, Drawer } from "./Modal";
 
 export function ArchivedDrawer({
   open,
@@ -102,78 +102,39 @@ export function ArchivedDrawer({
           </ul>
         </div>
       </Drawer>
-      <Modal
+      <ConfirmModal
         open={confirmTicket !== null}
         onClose={() => setConfirmTicket(null)}
         title="Permanently delete ticket?"
-        busy={confirmPending}
-      >
-        {confirmTicket && (
-          <div className="p-4">
-            <p className="text-sm">
-              Permanently delete <span className="font-medium">"{confirmTicket.title}"</span>?
-            </p>
-            <p className="mt-2 text-xs text-fg-muted">
-              This stops the container, removes the worktree, and deletes the branch.
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setConfirmTicket(null)}
-                disabled={confirmPending}
-              >
-                cancel
-              </Button>
-              <Button
-                type="button"
-                variant="danger"
-                size="lg"
-                onClick={() => deleteMut.mutate(confirmTicket.id)}
-                disabled={confirmPending}
-                pending={confirmPending}
-                idleLabel="delete"
-                pendingLabel="deleting…"
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
-      <Modal
+        description={
+          <>
+            Permanently delete{" "}
+            <span className="font-medium">"{confirmTicket?.title}"</span>?
+          </>
+        }
+        consequence="This stops the container, removes the worktree, and deletes the branch."
+        onConfirm={() => confirmTicket && deleteMut.mutate(confirmTicket.id)}
+        confirmLabel="delete"
+        confirmPendingLabel="deleting…"
+        pending={confirmPending}
+      />
+      <ConfirmModal
         open={confirmDeleteAll}
         onClose={() => setConfirmDeleteAll(false)}
         title="Permanently delete all archived?"
-        busy={deleteAllMut.isPending}
-      >
-        <div className="p-4">
-          <p className="text-sm">
-            Permanently delete all <span className="font-medium">{archivedCount}</span> archived ticket{archivedCount === 1 ? "" : "s"}?
-          </p>
-          <p className="mt-2 text-xs text-fg-muted">
-            This stops their containers, removes worktrees, and deletes branches. Cannot be undone.
-          </p>
-          <div className="mt-4 flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setConfirmDeleteAll(false)}
-              disabled={deleteAllMut.isPending}
-            >
-              cancel
-            </Button>
-            <Button
-              type="button"
-              variant="danger"
-              size="lg"
-              onClick={() => deleteAllMut.mutate()}
-              disabled={deleteAllMut.isPending}
-              pending={deleteAllMut.isPending}
-              idleLabel="delete all"
-              pendingLabel="deleting…"
-            />
-          </div>
-        </div>
-      </Modal>
+        description={
+          <>
+            Permanently delete all{" "}
+            <span className="font-medium">{archivedCount}</span> archived ticket
+            {archivedCount === 1 ? "" : "s"}?
+          </>
+        }
+        consequence="This stops their containers, removes worktrees, and deletes branches. Cannot be undone."
+        onConfirm={() => deleteAllMut.mutate()}
+        confirmLabel="delete all"
+        confirmPendingLabel="deleting…"
+        pending={deleteAllMut.isPending}
+      />
     </>
   );
 }
