@@ -60,6 +60,19 @@ RUN ARCH="$(dpkg --print-architecture)" \
   && curl -fsSL "https://github.com/sirwart/ripsecrets/releases/download/v${RIPSECRETS_VERSION}/ripsecrets-${RIPSECRETS_VERSION}-${TARGET}.tar.gz" \
      | tar -xz --strip-components=1 -C /usr/local/bin "ripsecrets-${RIPSECRETS_VERSION}-${TARGET}/ripsecrets"
 
+# Pre-install actionlint for the same reason — the upstream pre-commit hook
+# uses `go install`, which fails when proxy.golang.org's IPs rotate out of
+# the firewall ipset captured at boot.
+ARG ACTIONLINT_VERSION=1.7.9
+RUN ARCH="$(dpkg --print-architecture)" \
+  && case "$ARCH" in \
+       amd64) TARGET="linux_amd64" ;; \
+       arm64) TARGET="linux_arm64" ;; \
+       *) echo "unsupported arch: $ARCH" >&2; exit 1 ;; \
+     esac \
+  && curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_${TARGET}.tar.gz" \
+     | tar -xz -C /usr/local/bin actionlint
+
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 # Create non-root user. Both root (the devcontainer.json remoteUser) and dev

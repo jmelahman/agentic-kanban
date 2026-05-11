@@ -19,16 +19,18 @@ repos:
       - id: fix-byte-order-marker
       - id: trailing-whitespace
 
-  - repo: https://github.com/rhysd/actionlint
-    rev: a443f344ff32813837fa49f7aa6cbc478d770e62 # frozen: v1.7.9
-    hooks:
-      - id: actionlint
-
-  # ripsecrets is installed in the devcontainer image (see .devcontainer/Dockerfile).
-  # Using language: system avoids prek's `cargo install` path, which fails when
-  # index.crates.io's Fastly IPs rotate out of the firewall ipset.
+  # actionlint and ripsecrets are installed in the devcontainer image (see
+  # .devcontainer/Dockerfile). Using language: system avoids prek's
+  # `go install` / `cargo install` paths, which fail when the upstream
+  # registry's IPs rotate out of the firewall ipset captured at boot.
   - repo: local
     hooks:
+      - id: actionlint
+        name: actionlint
+        entry: actionlint
+        language: system
+        types: [yaml]
+        files: ^\.github/workflows/
       - id: ripsecrets
         name: ripsecrets
         entry: ripsecrets
