@@ -166,5 +166,5 @@ must point at a directory the host's docker daemon can stat.
 
 ## See also
 
-- [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `list-boards`, `create-ticket`.
+- [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `board list`, `ticket create`.
 - [REST API](/reference/api) — endpoints exposed by the running server.

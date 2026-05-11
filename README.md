@@ -60,5 +60,5 @@ Full documentation lives at **<https://jmelahman.github.io/agentic-kanban/>**:
 - [Quickstart](https://jmelahman.github.io/agentic-kanban/guide/quickstart) — your first board and ticket in five minutes.
 - [Configuration](https://jmelahman.github.io/agentic-kanban/guide/configuration) — `.kanban.toml` schema and merge rules.
 - [REST API](https://jmelahman.github.io/agentic-kanban/reference/api) — endpoints exposed by the running server.
-- [CLI](https://jmelahman.github.io/agentic-kanban/reference/cli) — `serve`, `mcp`, `list-boards`, `create-ticket`.
+- [CLI](https://jmelahman.github.io/agentic-kanban/reference/cli) — `serve`, `mcp`, `board list`, `ticket create`.
 - [MCP](https://jmelahman.github.io/agentic-kanban/reference/mcp) — Claude Desktop / Claude Code integration.
