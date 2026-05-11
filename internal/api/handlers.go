@@ -589,7 +589,7 @@ func (h *handlers) ticketStrategyAction(
 		h.httpError(w, fmt.Errorf("strategy must be %s", joinStrategies(allowed)), 400)
 		return
 	}
-	t, board, code, err := h.ticketBoard(r.Context(), id)
+	_, board, code, err := h.ticketBoard(r.Context(), id)
 	if err != nil {
 		h.httpError(w, err, code)
 		return
@@ -608,7 +608,7 @@ func (h *handlers) ticketStrategyAction(
 		return
 	}
 	if publishOnSuccess {
-		h.bus.Publish(t.BoardID, "session_updated", sess)
+		h.publishSessionUpdated(r.Context(), sess.ID)
 	}
 	w.WriteHeader(204)
 }
@@ -678,7 +678,7 @@ func (h *handlers) ensureSession(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	h.bus.Publish(board.ID, "session_updated", sess)
+	h.publishSessionUpdated(r.Context(), sess.ID)
 	writeJSON(w, 201, sess)
 }
 
@@ -689,7 +689,7 @@ func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	h.publishSessionUpdated(r.Context(), sess)
+	h.publishSessionUpdated(r.Context(), sess.ID)
 	writeJSON(w, 200, sess)
 }
 
@@ -700,7 +700,7 @@ func (h *handlers) restartSession(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	h.publishSessionUpdated(r.Context(), sess)
+	h.publishSessionUpdated(r.Context(), sess.ID)
 	writeJSON(w, 200, sess)
 }
 
@@ -736,9 +736,7 @@ func (h *handlers) stopSession(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	if sess, _ := h.store.GetSession(r.Context(), id); sess != nil {
-		h.publishSessionUpdated(r.Context(), sess)
-	}
+	h.publishSessionUpdated(r.Context(), id)
 	w.WriteHeader(204)
 }
 
@@ -771,10 +769,16 @@ func (h *handlers) publishTicketArchived(t *db.Ticket) {
 }
 
 // publishSessionUpdated emits a "session_updated" event on the board's
-// channel. Best-effort: silently no-ops if the ticket lookup fails so
-// callers can use it as a fire-and-forget after any session mutation.
-func (h *handlers) publishSessionUpdated(ctx context.Context, sess *db.Session) {
-	if sess == nil {
+// channel. Always refetches the session from the DB before publishing
+// so concurrent writes (e.g. the GitHub PR poller writing pr_number /
+// pr_url while a handler is mid-mutation) are reflected on the wire.
+// Publishing a stale in-memory snapshot is what caused PR fields to
+// disappear from the live UI until the page was refreshed.
+// Best-effort: silently no-ops if the session or its ticket can't be
+// resolved so callers can use it as fire-and-forget.
+func (h *handlers) publishSessionUpdated(ctx context.Context, sessionID int64) {
+	sess, err := h.store.GetSession(ctx, sessionID)
+	if err != nil || sess == nil {
 		return
 	}
 	t, err := h.store.GetTicket(ctx, sess.TicketID)
@@ -820,9 +824,8 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 500)
 		return
 	}
-	sess.Status = req.Status
+	h.publishSessionUpdated(r.Context(), sess.ID)
 	if t, _ := h.store.GetTicket(r.Context(), sess.TicketID); t != nil {
-		h.bus.Publish(t.BoardID, "session_updated", sess)
 		boardID := t.BoardID
 		h.hooks.Fire(&boardID, hookEvent, map[string]string{
 			"session_id": fmt.Sprintf("%d", sess.ID),
@@ -872,9 +875,7 @@ func (h *handlers) updateClaudeSessionID(w http.ResponseWriter, r *http.Request)
 	// session" row reflects the UUID without a page reload. Without this,
 	// stores seeded from a stale boardState fetch keep displaying the
 	// pre-UUID session and the "resume" plumbing looks broken to users.
-	if sess, err := h.store.GetSession(r.Context(), id); err == nil {
-		h.publishSessionUpdated(r.Context(), sess)
-	}
+	h.publishSessionUpdated(r.Context(), id)
 	w.WriteHeader(204)
 }
 

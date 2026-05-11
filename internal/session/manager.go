@@ -197,8 +197,14 @@ func (m *Manager) Start(ctx context.Context, sessionID int64, onPullProgress doc
 	sess.Status = db.SessionStatusIdle
 	sess.StartedAt = &now
 	sess.StoppedAt = nil
-	if err := m.store.UpsertSession(ctx, sess); err != nil {
+	if err := m.store.UpdateSessionLifecycle(ctx, sess.ID, sess.Status, sess.ContainerID, sess.StartedAt, sess.StoppedAt); err != nil {
 		return nil, err
+	}
+	// Refresh from DB so any columns written concurrently (e.g. the github
+	// poller's pr_* fields) are reflected in the returned value and in any
+	// session_updated event published from it.
+	if fresh, err := m.store.GetSession(ctx, sess.ID); err == nil {
+		sess = fresh
 	}
 
 	var boardID *int64
@@ -298,7 +304,7 @@ func (m *Manager) Stop(ctx context.Context, sessionID int64) error {
 	sess.StoppedAt = &now
 	cleared := ""
 	sess.ContainerID = &cleared
-	if err := m.store.UpsertSession(ctx, sess); err != nil {
+	if err := m.store.UpdateSessionLifecycle(ctx, sess.ID, sess.Status, sess.ContainerID, sess.StartedAt, sess.StoppedAt); err != nil {
 		return err
 	}
 

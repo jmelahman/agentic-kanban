@@ -259,11 +259,22 @@ func (p *Poller) applyTransition(ctx context.Context, board *db.Board, sess *db.
 			log.Printf("github poller: persist pr_state %d: %v", sess.ID, err)
 			return
 		}
-		sess.PRState = next
-		sess.PRNumber = &number
-		sess.PRURL = pr.HTMLURL
-		sess.PRTitle = pr.Title
-		p.bus.Publish(board.ID, "session_updated", sess)
+		// Refetch from the DB before publishing so concurrent writes to
+		// other columns (status / container_id from the session manager)
+		// land on the wire instead of the in-memory snapshot we entered
+		// the transition with. Without this the UI flickers back to a
+		// stale status whenever the poller and a Start/Stop overlap.
+		fresh, err := p.store.GetSession(ctx, sess.ID)
+		if err != nil || fresh == nil {
+			sess.PRState = next
+			sess.PRNumber = &number
+			sess.PRURL = pr.HTMLURL
+			sess.PRTitle = pr.Title
+			p.bus.Publish(board.ID, "session_updated", sess)
+			return
+		}
+		*sess = *fresh
+		p.bus.Publish(board.ID, "session_updated", fresh)
 	}()
 
 	target := columnFor(next, cfg)

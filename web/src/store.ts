@@ -209,9 +209,32 @@ export async function fetchBoardStructure(
   // boardState snapshot taken at request time can be stale by the time it
   // lands — e.g. a session_updated("starting") event or an optimistic
   // startMut.onMutate may have already advanced the entry past the snapshot's
-  // "stopped". Seed only entries we haven't seen yet; let SSE drive updates.
+  // "stopped". Seed only entries we haven't seen yet; let SSE drive status.
+  // PR fields are an exception: they're only ever written by the server-side
+  // GitHub poller, so the snapshot is authoritative for them. Refresh those
+  // from each snapshot so a missed session_updated event (SSE disconnect
+  // while off-board, a buffer-full drop in events.go) doesn't leave the
+  // header without a PR link until the user reloads the page.
   for (const s of data.sessions) {
-    if (!sessionStore.get(s.id)) sessionStore.set(s.id, s);
+    const existing = sessionStore.get(s.id);
+    if (!existing) {
+      sessionStore.set(s.id, s);
+      continue;
+    }
+    if (
+      existing.pr_state !== s.pr_state ||
+      existing.pr_number !== s.pr_number ||
+      existing.pr_url !== s.pr_url ||
+      existing.pr_title !== s.pr_title
+    ) {
+      sessionStore.set(s.id, {
+        ...existing,
+        pr_state: s.pr_state,
+        pr_number: s.pr_number,
+        pr_url: s.pr_url,
+        pr_title: s.pr_title,
+      });
+    }
   }
   // Symmetric to the seed guard above: only drop sessions whose ticket has
   // actually disappeared. The ticket reconciliation immediately above is

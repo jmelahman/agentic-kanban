@@ -461,6 +461,19 @@ func (s *Store) UpdateSessionStatus(ctx context.Context, id int64, status string
 	return err
 }
 
+// UpdateSessionLifecycle writes only the session-manager-owned columns
+// (status, container_id, started_at, stopped_at). Manager.Start/Stop use this
+// instead of UpsertSession so concurrent writes to other columns — most
+// importantly the github poller's pr_* fields — aren't clobbered by a stale
+// in-memory snapshot loaded at the start of the lifecycle action.
+func (s *Store) UpdateSessionLifecycle(ctx context.Context, id int64, status string, containerID *string, startedAt, stoppedAt *int64) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET status=?, container_id=?, started_at=?, stopped_at=? WHERE id=?`,
+		status, containerID, startedAt, stoppedAt, id,
+	)
+	return err
+}
+
 // UpdateClaudeSessionID records the Claude Code session UUID for the given
 // Kanban session. Called by the SessionStart hook running inside the session
 // container so subsequent `claude` launches can `--resume <uuid>`. Passing an
