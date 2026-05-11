@@ -171,9 +171,23 @@ export function SessionView({
     if (prev) sessionStore.set(id, prev);
   };
 
+  // Defensive `onSuccess`: the bus drops events when its 16-slot per-subscriber
+  // channel fills up, which a burst of `session_pull_progress` can cause
+  // mid-start. Without this, a dropped `session_updated("idle")` would leave
+  // the entry stuck at the optimistic "starting" forever — only a page refresh
+  // (which empties the store and reseeds from the server) would fix it. Apply
+  // the response only when the store is still on our optimistic "starting" so
+  // we don't clobber a newer SSE update (e.g. "working" from the agent hook).
+  const reconcileFromStartResponse = (sess: typeof session) => {
+    if (!sess) return;
+    const cur = sessionStore.get(sess.id);
+    if (!cur || cur.status === "starting") sessionStore.set(sess.id, sess);
+  };
+
   const startMut = useMutation({
     mutationFn: (id: number) => api.startSession(id),
     onMutate: (id) => optimisticStatus(id, "starting"),
+    onSuccess: (sess) => reconcileFromStartResponse(sess),
     onError: (_err, id, ctx) => rollbackStatus(id, ctx?.prev ?? null),
   });
   const ensureMut = useMutation({
@@ -205,7 +219,10 @@ export function SessionView({
     mutationFn: () => api.restartSession(session!.id),
     onMutate: () =>
       session ? optimisticStatus(session.id, "starting") : { prev: null },
-    onSuccess: () => toast.push("success", "container restarted"),
+    onSuccess: (sess) => {
+      reconcileFromStartResponse(sess);
+      toast.push("success", "container restarted");
+    },
     onError: (_err, _vars, ctx) => {
       if (session) rollbackStatus(session.id, ctx?.prev ?? null);
     },
