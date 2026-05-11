@@ -190,15 +190,18 @@ export function SessionView({
     onSuccess: (sess) => reconcileFromStartResponse(sess),
     onError: (_err, id, ctx) => rollbackStatus(id, ctx?.prev ?? null),
   });
+  // No onError reset of autoStartedRef: doing so combined with `ensureMut` in
+  // the auto-start effect's deps produces an infinite POST loop on persistent
+  // errors (every error rerenders the mutation object, the effect re-runs,
+  // sees a null ref, fires again). The error banner below + the manual
+  // "create session" button cover retry; ticket switching resets via the
+  // `ref !== ticketId` check.
   const ensureMut = useMutation({
     mutationFn: () => api.ensureSession(ticketId),
     onSuccess: (created) => {
       sessionStore.set(created.id, created);
       qc.invalidateQueries({ queryKey: boardKey });
       startMut.mutate(created.id);
-    },
-    onError: () => {
-      autoStartedRef.current = null;
     },
   });
   useEffect(() => {
