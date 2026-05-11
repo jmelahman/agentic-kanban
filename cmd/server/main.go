@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/net/http2"
+	"golang.org/x/net/http2/h2c"
 
 	"github.com/jmelahman/kanban/internal/api"
 	"github.com/jmelahman/kanban/internal/config"
@@ -243,9 +245,14 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 	defer pollerCancel()
 	go github.NewPoller(store, bus, sessionMgr, 30*time.Second).Start(pollerCtx)
 
+	// h2c lets clients that opt in (curl --http2-prior-knowledge, Go's
+	// http2.Transport, or a TLS-terminating proxy upstream) multiplex over
+	// one connection. Browsers don't negotiate HTTP/2 over plain HTTP, so the
+	// web frontend stays on HTTP/1.1 unless fronted by a TLS proxy.
+	h2s := &http2.Server{}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           recoverPanics(reporter, logRequests(mux)),
+		Handler:           h2c.NewHandler(recoverPanics(reporter, logRequests(compressResponses(mux))), h2s),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

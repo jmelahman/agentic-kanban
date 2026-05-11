@@ -11,6 +11,7 @@ The server has no authentication. Bind only to `127.0.0.1` (the default containe
 - All bodies are JSON unless noted.
 - Path parameter `{id}` accepts either the numeric ID or the slug.
 - Errors return `{ "error": "<message>" }` with a `4xx`/`5xx` status.
+- Responses ≥1 KB are gzip-compressed when the client sends `Accept-Encoding: gzip`. Send `Accept-Encoding: identity` to opt out. SSE streams are never compressed.
 
 ## Tickets
 
