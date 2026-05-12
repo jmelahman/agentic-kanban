@@ -52,51 +52,28 @@ http://localhost:5173/`) work as usual.
 
 ## Spawning session containers from this devcontainer
 
-The host runs rootless Docker as a non-root user. This devcontainer runs
-as `dev` by default (overridable via `DEVCONTAINER_REMOTE_USER` /
-`DEVCONTAINER_REMOTE_HOME` — see `.devcontainer/README.md`) so
-`os.UserHomeDir()` inside kanban returns `/home/dev` and Claude config
-lives at `/home/dev/.claude*`. Either way, the in-container path is not
-something the host's rootless dockerd can stat directly — when kanban
-forwards Claude config into a session container it tells dockerd to bind
-`source=/home/dev/.claude` (or `/root/.claude` if you flipped to root),
-and that path doesn't exist on the host, so session start fails with
-`permission denied` unless you set `KANBAN_HOST_HOME` (below) to the
-real host home. The same kind of path-aliasing issue affects the
-worktrees dir and any board whose `repo_path` doesn't resolve identically
-inside and outside this container.
-
-For tests where you only need an unprivileged shell session (no agent),
-disable claude config forwarding for that one server invocation:
-
-```bash
-wgo run . serve --in-memory --claude-config=false
-```
-
-The flag/env (`$KANBAN_CLAUDE_CONFIG`) overrides
-`.kanban.toml [devcontainer].claude_config` for that process only — the
-project toml stays as-is so other developers/sessions still get Claude
-forwarded normally.
-
-End-to-end terminal access from inside this devcontainer also requires
-host-path translation: paths kanban sees as `/workspace/...` and
-`/home/dev/.claude` (or `/root/.claude` if running as root) need to be
-rewritten to the corresponding host paths before being handed to dockerd.
-Set these on the kanban process:
+`.devcontainer/devcontainer.json` bakes the host-path translation env
+vars into `containerEnv`, so kanban started inside this devcontainer can
+spawn sessions against `/workspace` directly. Use `--claude-config=false`
+for unprivileged-shell tests — the in-container `~/.claude` path won't
+stat from the host's rootless dockerd.
 
 ```sh
-export KANBAN_HOST_WORKSPACE=/path/on/host/to/this/repo   # rewrites /workspace prefix
-export KANBAN_HOST_HOME=/path/on/host/to/your/home        # rewrites $HOME prefix
-export KANBAN_HOST_DOCKER_SOCK=/var/run/user/1000/docker.sock  # rootless docker socket
+go build -o /tmp/kanban .
+setsid /tmp/kanban serve --in-memory --claude-config=false \
+    --addr 127.0.0.1:17474 \
+    --worktrees-dir=/workspace/.tmp-worktrees \
+  >/tmp/kanban-test.log 2>&1 </dev/null & disown
+curl -sS -X POST http://127.0.0.1:17474/api/boards \
+  -H 'content-type: application/json' \
+  -d '{"name":"test","repo_path":"/workspace","default_branch":"master"}'
 ```
 
-All three default to unset (no translation) so the host install is unaffected.
-`KANBAN_HOST_DOCKER_SOCK` is only needed on rootless-docker hosts where
-the devcontainer's `/var/run/docker.sock` is a bind of e.g.
-`/var/run/user/$UID/docker.sock` — handing the in-container path to the
-host's dockerd fails with `bind source path does not exist`.
-See `docs/guide/configuration.md` § "Running kanban inside a container"
-for the full table.
+Never run `git worktree prune` in this devcontainer — the host's other
+kanban worktrees aren't bind-mounted in here, so they look `prunable`,
+and prune wipes ALL registrations including this one. Clean up a test
+worktree by removing its directory under `--worktrees-dir` and its
+registration under the host's `.git/worktrees/<name>` separately.
 
 ## Tests / typecheck / lint
 
