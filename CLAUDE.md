@@ -52,13 +52,19 @@ http://localhost:5173/`) work as usual.
 
 ## Spawning session containers from this devcontainer
 
-The host runs rootless Docker as a non-root user, but this devcontainer
-runs as root and stores `~/.claude*` under `/root/.claude*`. When kanban
+The host runs rootless Docker as a non-root user. This devcontainer runs
+as `dev` by default (overridable via `DEVCONTAINER_REMOTE_USER` /
+`DEVCONTAINER_REMOTE_HOME` — see `.devcontainer/README.md`) so
+`os.UserHomeDir()` inside kanban returns `/home/dev` and Claude config
+lives at `/home/dev/.claude*`. Either way, the in-container path is not
+something the host's rootless dockerd can stat directly — when kanban
 forwards Claude config into a session container it tells dockerd to bind
-`source=/root/.claude` — a path the rootless dockerd on the host can't
-stat, so session start fails with `permission denied`. The same kind of
-path-aliasing issue affects the worktrees dir and any board whose
-`repo_path` doesn't resolve identically inside and outside this container.
+`source=/home/dev/.claude` (or `/root/.claude` if you flipped to root),
+and that path doesn't exist on the host, so session start fails with
+`permission denied` unless you set `KANBAN_HOST_HOME` (below) to the
+real host home. The same kind of path-aliasing issue affects the
+worktrees dir and any board whose `repo_path` doesn't resolve identically
+inside and outside this container.
 
 For tests where you only need an unprivileged shell session (no agent),
 disable claude config forwarding for that one server invocation:
@@ -74,8 +80,9 @@ forwarded normally.
 
 End-to-end terminal access from inside this devcontainer also requires
 host-path translation: paths kanban sees as `/workspace/...` and
-`/root/.claude` need to be rewritten to the corresponding host paths
-before being handed to dockerd. Set these on the kanban process:
+`/home/dev/.claude` (or `/root/.claude` if running as root) need to be
+rewritten to the corresponding host paths before being handed to dockerd.
+Set these on the kanban process:
 
 ```sh
 export KANBAN_HOST_WORKSPACE=/path/on/host/to/this/repo   # rewrites /workspace prefix

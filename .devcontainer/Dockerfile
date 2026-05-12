@@ -75,13 +75,23 @@ RUN ARCH="$(dpkg --print-architecture)" \
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-# Create non-root user. Both root (the devcontainer.json remoteUser) and dev
-# get zsh as their login shell so interactive terminals — which the kanban
-# server attaches to via /etc/passwd lookup — open zsh by default.
+# Create non-root user. Both root and dev get zsh as their login shell so
+# interactive terminals — which the kanban server attaches to via /etc/passwd
+# lookup — open zsh by default. dev is the default remoteUser; root remains
+# selectable via DEVCONTAINER_REMOTE_USER=root + DEVCONTAINER_REMOTE_HOME=/root.
 RUN chsh -s /bin/zsh root && \
   useradd -m -s /bin/zsh dev && \
   echo "dev ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/dev && \
   chmod 0440 /etc/sudoers.d/dev
+
+# Pre-create the dirs that devcontainer.json mounts named volumes onto so the
+# volume inherits dev ownership on first mount (docker copies the target dir's
+# perms into a fresh empty volume). Without this dev hits EACCES on ~/.cache,
+# ~/.local, ~/.npm after a clean rebuild.
+RUN mkdir -p /home/dev/.cache /home/dev/.local /home/dev/.npm \
+             /home/dev/.config /home/dev/.ssh /home/dev/go/pkg/mod && \
+  chmod 700 /home/dev/.ssh && \
+  chown -R dev:dev /home/dev
 
 ENV DEVCONTAINER=true
 
@@ -119,7 +129,8 @@ RUN chmod 644 /etc/ssh/ssh_known_hosts
 COPY init-firewall.sh /usr/local/bin/init-firewall.sh
 RUN chmod 755 /usr/local/bin/init-firewall.sh
 
-RUN echo '[ -f ~/.zshrc.host ] && . ~/.zshrc.host' > /root/.zshrc \
- && chmod 644 /root/.zshrc
+RUN echo '[ -f ~/.zshrc.host ] && . ~/.zshrc.host' | tee /root/.zshrc /home/dev/.zshrc > /dev/null \
+ && chmod 644 /root/.zshrc /home/dev/.zshrc \
+ && chown dev:dev /home/dev/.zshrc
 
 USER dev

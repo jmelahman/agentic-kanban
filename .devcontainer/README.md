@@ -46,6 +46,28 @@ The container bind-mounts a few things from the host so it feels like a normal s
 
 Named volumes cache the Go module/build directories and `~/.npm` so reinstalls are fast across container rebuilds.
 
+### Remote user
+
+The container runs as `dev` by default. Two env vars on the host let you flip
+to a different in-container user — they're consumed by `${localEnv:...}`
+substitutions in `devcontainer.json`, so set them in the shell you launch
+VS Code or `devcontainer up` from:
+
+- `DEVCONTAINER_REMOTE_USER` (default `dev`) — value of `remoteUser`.
+- `DEVCONTAINER_REMOTE_HOME` (default `/home/dev`) — prefix used as the target
+  for every host-home bind (`~/.claude`, `~/.zshrc`, the `~/.cache` /
+  `~/.local` / `~/.npm` named volumes, etc.).
+
+To run as root instead, export both:
+
+```bash
+export DEVCONTAINER_REMOTE_USER=root
+export DEVCONTAINER_REMOTE_HOME=/root
+```
+
+Both vars need to agree — devcontainer.json substitution is string-only and
+can't derive one from the other.
+
 The container attaches to the `kanban-net` Docker network so it can reach sibling containers (e.g. the `kanban/` services) by name.
 
 ## Firewall

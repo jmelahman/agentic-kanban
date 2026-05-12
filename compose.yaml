@@ -31,6 +31,7 @@ services:
       GH_TOKEN: ${GH_TOKEN:-}
       DEVCONTAINER_FIREWALL: ${DEVCONTAINER_FIREWALL:-}
       DEVCONTAINER_REMOTE_USER: ${DEVCONTAINER_REMOTE_USER:-}
+      DEVCONTAINER_REMOTE_HOME: ${DEVCONTAINER_REMOTE_HOME:-}
       SSH_AUTH_SOCK: ${SSH_AUTH_SOCK:-}
       # Host path of the docker socket, used as the bind source when kanban
       # spawns session containers. Without this, kanban would emit

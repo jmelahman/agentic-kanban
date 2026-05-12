@@ -8,15 +8,15 @@
   ],
   "mounts": [
     "source=${localEnv:XDG_RUNTIME_DIR}/docker.sock,target=/var/run/docker.sock,type=bind",
-    "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind",
-    "source=${localEnv:HOME}/.claude.json,target=/root/.claude.json,type=bind",
-    "source=${localEnv:HOME}/.zshrc,target=/root/.zshrc.host,type=bind,readonly",
-    "source=${localEnv:HOME}/.config/nvim,target=/root/.config/nvim,type=bind,readonly",
-    "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude.json,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.claude.json,type=bind",
+    "source=${localEnv:HOME}/.zshrc,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.zshrc.host,type=bind,readonly",
+    "source=${localEnv:HOME}/.config/nvim,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.config/nvim,type=bind,readonly",
+    "source=${localEnv:HOME}/.gitconfig,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.gitconfig,type=bind,readonly",
     "source=devcontainer-go-mod,target=/home/dev/go/pkg/mod,type=volume",
-    "source=devcontainer-cache,target=/root/.cache,type=volume",
-    "source=devcontainer-local,target=/root/.local,type=volume",
-    "source=devcontainer-npm,target=/root/.npm,type=volume"
+    "source=devcontainer-cache,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.cache,type=volume",
+    "source=devcontainer-local,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.local,type=volume",
+    "source=devcontainer-npm,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.npm,type=volume"
   ],
   "containerEnv": {
     "COLORTERM": "truecolor",
@@ -24,9 +24,9 @@
     "GH_TOKEN": "${localEnv:GH_TOKEN}",
     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
   },
-  "remoteUser": "root",
+  "remoteUser": "${localEnv:DEVCONTAINER_REMOTE_USER:dev}",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
-  "postStartCommand": "mkdir -p /root/.ssh && ssh-add -L > /root/.ssh/id_rsa.pub && sudo --preserve-env=DEVCONTAINER_FIREWALL bash -c 'if [ -f /workspace/.devcontainer/init-firewall.sh ]; then bash /workspace/.devcontainer/init-firewall.sh; else /usr/local/bin/init-firewall.sh; fi'",
+  "postStartCommand": "mkdir -p ${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.ssh && ssh-add -L > ${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.ssh/id_rsa.pub && sudo --preserve-env=DEVCONTAINER_FIREWALL bash -c 'if [ -f /workspace/.devcontainer/init-firewall.sh ]; then bash /workspace/.devcontainer/init-firewall.sh; else /usr/local/bin/init-firewall.sh; fi'",
   "waitFor": "postStartCommand"
 }
