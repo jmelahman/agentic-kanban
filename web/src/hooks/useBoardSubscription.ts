@@ -80,6 +80,31 @@ function applyBoardEvent(
       const s = data as Session | null;
       if (!s) return;
       const prev = sessionStore.get(s.id);
+      // While Restart's Stop phase is in flight, the DB still holds the OLD
+      // container_id (manager.Stop clears it only after StopContainer +
+      // RemoveContainer return — see manager.go:289-309). A Claude Code
+      // status hook firing out of the dying container, or the GitHub PR
+      // poller publishing a refetched row, will broadcast that stale shape
+      // as session_updated{status: idle, container_id: OLD}. Without this
+      // guard the optimistic "starting" set by restartMut.onMutate gets
+      // clobbered, SessionTerminals re-mounts PtyTerminal, and the next
+      // attach hits ExecAttachTTY against a container that's already gone —
+      // surfacing as the "container X is not running" + [disconnected]
+      // flash users see on Overview restart. The canonical session_updated
+      // published from the restart endpoint's success path arrives with the
+      // NEW container_id, which falls through this guard and unsticks the
+      // state. Same pattern applies to a plain Stop's optimistic
+      // "stopping".
+      if (
+        prev &&
+        (prev.status === "starting" || prev.status === "stopping") &&
+        s.status !== prev.status &&
+        s.container_id != null &&
+        s.container_id !== "" &&
+        s.container_id === prev.container_id
+      ) {
+        return;
+      }
       sessionStore.set(s.id, s);
       // Pull progress is only meaningful while the session is starting; clear
       // it on any other status so the bar doesn't linger after a stop/restart.
