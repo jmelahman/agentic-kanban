@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"syscall"
 )
 
 // BuiltinImage is the Docker image reference for the bundled session
@@ -23,19 +24,21 @@ var BuiltinImage = "lahmanja/kanban-devcontainer:latest"
 // Host Claude Code config is layered on later by the session manager
 // (see ClaudeConfigMounts) so it can be toggled via .kanban.toml.
 //
-// The bundled image ships with both a `dev` and a `root` account; the
-// active one is selected by $DEVCONTAINER_REMOTE_USER (default `dev`),
-// mirroring the same env var consumed by `.devcontainer/devcontainer.json`
-// so a kanban process running inside a devcontainer flipped to root spawns
-// sessions as root too. $DEVCONTAINER_REMOTE_HOME (default `/home/dev`)
-// must agree — substitution is string-only and can't derive one from the
-// other.
+// The bundled image ships with both a `dev` (UID 1000) and a `root`
+// account. The active one is normally inferred from the owner of the
+// host's ~/.claude so the bind-mounted credentials are readable and
+// writable inside the session — without that, every new session gets a
+// permission-denied on the credentials file and re-prompts /login.
+// $DEVCONTAINER_REMOTE_USER / $DEVCONTAINER_REMOTE_HOME override the
+// auto-pick when set; the two are derived together so a session can't
+// end up as `root` with `/home/dev` (or vice versa).
 func BuiltinDevcontainer() *DevcontainerConfig {
+	user, _ := builtinIdentity()
 	cfg := &DevcontainerConfig{
 		Name:            "kanban-default",
 		Image:           BuiltinImage,
 		WorkspaceFolder: "/workspace",
-		RemoteUser:      builtinRemoteUser(),
+		RemoteUser:      user,
 		BuiltIn:         true,
 		ContainerEnv:    map[string]string{},
 	}
@@ -58,16 +61,16 @@ func BuiltinDevcontainer() *DevcontainerConfig {
 // applies these to built-in configs unless the .kanban.toml
 // [devcontainer].claude_config flag is set to false.
 //
-// The in-container target follows $DEVCONTAINER_REMOTE_HOME so when the
-// built-in image is flipped to root (via DEVCONTAINER_REMOTE_USER=root +
-// DEVCONTAINER_REMOTE_HOME=/root) the host config lands in /root and not
-// the unused /home/dev.
+// The in-container target follows the home dir picked by builtinIdentity
+// (auto-derived from the host file owner, overridable via
+// $DEVCONTAINER_REMOTE_HOME) so the bound files land where the chosen
+// remote user expects them.
 func ClaudeConfigMounts() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
-	target := builtinRemoteHome()
+	_, target := builtinIdentity()
 	var mounts []string
 	for _, name := range []string{".claude", ".claude.json"} {
 		src := filepath.Join(home, name)
@@ -79,28 +82,71 @@ func ClaudeConfigMounts() []string {
 	return mounts
 }
 
-// builtinRemoteUser returns the user the built-in devcontainer should run
-// as. Defaults to "dev" — overridable via $DEVCONTAINER_REMOTE_USER, which
-// mirrors the env var consumed by .devcontainer/devcontainer.json so a
-// kanban process running inside a devcontainer flipped to root spawns
-// sessions as root too.
-func builtinRemoteUser() string {
-	if u := os.Getenv("DEVCONTAINER_REMOTE_USER"); u != "" {
-		return u
+// builtinIdentity returns the (user, home) pair the built-in devcontainer
+// should run as. Resolution order, per-half:
+//
+//  1. $DEVCONTAINER_REMOTE_USER / $DEVCONTAINER_REMOTE_HOME (escape hatch).
+//  2. Otherwise, stat the host's ~/.claude (then ~/.claude.json) and pick
+//     the built-in account whose UID matches: 0 → root, 1000 → dev.
+//     Aligning the session user with the bind source's owner is what
+//     makes the credentials readable/writable from inside the container
+//     — without this, dev (1000) can't even list a root-owned ~/.claude
+//     and each new session re-prompts /login.
+//  3. Fall back to dev.
+//
+// The two halves are resolved together: an explicit user without a home
+// derives the home from a known-user table, and vice versa, so callers
+// can never observe a (root, /home/dev) or (dev, /root) pair.
+func builtinIdentity() (user, home string) {
+	user = os.Getenv("DEVCONTAINER_REMOTE_USER")
+	home = os.Getenv("DEVCONTAINER_REMOTE_HOME")
+	if user == "" {
+		user = detectBuiltinUserFromClaude()
 	}
-	return "dev"
+	if home == "" {
+		home = builtinHomeForUser(user)
+	}
+	return user, home
 }
 
-// builtinRemoteHome returns the in-container home directory matching
-// builtinRemoteUser. Defaults to "/home/dev" — overridable via
-// $DEVCONTAINER_REMOTE_HOME. Must agree with $DEVCONTAINER_REMOTE_USER;
-// substitution is string-only so we don't try to derive one from the
-// other.
-func builtinRemoteHome() string {
-	if h := os.Getenv("DEVCONTAINER_REMOTE_HOME"); h != "" {
-		return h
+// builtinHomeForUser maps a built-in account name to its in-container
+// home. Unknown users fall through to /home/dev rather than guessing
+// /home/<user> — the image only provisions homes for the two shipped
+// accounts and a wrong path would silently lose bind-mounted state.
+func builtinHomeForUser(user string) string {
+	if user == "root" {
+		return "/root"
 	}
 	return "/home/dev"
+}
+
+// detectBuiltinUserFromClaude returns the built-in account whose UID
+// owns the host's Claude Code config. Other UIDs (e.g., a macOS user
+// with UID 501) fall through to dev — the image doesn't ship an account
+// matching them, so for those hosts the user has to set
+// $DEVCONTAINER_REMOTE_USER explicitly or chown the bind source.
+func detectBuiltinUserFromClaude() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "dev"
+	}
+	for _, name := range []string{".claude", ".claude.json"} {
+		info, err := os.Stat(filepath.Join(home, name))
+		if err != nil {
+			continue
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok {
+			return "dev"
+		}
+		switch stat.Uid {
+		case 0:
+			return "root"
+		case 1000:
+			return "dev"
+		}
+	}
+	return "dev"
 }
 
 // DockerSocketMount returns the host docker socket bind mount string applied

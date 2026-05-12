@@ -167,6 +167,33 @@ For full end-to-end terminal access, the worktree root also needs to be
 reachable on the host at the translated path — i.e. `KANBAN_HOST_WORKSPACE`
 must point at a directory the host's docker daemon can stat.
 
+### Built-in session container user
+
+When kanban spawns a session in the built-in devcontainer image, it picks
+the in-container user by stat-ing the host's `~/.claude` and matching the
+owner UID against the accounts the image ships: UID `0` → `root` (home
+`/root`), UID `1000` → `dev` (home `/home/dev`). Other UIDs fall back to
+`dev`.
+
+The reason it matters: bind mounts preserve host UIDs verbatim, so if the
+session ran as `dev` but `~/.claude` is root-owned (mode 0700 directory,
+0600 credentials), `dev` couldn't read the credentials and Claude would
+re-prompt `/login` every new session — and couldn't write the new
+credentials back either, so the loop never broke.
+
+Two env vars override the auto-pick when set. They resolve together, so
+a session can't end up as `root` with `/home/dev` (or vice versa):
+
+| Env var | Effect |
+| --- | --- |
+| `$DEVCONTAINER_REMOTE_USER` | In-container user (`dev` or `root`). If only this is set, the home is derived from a known-user table. |
+| `$DEVCONTAINER_REMOTE_HOME` | In-container home prefix. If only this is set, the user still comes from the `~/.claude` auto-pick. |
+
+For host UIDs the image doesn't ship an account for (e.g. macOS users
+with UID 501), the auto-pick falls back to `dev`. Set the env vars
+explicitly or chown the bind source to avoid the re-auth loop on those
+hosts.
+
 ## See also
 
 - [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `board list`, `ticket create`.

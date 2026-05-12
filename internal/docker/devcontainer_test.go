@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/docker/docker/api/types/mount"
@@ -454,6 +455,11 @@ func TestClaudeConfigMounts(t *testing.T) {
 	t.Run("returns mounts for both files when present", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		// Pin the user explicitly so the auto-detect path doesn't pick a
+		// different target based on whatever UID owns the temp dir on the
+		// runner — the assertion below is about mount construction, not
+		// identity resolution.
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "dev")
 		t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
 		if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 			t.Fatal(err)
@@ -515,7 +521,8 @@ func TestClaudeConfigMounts(t *testing.T) {
 }
 
 func TestBuiltinDevcontainer_RemoteUser(t *testing.T) {
-	t.Run("defaults to dev when env unset", func(t *testing.T) {
+	t.Run("falls back to dev when env unset and no ~/.claude", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
 		t.Setenv("DEVCONTAINER_REMOTE_USER", "")
 		cfg := BuiltinDevcontainer()
 		if cfg.RemoteUser != "dev" {
@@ -530,6 +537,137 @@ func TestBuiltinDevcontainer_RemoteUser(t *testing.T) {
 			t.Errorf("RemoteUser = %q; want %q", cfg.RemoteUser, "root")
 		}
 	})
+}
+
+func TestBuiltinIdentity(t *testing.T) {
+	// The auto-detect path stats the host's ~/.claude and picks the
+	// built-in account whose UID owns it. The test process owns whatever
+	// files it creates, so the expected detection result depends on
+	// $UID — UID 0 maps to root, UID 1000 maps to dev, everything else
+	// falls back to dev.
+	expectedForCurrentUID := func() string {
+		switch os.Getuid() {
+		case 0:
+			return "root"
+		case 1000:
+			return "dev"
+		default:
+			return "dev"
+		}
+	}
+	expectedHomeFor := func(user string) string {
+		if user == "root" {
+			return "/root"
+		}
+		return "/home/dev"
+	}
+
+	t.Run("auto-detects from .claude owner", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "")
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
+		if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		wantUser := expectedForCurrentUID()
+		gotUser, gotHome := builtinIdentity()
+		if gotUser != wantUser {
+			t.Errorf("user = %q; want %q (UID %d)", gotUser, wantUser, os.Getuid())
+		}
+		if gotHome != expectedHomeFor(wantUser) {
+			t.Errorf("home = %q; want %q", gotHome, expectedHomeFor(wantUser))
+		}
+	})
+
+	t.Run("auto-detects from .claude.json when directory missing", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "")
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
+		if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		wantUser := expectedForCurrentUID()
+		gotUser, _ := builtinIdentity()
+		if gotUser != wantUser {
+			t.Errorf("user = %q; want %q (UID %d)", gotUser, wantUser, os.Getuid())
+		}
+	})
+
+	t.Run("falls back to dev when nothing to stat", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "")
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
+		gotUser, gotHome := builtinIdentity()
+		if gotUser != "dev" {
+			t.Errorf("user = %q; want %q", gotUser, "dev")
+		}
+		if gotHome != "/home/dev" {
+			t.Errorf("home = %q; want %q", gotHome, "/home/dev")
+		}
+	})
+
+	t.Run("explicit DEVCONTAINER_REMOTE_USER wins over auto-detect", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "root")
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
+		// Seed a file owned by whatever UID the test runs as; the explicit
+		// env var should pin "root" regardless.
+		if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		gotUser, gotHome := builtinIdentity()
+		if gotUser != "root" {
+			t.Errorf("user = %q; want %q", gotUser, "root")
+		}
+		if gotHome != "/root" {
+			t.Errorf("home = %q; want %q (derived from user)", gotHome, "/root")
+		}
+	})
+
+	t.Run("user-only env still derives a matching home", func(t *testing.T) {
+		t.Setenv("HOME", t.TempDir())
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "root")
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
+		_, gotHome := builtinIdentity()
+		if gotHome != "/root" {
+			t.Errorf("home = %q; want %q", gotHome, "/root")
+		}
+	})
+
+	t.Run("home-only env still resolves a user", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "")
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "/custom")
+		// No claude on disk → falls back to dev.
+		gotUser, gotHome := builtinIdentity()
+		if gotUser != "dev" {
+			t.Errorf("user = %q; want %q", gotUser, "dev")
+		}
+		if gotHome != "/custom" {
+			t.Errorf("home = %q; want %q", gotHome, "/custom")
+		}
+	})
+}
+
+// Smoke test that the syscall.Stat_t assertion in detectBuiltinUserFromClaude
+// matches the type os.Stat actually returns on this platform — if a future
+// build adds a non-Unix target the switch needs revisiting.
+func TestDetectBuiltinUser_StatTypeAssertion(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "probe")
+	if err := os.WriteFile(f, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := info.Sys().(*syscall.Stat_t); !ok {
+		t.Fatalf("os.Stat().Sys() is not *syscall.Stat_t on %T", info.Sys())
+	}
 }
 
 func TestBuildContainerConfig_HostDockerInternalAlias(t *testing.T) {

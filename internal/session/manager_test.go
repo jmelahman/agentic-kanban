@@ -169,12 +169,12 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
 
 func TestApplyKanbanDevcontainerOverrides_BuiltInClaudeConfig(t *testing.T) {
 	// Seed a HOME with both files present so ClaudeConfigMounts returns the
-	// expected pair on hosts that don't have ~/.claude. Clear
-	// DEVCONTAINER_REMOTE_HOME so the assertions can pin the default
-	// /home/dev target — kanban devs running inside a root-flipped
-	// devcontainer would otherwise inherit /root here.
+	// expected pair on hosts that don't have ~/.claude. Pin the remote
+	// user/home so the auto-detect path doesn't pick a different target
+	// based on whatever UID owns the temp dir on the runner.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("DEVCONTAINER_REMOTE_USER", "dev")
 	t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
 	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 		t.Fatal(err)
