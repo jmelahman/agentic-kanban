@@ -13,7 +13,7 @@
  * See useThemeMode, useContrast, useAccent hooks.
  */
 @theme {
-  --color-bg: #09090b;
+  --color-bg: #1e3a8a;
   --color-surface: #18181b;
   --color-surface-2: #27272a;
   --color-surface-3: #3f3f46;
