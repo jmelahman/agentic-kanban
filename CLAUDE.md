@@ -69,12 +69,6 @@ curl -sS -X POST http://127.0.0.1:17474/api/boards \
   -d '{"name":"test","repo_path":"/workspace","default_branch":"master"}'
 ```
 
-Never run `git worktree prune` in this devcontainer — the host's other
-kanban worktrees aren't bind-mounted in here, so they look `prunable`,
-and prune wipes ALL registrations including this one. Clean up a test
-worktree by removing its directory under `--worktrees-dir` and its
-registration under the host's `.git/worktrees/<name>` separately.
-
 ## Tests / typecheck / lint
 
 - Go: `go test ./...`
