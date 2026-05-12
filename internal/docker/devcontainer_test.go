@@ -454,6 +454,7 @@ func TestClaudeConfigMounts(t *testing.T) {
 	t.Run("returns mounts for both files when present", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "")
 		if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -488,6 +489,45 @@ func TestClaudeConfigMounts(t *testing.T) {
 		t.Setenv("HOME", t.TempDir())
 		if got := ClaudeConfigMounts(); got != nil {
 			t.Errorf("ClaudeConfigMounts() = %v; want nil", got)
+		}
+	})
+
+	t.Run("DEVCONTAINER_REMOTE_HOME redirects targets", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("DEVCONTAINER_REMOTE_HOME", "/root")
+		if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		want := []string{
+			"type=bind,source=" + filepath.Join(home, ".claude") + ",target=/root/.claude",
+			"type=bind,source=" + filepath.Join(home, ".claude.json") + ",target=/root/.claude.json",
+		}
+		got := ClaudeConfigMounts()
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("ClaudeConfigMounts() = %v; want %v", got, want)
+		}
+	})
+}
+
+func TestBuiltinDevcontainer_RemoteUser(t *testing.T) {
+	t.Run("defaults to dev when env unset", func(t *testing.T) {
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "")
+		cfg := BuiltinDevcontainer()
+		if cfg.RemoteUser != "dev" {
+			t.Errorf("RemoteUser = %q; want %q", cfg.RemoteUser, "dev")
+		}
+	})
+
+	t.Run("honors DEVCONTAINER_REMOTE_USER", func(t *testing.T) {
+		t.Setenv("DEVCONTAINER_REMOTE_USER", "root")
+		cfg := BuiltinDevcontainer()
+		if cfg.RemoteUser != "root" {
+			t.Errorf("RemoteUser = %q; want %q", cfg.RemoteUser, "root")
 		}
 	})
 }
