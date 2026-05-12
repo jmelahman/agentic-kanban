@@ -230,7 +230,14 @@ export async function fetchBoardStructure(
       (s.started_at ?? 0) !== (existing.started_at ?? 0) ||
       (s.stopped_at ?? 0) !== (existing.stopped_at ?? 0) ||
       (s.container_id ?? "") !== (existing.container_id ?? "");
-    if (lifecycleAdvanced) {
+    // Manager.Start's failure paths (manager.go:144,191) flip status to
+    // "error" via UpdateSessionStatus alone — no lifecycle column advance.
+    // Without this branch we'd ignore a server-side error and keep an
+    // optimistic "starting" pinned indefinitely.
+    const serverFailedTransient =
+      (existing.status === "starting" || existing.status === "stopping") &&
+      s.status === "error";
+    if (lifecycleAdvanced || serverFailedTransient) {
       sessionStore.set(s.id, s);
       continue;
     }

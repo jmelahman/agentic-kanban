@@ -221,6 +221,30 @@ export function SessionView({
     autoStartedRef.current = ticketId;
     ensureMut.mutate();
   }, [ticketId, session, ensureMut]);
+
+  // Active recovery for stuck "starting". The layered defenses (SSE filter,
+  // reconcileFromStartResponse, fetchBoardStructure self-heal) each cover a
+  // failure mode but compose only if a refetch is *ever* triggered after the
+  // server's lifecycle advance. In Overview the structure query goes idle
+  // after ensureMut.onSuccess's one-shot invalidate — nothing forces another
+  // refetch, so if the {idle} SSE drops and startMut.onSuccess didn't fire
+  // (observer detached, response error, etc.) we stay pinned at "starting"
+  // until the user navigates away. Poll the structure every few seconds
+  // while stuck; fetchBoardStructure's lifecycleAdvanced check flips the
+  // entry the moment the server has actually moved forward, and is a no-op
+  // otherwise.
+  // Depend on `boardId` (stable primitive), not `boardKey` — queryKeys.board
+  // returns a fresh array each call, so listing boardKey in deps would tear
+  // down and rebuild the interval every render and it would never tick.
+  useEffect(() => {
+    if (session?.status !== "starting" || sessionId == null) return;
+    const t = setInterval(() => {
+      if (sessionStore.get(sessionId)?.status === "starting") {
+        qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+      }
+    }, 5_000);
+    return () => clearInterval(t);
+  }, [session?.status, sessionId, qc, boardId]);
   const stopMut = useMutation({
     mutationFn: () => api.stopSession(session!.id),
     onMutate: () =>
