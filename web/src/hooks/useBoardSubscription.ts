@@ -80,28 +80,27 @@ function applyBoardEvent(
       const s = data as Session | null;
       if (!s) return;
       const prev = sessionStore.get(s.id);
-      // While Restart's Stop phase is in flight, the DB still holds the OLD
-      // container_id (manager.Stop clears it only after StopContainer +
-      // RemoveContainer return — see manager.go:289-309). A Claude Code
-      // status hook firing out of the dying container, or the GitHub PR
-      // poller publishing a refetched row, will broadcast that stale shape
-      // as session_updated{status: idle, container_id: OLD}. Without this
-      // guard the optimistic "starting" set by restartMut.onMutate gets
-      // clobbered, SessionTerminals re-mounts PtyTerminal, and the next
-      // attach hits ExecAttachTTY against a container that's already gone —
-      // surfacing as the "container X is not running" + [disconnected]
-      // flash users see on Overview restart. The canonical session_updated
-      // published from the restart endpoint's success path arrives with the
-      // NEW container_id, which falls through this guard and unsticks the
-      // state. Same pattern applies to a plain Stop's optimistic
-      // "stopping".
+      // Filter stale events that would clobber an optimistic
+      // "starting"/"stopping" with a status the server has already moved
+      // past. Two known publishers send these:
+      //  - Claude Code status hooks or the GitHub PR poller firing out of
+      //    the dying container during a Restart's Stop phase, before
+      //    manager.Stop clears container_id (manager.go:289-309). They
+      //    publish session_updated{status: idle, container_id: OLD}.
+      //  - The ensure endpoint publishing {status: stopped, container_id:""}
+      //    immediately before startMut sets optimistic "starting"; if SSE
+      //    delivers the ensure event after the optimistic flip it would
+      //    revert us to "stopped".
+      // Both are distinguishable from real lifecycle progress: a real
+      // Manager.Start advances started_at, a real Manager.Stop advances
+      // stopped_at. Stale events keep both markers where they were. Trust
+      // the optimistic state until a marker actually moves.
       if (
         prev &&
         (prev.status === "starting" || prev.status === "stopping") &&
         s.status !== prev.status &&
-        s.container_id != null &&
-        s.container_id !== "" &&
-        s.container_id === prev.container_id
+        (s.started_at ?? 0) <= (prev.started_at ?? 0) &&
+        (s.stopped_at ?? 0) <= (prev.stopped_at ?? 0)
       ) {
         return;
       }

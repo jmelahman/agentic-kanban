@@ -205,22 +205,37 @@ export async function fetchBoardStructure(
   });
 
   const newSessionIds = new Set(data.sessions.map((s) => s.id));
-  // SSE is the authoritative source for session status transitions. A
-  // boardState snapshot taken at request time can be stale by the time it
-  // lands — e.g. a session_updated("starting") event or an optimistic
-  // startMut.onMutate may have already advanced the entry past the snapshot's
-  // "stopped". Seed only entries we haven't seen yet; let SSE drive status.
-  // PR fields are an exception: they're only ever written by the server-side
-  // GitHub poller, so the snapshot is authoritative for them. Refresh those
-  // from each snapshot so a missed session_updated event (SSE disconnect
-  // while off-board, a buffer-full drop in events.go) doesn't leave the
-  // header without a PR link until the user reloads the page.
+  // Reconciling two writers: optimistic UI that's ahead of the server (e.g.
+  // startMut.onMutate set "starting" while the snapshot still shows
+  // "stopped"), and the authoritative server state that the store can fall
+  // behind on (SSE dropped by a full 16-slot per-subscriber buffer during a
+  // pull-progress burst, SessionView unmounted before startMut.onSuccess
+  // fired so the response-based reconcile never ran, or the user was
+  // off-board while the transition happened).
+  //
+  // started_at / stopped_at / container_id only advance when Manager.Start
+  // or Manager.Stop commits a lifecycle change, and Claude-hook status
+  // updates (working/idle/awaiting_perm) leave them untouched. So matching
+  // markers mean the snapshot represents the same lifecycle generation we
+  // already have — trust the store, including any optimistic status.
+  // Differing markers mean the server moved forward and we missed it —
+  // trust the snapshot so the store self-heals without a page reload.
   for (const s of data.sessions) {
     const existing = sessionStore.get(s.id);
     if (!existing) {
       sessionStore.set(s.id, s);
       continue;
     }
+    const lifecycleAdvanced =
+      (s.started_at ?? 0) !== (existing.started_at ?? 0) ||
+      (s.stopped_at ?? 0) !== (existing.stopped_at ?? 0) ||
+      (s.container_id ?? "") !== (existing.container_id ?? "");
+    if (lifecycleAdvanced) {
+      sessionStore.set(s.id, s);
+      continue;
+    }
+    // Lifecycle in sync; refresh PR fields (written by the GitHub poller, a
+    // separate writer the snapshot is always authoritative for).
     if (
       existing.pr_state !== s.pr_state ||
       existing.pr_number !== s.pr_number ||
