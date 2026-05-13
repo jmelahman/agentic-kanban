@@ -1193,10 +1193,43 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 	// every launch, so this preserves the conversation across container
 	// restarts. Other harnesses don't have an equivalent flag, so this is
 	// gated on the resolved harness ID.
+	//
+	// SessionStart fires the moment `claude` boots — before any prompt is
+	// submitted and before claude flushes a transcript file. If the user
+	// restarts the container in that window, the DB holds a UUID that has
+	// no matching `~/.claude/projects/*/<uuid>.jsonl`, and `claude --resume`
+	// bombs out with "No conversation found with session ID". Verify the
+	// transcript exists on disk before resuming; clear the dead UUID so the
+	// UI stops advertising it and the next launch starts cleanly.
 	if resolved.ID == "claude" && sess.ClaudeSessionID != "" {
-		cmd = append(append([]string(nil), cmd...), "--resume", sess.ClaudeSessionID)
+		if claudeTranscriptExists(sess.ClaudeSessionID) {
+			cmd = append(append([]string(nil), cmd...), "--resume", sess.ClaudeSessionID)
+		} else {
+			if err := h.store.UpdateClaudeSessionID(r.Context(), id, ""); err != nil {
+				log.Printf("clear stale claude_session_id for session %d: %v", id, err)
+			} else {
+				h.publishSessionUpdated(r.Context(), id)
+			}
+		}
 	}
 	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, cmd, "/workspace")
+}
+
+// claudeTranscriptExists reports whether Claude Code has a persisted JSONL
+// transcript for the given session UUID on the host's `~/.claude/projects/`
+// tree (bind-mounted into the container by ClaudeConfigMounts). The
+// project subdirectory name encodes the cwd Claude saw at launch, which
+// from inside the session container is just `/workspace` — but rather
+// than couple to that encoding, glob across all project directories
+// since the UUID is unique. Returns false on any I/O error so callers
+// fall back to launching `claude` fresh.
+func claudeTranscriptExists(uuid string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+	matches, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", uuid+".jsonl"))
+	return len(matches) > 0
 }
 
 func (h *handlers) wsShell(w http.ResponseWriter, r *http.Request) {
