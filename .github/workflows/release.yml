@@ -67,7 +67,7 @@ jobs:
         with:
           go-version: stable
           cache: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "24"
       - run: npm --prefix web ci
@@ -87,13 +87,13 @@ jobs:
     strategy:
       matrix:
         os-arch:
-          - { goos: "linux", goarch: "amd64" }
-          - { goos: "linux", goarch: "arm64" }
-          - { goos: "windows", goarch: "amd64" }
-          - { goos: "windows", goarch: "arm64" }
-          - { goos: "darwin", goarch: "amd64" }
-          - { goos: "darwin", goarch: "arm64" }
-          - { goos: "", goarch: "" }
+          - {goos: "linux", goarch: "amd64"}
+          - {goos: "linux", goarch: "arm64"}
+          - {goos: "windows", goarch: "amd64"}
+          - {goos: "windows", goarch: "arm64"}
+          - {goos: "darwin", goarch: "amd64"}
+          - {goos: "darwin", goarch: "arm64"}
+          - {goos: "", goarch: ""}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
@@ -103,7 +103,7 @@ jobs:
         with:
           go-version: stable
           cache: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # zizmor: ignore[cache-poisoning]
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
         with:
           node-version: "24"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
