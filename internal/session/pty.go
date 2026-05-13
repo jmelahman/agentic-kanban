@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/gorilla/websocket"
 
@@ -12,7 +14,24 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	CheckOrigin: checkSameOrigin,
+}
+
+// checkSameOrigin rejects WebSocket upgrades whose Origin header is missing,
+// unparseable, or points at a host other than the one serving the request.
+// This blocks cross-site WebSocket hijacking (CWE-346) of the session PTY and
+// shell endpoints, which would otherwise hand an attacker page an interactive
+// shell inside the session container.
+func checkSameOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 type ptyControl struct {
