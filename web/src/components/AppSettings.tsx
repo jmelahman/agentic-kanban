@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { ACCENTS, type Accent, setAccent, useAccent } from "@/hooks/useAccent";
@@ -243,6 +243,28 @@ function ThemeModeToggle({
     { v: "light", label: "Light" },
     { v: "dark", label: "Dark" },
   ];
+  const activeIndex = Math.max(
+    0,
+    opts.findIndex((o) => o.v === value),
+  );
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    let next = activeIndex;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+      next = (activeIndex + 1) % opts.length;
+    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+      next = (activeIndex - 1 + opts.length) % opts.length;
+    } else if (e.key === "Home") {
+      next = 0;
+    } else if (e.key === "End") {
+      next = opts.length - 1;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    onChange(opts[next].v);
+    refs.current[next]?.focus();
+  };
   return (
     <div
       role="radiogroup"
@@ -254,10 +276,15 @@ function ThemeModeToggle({
           // biome-ignore lint/a11y/useSemanticElements: custom-styled radio toggle; <input type="radio"> can't carry the same visual treatment.
           <button
             key={o.v}
+            ref={(el) => {
+              refs.current[i] = el;
+            }}
             type="button"
             role="radio"
             aria-checked={active}
+            tabIndex={active ? 0 : -1}
             onClick={() => onChange(o.v)}
+            onKeyDown={onKeyDown}
             className={`px-3 py-1 text-sm transition-colors duration-150 ${
               i > 0 ? "border-l border-border" : ""
             } ${active ? "bg-accent-700 text-white" : "bg-surface text-fg hover:bg-surface-2"}`}

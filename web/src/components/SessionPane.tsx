@@ -157,23 +157,47 @@ export function SessionPane({
   return (
     <aside className={paneClass} style={paneStyle}>
       {!overlay && (
-        // biome-ignore lint/a11y/useFocusableInteractive: mouse-only resize handle; no keyboard resize affordance yet.
         // biome-ignore lint/a11y/useSemanticElements: HTML has no semantic resizer; role="separator" is the canonical ARIA pattern.
         <div
-          // biome-ignore lint/a11y/useAriaPropsForRole: aria-valuenow is N/A for a continuous resize-by-drag handle.
           role="separator"
           aria-orientation={isHorizontal ? "horizontal" : "vertical"}
+          aria-label="Resize session pane"
+          aria-valuenow={isHorizontal ? height : width}
+          aria-valuemin={isHorizontal ? MIN_HEIGHT : MIN_WIDTH}
+          aria-valuemax={isHorizontal ? MAX_HEIGHT : MAX_WIDTH}
+          tabIndex={0}
           onMouseDown={(e) => {
             e.preventDefault();
             setResizing(true);
           }}
+          onKeyDown={(e) => {
+            const step = e.shiftKey ? 64 : 16;
+            // Pane sits on the right (vertical) or bottom (horizontal); the
+            // handle is on the leading edge, so "grow" pulls the handle away
+            // from the pane: left for vertical, up for horizontal.
+            const grow = isHorizontal ? "ArrowUp" : "ArrowLeft";
+            const shrink = isHorizontal ? "ArrowDown" : "ArrowRight";
+            const min = isHorizontal ? MIN_HEIGHT : MIN_WIDTH;
+            const max = isHorizontal ? MAX_HEIGHT : MAX_WIDTH;
+            const current = isHorizontal ? height : width;
+            let next = current;
+            if (e.key === grow) next += step;
+            else if (e.key === shrink) next -= step;
+            else if (e.key === "Home") next = min;
+            else if (e.key === "End") next = max;
+            else return;
+            e.preventDefault();
+            next = Math.min(max, Math.max(min, next));
+            if (isHorizontal) setHeight(next);
+            else setWidth(next);
+          }}
           onDoubleClick={() => (isHorizontal ? setHeight(DEFAULT_HEIGHT) : setWidth(DEFAULT_WIDTH))}
           className={
             isHorizontal
-              ? `absolute left-0 top-0 z-20 h-1 w-full -translate-y-1/2 cursor-row-resize hover:bg-accent-500/40 ${
+              ? `absolute left-0 top-0 z-20 h-1 w-full -translate-y-1/2 cursor-row-resize hover:bg-accent-500/40 focus-visible:bg-accent-500/60 focus-visible:outline-none ${
                   resizing ? "bg-accent-500/60" : ""
                 }`
-              : `absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-accent-500/40 ${
+              : `absolute left-0 top-0 z-20 h-full w-1 -translate-x-1/2 cursor-col-resize hover:bg-accent-500/40 focus-visible:bg-accent-500/60 focus-visible:outline-none ${
                   resizing ? "bg-accent-500/60" : ""
                 }`
           }

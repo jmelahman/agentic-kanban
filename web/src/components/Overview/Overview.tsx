@@ -65,26 +65,45 @@ function DesktopOverview() {
     });
   };
 
+  const persistWidth = (w: number) => {
+    try {
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w));
+    } catch {
+      // ignore
+    }
+  };
+
   const onResizeStart = (e: React.MouseEvent) => {
     if (collapsed) return;
     e.preventDefault();
     setResizing(true);
+    let latest = sidebarWidth;
     const onMove = (ev: MouseEvent) => {
-      const w = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, ev.clientX));
-      setSidebarWidth(w);
+      latest = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, ev.clientX));
+      setSidebarWidth(latest);
     };
     const onUp = () => {
       setResizing(false);
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      try {
-        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
-      } catch {
-        // ignore
-      }
+      persistWidth(latest);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  };
+
+  const onResizeKey = (e: React.KeyboardEvent) => {
+    const step = e.shiftKey ? 64 : 16;
+    let next = sidebarWidth;
+    if (e.key === "ArrowLeft") next -= step;
+    else if (e.key === "ArrowRight") next += step;
+    else if (e.key === "Home") next = MIN_SIDEBAR;
+    else if (e.key === "End") next = MAX_SIDEBAR;
+    else return;
+    e.preventDefault();
+    next = Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, next));
+    setSidebarWidth(next);
+    persistWidth(next);
   };
 
   return (
@@ -112,14 +131,18 @@ function DesktopOverview() {
               onCollapseSidebar={toggleCollapsed}
             />
           </aside>
-          {/* biome-ignore lint/a11y/useFocusableInteractive: mouse-only resize handle; no keyboard resize affordance yet. */}
           {/* biome-ignore lint/a11y/useSemanticElements: HTML has no semantic resizer; role="separator" is the canonical ARIA pattern. */}
           <div
-            // biome-ignore lint/a11y/useAriaPropsForRole: aria-valuenow is N/A for a continuous resize-by-drag handle.
             role="separator"
             aria-orientation="vertical"
+            aria-label="Resize sidebar"
+            aria-valuenow={sidebarWidth}
+            aria-valuemin={MIN_SIDEBAR}
+            aria-valuemax={MAX_SIDEBAR}
+            tabIndex={0}
             onMouseDown={onResizeStart}
-            className={`w-1 cursor-col-resize hover:bg-accent-500/40 ${resizing ? "bg-accent-500/60" : ""}`}
+            onKeyDown={onResizeKey}
+            className={`w-1 cursor-col-resize hover:bg-accent-500/40 focus-visible:bg-accent-500/60 focus-visible:outline-none ${resizing ? "bg-accent-500/60" : ""}`}
           />
         </>
       )}
