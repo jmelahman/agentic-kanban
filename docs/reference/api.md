@@ -128,7 +128,7 @@ Sessions are the running container + worktree + harness for a ticket. The most u
 
 ## Health & metadata
 
-- `GET /api/health` — returns `200 OK` once the server is ready.
+- `GET /api/health` — returns `200 OK` with `{"status":"ok"}` when both the SQLite database and the Docker daemon are reachable. Returns `503 Service Unavailable` with `{"db":"..."}` or `{"docker":"..."}` otherwise. Used by the container `HEALTHCHECK` directive in the published image so orchestrators can detect a wedged process.
 - `GET /api/version` — returns `{ "version": "<semver-or-sha>" }`.
 
 ## Frontend error reporting

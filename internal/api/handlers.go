@@ -39,6 +39,10 @@ type handlers struct {
 }
 
 func (h *handlers) health(w http.ResponseWriter, r *http.Request) {
+	if err := h.store.DB().PingContext(r.Context()); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"db": err.Error()})
+		return
+	}
 	if err := h.docker.Ping(r.Context()); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"docker": err.Error()})
 		return

@@ -29,8 +29,28 @@ func TestHealth(t *testing.T) {
 	if resp.StatusCode == 200 && body["status"] != "ok" {
 		t.Errorf("status field = %q; want 'ok'", body["status"])
 	}
-	if resp.StatusCode == 503 && body["docker"] == "" {
-		t.Errorf("503 should report a docker error reason")
+	if resp.StatusCode == 503 && body["docker"] == "" && body["db"] == "" {
+		t.Errorf("503 should report a docker or db error reason")
+	}
+}
+
+func TestHealth_FailsWhenDBClosed(t *testing.T) {
+	e := newEnv(t)
+	// Closing the DB simulates a wedged/unreachable database — Ping should fail.
+	if err := e.store.DB().Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+	resp := e.get("/api/health")
+	defer resp.Body.Close()
+	if resp.StatusCode != 503 {
+		t.Fatalf("status = %d; want 503", resp.StatusCode)
+	}
+	var body map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["db"] == "" {
+		t.Errorf("503 should report a db error reason; got %+v", body)
 	}
 }
 

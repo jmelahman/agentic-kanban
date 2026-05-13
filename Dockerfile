@@ -31,4 +31,6 @@ FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a50
 RUN apk add --no-cache git ca-certificates
 COPY --from=go /out/kanban /kanban
 EXPOSE 7474
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget -q --spider http://127.0.0.1:7474/api/health || exit 1
 ENTRYPOINT ["/kanban", "serve"]
