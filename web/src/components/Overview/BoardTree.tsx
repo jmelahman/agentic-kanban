@@ -207,7 +207,7 @@ function BoardNode({
     draggingId != null && structure ? (structure.sessionIdByTicket[draggingId] ?? null) : null;
 
   return (
-    <div className="border-b border-border">
+    <div className="border-b border-border" data-board-node={boardId}>
       <button
         type="button"
         onClick={onToggle}
@@ -310,7 +310,11 @@ function ColumnSection({
     if (isAdding) addInputRef.current?.focus();
   }, [isAdding]);
   return (
-    <div ref={setNodeRef} className={`px-3 py-1 ${isOver ? "bg-accent-500/10" : ""}`}>
+    <div
+      ref={setNodeRef}
+      data-tree-column={columnId}
+      className={`px-3 py-1 ${isOver ? "bg-accent-500/10" : ""}`}
+    >
       <div className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
           {columnName}
@@ -417,7 +421,7 @@ function TicketRow({
     ? "bg-accent-500/15 ring-1 ring-inset ring-accent-500/40"
     : "hover:bg-surface-2";
   return (
-    <li ref={setNodeRef} style={style}>
+    <li ref={setNodeRef} style={style} data-tree-ticket={ticketId}>
       <button
         type="button"
         onClick={() => onOpenTicket(boardId, ticketId)}
@@ -426,6 +430,7 @@ function TicketRow({
         className={`flex w-full touch-none items-center gap-2 rounded px-2 py-1 text-left text-sm ${activeCls}`}
         title={ticket.title}
         aria-current={active ? "true" : undefined}
+        data-session-status={status || "none"}
       >
         <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${dotClass}`} />
         <span className="truncate text-fg-muted">#{ticket.id}</span>

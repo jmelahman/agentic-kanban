@@ -34,9 +34,9 @@ go.work.sum
 tsconfig.tsbuildinfo
 
 # Frontend build artifacts and deps
+test-results/
 web/dist/
 web/node_modules/
-web/test-results/
 web/playwright-report/
 web/playwright/.cache/
 .tmp/
@@ -54,6 +54,7 @@ plans/
 !docs/public/**/*.png
 .claude-tmp/
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # python packaging
 dist/

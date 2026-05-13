@@ -389,7 +389,11 @@ export function PanelCanvas({
   }, [panels, focusedTicketId, applyTile, bringToFront, displayRect]);
 
   return (
-    <div ref={canvasRef} className="relative h-full w-full overflow-hidden bg-surface">
+    <div
+      ref={canvasRef}
+      data-overview-canvas="true"
+      className="relative h-full w-full overflow-hidden bg-surface"
+    >
       {panels.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-fg-muted">
           Click a ticket on the left to open a session panel.
@@ -565,11 +569,15 @@ function Panel({
         onFocus={onFocus}
         onMouseDown={onFocus}
         className="flex h-full flex-col outline-none"
+        data-panel={panel.ticketId}
+        data-tile={panel.tile ?? "float"}
+        data-focused={focused ? "true" : "false"}
       >
         <div
           role="button"
           tabIndex={0}
-          aria-label="Drag to move, double-click to maximize"
+          aria-label="Move panel"
+          title="Drag to move, double-click to maximize"
           onDoubleClick={onToggleMaximize}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {

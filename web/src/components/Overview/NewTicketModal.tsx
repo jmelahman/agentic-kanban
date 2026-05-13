@@ -115,6 +115,7 @@ export function NewTicketModal({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-fg-muted">Board</span>
           <select
+            aria-label="Board"
             className="rounded bg-surface-2 px-2 py-1"
             value={boardId ?? ""}
             onChange={(e) => setBoardId(e.target.value ? Number(e.target.value) : null)}
@@ -131,6 +132,7 @@ export function NewTicketModal({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-fg-muted">Column</span>
           <select
+            aria-label="Column"
             className="rounded bg-surface-2 px-2 py-1"
             value={columnId ?? ""}
             onChange={(e) => setColumnId(e.target.value ? Number(e.target.value) : null)}
