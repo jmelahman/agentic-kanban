@@ -221,8 +221,7 @@ export async function fetchBoardStructure(boardId: number): Promise<BoardStructu
     // Without this branch we'd ignore a server-side error and keep an
     // optimistic "starting" pinned indefinitely.
     const serverFailedTransient =
-      (existing.status === "starting" || existing.status === "stopping") &&
-      s.status === "error";
+      (existing.status === "starting" || existing.status === "stopping") && s.status === "error";
     if (lifecycleAdvanced || serverFailedTransient) {
       sessionStore.set(s.id, s);
       continue;

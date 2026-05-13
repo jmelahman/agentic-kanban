@@ -32,9 +32,7 @@ const FRONTEND_PORT = 5174;
 //   3. Otherwise, fall back to the OS tmp dir like a normal test runner.
 const workspaceRoot = resolve(__dirname, "..");
 const hostMapping = detectHostMapping(workspaceRoot);
-const mountRoot = hostMapping
-  ? resolve(workspaceRoot, ".tmp", "kanban-e2e")
-  : "";
+const mountRoot = hostMapping ? resolve(workspaceRoot, ".tmp", "kanban-e2e") : "";
 if (mountRoot) mkdirSync(mountRoot, { recursive: true });
 
 const backendEnv: Record<string, string> = {
@@ -68,9 +66,7 @@ export default defineConfig({
   // The seed fixture reads this to pick a directory the host dockerd can
   // stat — leaving it unset is fine on a bare host (falls back to tmpdir).
   ...(mountRoot && { metadata: { mountRoot } }),
-  projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-  ],
+  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
       command: "go run . serve --in-memory --claude-config=false",
