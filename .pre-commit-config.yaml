@@ -55,3 +55,18 @@ repos:
         # without serial, concurrent `npm ci` runs race on web/node_modules
         # and corrupt the install. biome handles file parallelism itself.
         require_serial: true
+      # govulncheck is installed in the devcontainer image (see
+      # build/devcontainer/Dockerfile). language: system avoids prek's
+      # `go install` path, which fails behind the firewall ipset.
+      - id: govulncheck
+        name: govulncheck
+        entry: govulncheck ./...
+        language: system
+        files: ^(go\.mod|go\.sum)$
+        pass_filenames: false
+      - id: npm-audit
+        name: npm audit
+        entry: bash -c 'cd web && npm audit --audit-level=high'
+        language: system
+        files: ^web/package(-lock)?\.json$
+        pass_filenames: false

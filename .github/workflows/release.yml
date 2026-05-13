@@ -9,9 +9,19 @@ permissions: {}
 
 jobs:
   audit:
-    uses: ./.github/workflows/audit.yml
+    runs-on: ubuntu-latest
+    container:
+      image: lahmanja/devcontainer@sha256:a953bf44772cf97b1cff9ab6d47897aa3cba6cecf6a18194793cbfe0066b9681
+      options: --user root
     permissions:
       contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: prek run --all-files govulncheck npm-audit
 
   devcontainer:
     needs: audit

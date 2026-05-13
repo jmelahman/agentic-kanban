@@ -35,7 +35,8 @@ RUN ARCH="$(dpkg --print-architecture)" \
 ENV PATH="/usr/local/go/bin:/root/go/bin:/home/dev/go/bin:${PATH}" \
     GOPATH="/home/dev/go"
 
-RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@latest
+RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@latest \
+  && GOBIN=/usr/local/bin /usr/local/go/bin/go install golang.org/x/vuln/cmd/govulncheck@latest
 
 ARG PREK_VERSION=0.3.13
 RUN ARCH="$(dpkg --print-architecture)" \
