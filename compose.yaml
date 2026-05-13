@@ -48,6 +48,7 @@ services:
       # Agent config dir. Claude Code reads ~/.claude; for other
       # harnesses (e.g. pi/Ollama) substitute or add the relevant path.
       - ${HOME}/.claude:${HOME}/.claude
+      - ${HOME}/.claude.json:${HOME}/.claude.json
       - ${HOME}/code:${HOME}/code
       - ${HOME}/.local/share/kanban:${HOME}/.local/share/kanban
       - ${HOME}/.config/kanban:${HOME}/.config/kanban

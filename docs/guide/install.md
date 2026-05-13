@@ -30,6 +30,7 @@ docker run -d --name kanban \
   -p 13000-13099:13000-13099 \
   -v $DOCKER_SOCK_PATH:/var/run/docker.sock \
   -v $HOME/.claude:$HOME/.claude \
+  -v $HOME/.claude.json:$HOME/.claude.json \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
   -v $SOURCE:$SOURCE \
   -e HOME=$HOME \
