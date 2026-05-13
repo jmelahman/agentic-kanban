@@ -15,6 +15,16 @@ services:
       args:
         VERSION: ${VERSION:-dev}
     restart: unless-stopped
+    # The image entrypoint runs as UID 65532 (nonroot). Override with the
+    # invoking host user so bind-mounted dirs under $HOME stay writable, and
+    # grant the supplementary GID that owns the docker socket so kanban can
+    # spawn session containers. Export DOCKER_SOCK_GID before `docker compose
+    # up`, e.g.:
+    #   DOCKER_SOCK_GID=$(stat -c '%g' "${DOCKER_SOCK_PATH:-/var/run/docker.sock}") \
+    #   docker compose up -d
+    user: "${KANBAN_UID:-1000}:${KANBAN_GID:-1000}"
+    group_add:
+      - "${DOCKER_SOCK_GID:-0}"
     ports:
       - "7474:7474"
       - "13000-13099:13000-13099"

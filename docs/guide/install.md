@@ -14,26 +14,34 @@ This installs the binary to `~/.local/bin/kanban`. Make sure that's on your `PAT
 
 The Docker image is the most "batteries-included" option — it ships with a Docker socket mount so kanban can spawn session containers, and it pre-mounts `~/.claude` so the Claude Code harness picks up your existing credentials.
 
+The image entrypoint runs as the unprivileged `nonroot` user (UID/GID `65532`), not root. That means two things you need to plan for at run time:
+
+1. **Bind-mounted host paths must be writable by UID 65532.** Either `chown` the host directories (`$HOME/.local/share/kanban`, `$HOME/.config/kanban`, `$HOME/.claude`) to that UID, or pass `--user "$(id -u):$(id -g)"` to override the image's UID with your own (in which case the host paths can keep their normal ownership).
+2. **The bind-mounted docker socket must be group-accessible to the container user.** Add `--group-add "$(stat -c '%g' "${DOCKER_SOCK_PATH:-/var/run/docker.sock}")"` so the container process inherits the host group that owns the socket. Without it, `nonroot` cannot talk to `/var/run/docker.sock` and session spawning fails with `permission denied`.
+
 ```sh
 SOURCE=$HOME/code
+DOCKER_SOCK_PATH=${DOCKER_SOCK_PATH:-/var/run/docker.sock}
 docker run -d --name kanban \
   --restart unless-stopped \
+  --user "$(id -u):$(id -g)" \
+  --group-add "$(stat -c '%g' "$DOCKER_SOCK_PATH")" \
   -p 127.0.0.1:7474:7474 \
   -p 13000-13099:13000-13099 \
-  -v ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock \
+  -v $DOCKER_SOCK_PATH:/var/run/docker.sock \
   -v $HOME/.claude:$HOME/.claude \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
   -v $SOURCE:$SOURCE \
   -e HOME=$HOME \
   -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
   -e KANBAN_DATA_DIR=$HOME/.local/share/kanban \
-  -e KANBAN_HOST_DOCKER_SOCK=${DOCKER_SOCK_PATH:-/var/run/docker.sock} \
+  -e KANBAN_HOST_DOCKER_SOCK=$DOCKER_SOCK_PATH \
   -e GH_TOKEN=$(gh auth token) \
   lahmanja/kanban:latest
 ```
 
 ::: tip Rootless Docker
-Set `DOCKER_SOCK_PATH` in your shell to point at your rootless socket — see the [rootless Docker docs](https://docs.docker.com/engine/security/rootless/). The same value flows into `KANBAN_HOST_DOCKER_SOCK` so the host path is used as the bind source when kanban spawns session containers.
+Set `DOCKER_SOCK_PATH` in your shell to point at your rootless socket — see the [rootless Docker docs](https://docs.docker.com/engine/security/rootless/). The same value flows into `KANBAN_HOST_DOCKER_SOCK` so the host path is used as the bind source when kanban spawns session containers. On rootless setups the socket is typically owned by your own UID/GID, so `--user "$(id -u):$(id -g)" --group-add "$(stat -c '%g' "$DOCKER_SOCK_PATH")"` is usually enough — no `chown` needed.
 :::
 
 ## From GitHub Releases
