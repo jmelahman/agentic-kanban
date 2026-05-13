@@ -20,6 +20,14 @@
       }
     },
     {
+      "label": "Run Playwright E2E",
+      "type": "shell",
+      "command": "npm install && npm run test:e2e",
+      "options": {
+        "cwd": "${workspaceFolder}/web"
+      }
+    },
+    {
       "label": "Kanban Backend",
       "type": "shell",
       "command": "wgo",
