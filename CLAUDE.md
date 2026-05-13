@@ -105,6 +105,8 @@ for the full table.
 - Frontend lint/format (Biome): `cd web && npm run check` (`check:fix` to
   auto-apply safe fixes). The `prek` `biome` hook runs the same check on
   staged `web/**/*.{ts,tsx,js,jsx,json}` files.
+- Playwright E2E: `cd web && npm run test:e2e`. Read
+  `web/tests/e2e/README.md` before adding or modifying a spec.
 - Pre-commit hooks: `prek run --all-files` (run before committing).
 
 ## Perf benchmark
