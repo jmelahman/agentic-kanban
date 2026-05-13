@@ -36,6 +36,10 @@ tsconfig.tsbuildinfo
 # Frontend build artifacts and deps
 web/dist/
 web/node_modules/
+web/test-results/
+web/playwright-report/
+web/playwright/.cache/
+.tmp/
 
 # Local planning artifacts
 plans/
