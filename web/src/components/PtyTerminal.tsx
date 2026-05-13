@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { init, Terminal, FitAddon, ITheme } from "ghostty-web";
+import { init, Terminal, FitAddon, type ITheme } from "ghostty-web";
 import { APPEARANCE_EVENT } from "@/hooks/useThemeMode";
 
 const ghosttyReady = init();
@@ -61,12 +61,13 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
       // browser scrolls the host into view. With the mobile soft keyboard
       // open the visual viewport is short, so that scroll lands the terminal
       // in the middle of the screen instead of pinned to the top of the pane.
-      if (wrapper.parentElement !== getOffscreenContainer())
-        host.focus({ preventScroll: true });
+      if (wrapper.parentElement !== getOffscreenContainer()) host.focus({ preventScroll: true });
 
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const path = kind === "shell" ? "shell" : "pty";
-      const ws = new WebSocket(`${proto}//${window.location.host}/ws/sessions/${sessionId}/${path}`);
+      const ws = new WebSocket(
+        `${proto}//${window.location.host}/ws/sessions/${sessionId}/${path}`,
+      );
       ws.binaryType = "arraybuffer";
 
       const controls = createTerminalControls(term, () => {

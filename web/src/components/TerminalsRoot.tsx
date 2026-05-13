@@ -79,10 +79,7 @@ function useAllKnownSessionIds(): number[] {
   // requires snapshot identity stability or it emits the "Cannot update
   // a component while rendering" warning during cache notification storms.
   const cacheRef = useRef<number[]>([]);
-  const subscribe = useMemo(
-    () => (cb: () => void) => qc.getQueryCache().subscribe(cb),
-    [qc],
-  );
+  const subscribe = useMemo(() => (cb: () => void) => qc.getQueryCache().subscribe(cb), [qc]);
   const getSnapshot = useMemo(
     () => () => {
       const next = snapshotSessionIds(qc);

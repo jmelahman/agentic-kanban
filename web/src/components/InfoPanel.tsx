@@ -1,12 +1,12 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   api,
   PR_STATE_COLOR,
-  PRDetail,
-  PRReviewDecision,
-  PRState,
-  Session,
+  type PRDetail,
+  type PRReviewDecision,
+  type PRState,
+  type Session,
 } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { ticketStore, useTicket } from "@/store";
@@ -30,10 +30,7 @@ export function InfoPanel({ session }: { session: Session }) {
         <Row label="Status" value={<StatusValue status={session.status} />} />
         <Row label="Session ID" value={<Mono>{session.id}</Mono>} />
         {session.claude_session_id && (
-          <Row
-            label="Claude session"
-            value={<Copyable text={session.claude_session_id} />}
-          />
+          <Row label="Claude session" value={<Copyable text={session.claude_session_id} />} />
         )}
         <Row label="Started" value={formatTime(session.started_at)} />
         {session.stopped_at != null && (
@@ -56,10 +53,7 @@ export function InfoPanel({ session }: { session: Session }) {
           label="ID"
           value={
             session.container_id ? (
-              <Copyable
-                text={session.container_id}
-                display={session.container_id.slice(0, 12)}
-              />
+              <Copyable text={session.container_id} display={session.container_id.slice(0, 12)} />
             ) : (
               <Muted>none</Muted>
             )
@@ -69,15 +63,10 @@ export function InfoPanel({ session }: { session: Session }) {
 
       <Section title="Workspace">
         <Row label="Branch" value={<Copyable text={session.branch_name} />} />
-        <Row
-          label="Worktree"
-          value={<Copyable text={session.worktree_path} />}
-        />
+        <Row label="Worktree" value={<Copyable text={session.worktree_path} />} />
       </Section>
 
-      {session.pr_number != null && session.pr_url && (
-        <PRSection session={session} />
-      )}
+      {session.pr_number != null && session.pr_url && <PRSection session={session} />}
 
       <Section title="Ports">
         {ports.length === 0 ? (
@@ -116,13 +105,7 @@ export function InfoPanel({ session }: { session: Session }) {
   );
 }
 
-function DescriptionEditor({
-  ticketId,
-  body,
-}: {
-  ticketId: number;
-  body: string;
-}) {
+function DescriptionEditor({ ticketId, body }: { ticketId: number; body: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(body);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -195,9 +178,7 @@ function DescriptionEditor({
         placeholder="Add a description…"
         className="min-h-[6rem] w-full resize-none rounded bg-surface px-2 py-1 outline-none ring-1 ring-border focus:ring-accent-500"
       />
-      <p className="text-xs text-fg-muted">
-        ⌘/Ctrl + Enter to save · Esc to cancel
-      </p>
+      <p className="text-xs text-fg-muted">⌘/Ctrl + Enter to save · Esc to cancel</p>
     </div>
   );
 }
@@ -207,18 +188,10 @@ function autosize(el: HTMLTextAreaElement) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: ReactNode;
-}) {
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section>
-      <h3 className="mb-2 text-xs uppercase tracking-wide text-fg-muted">
-        {title}
-      </h3>
+      <h3 className="mb-2 text-xs uppercase tracking-wide text-fg-muted">{title}</h3>
       <div className="flex flex-col gap-1">{children}</div>
     </section>
   );
@@ -297,8 +270,7 @@ function PRSection({ session }: { session: Session }) {
               rel="noreferrer"
               className={`min-w-0 truncate hover:underline ${
                 session.pr_state
-                  ? (PR_STATE_COLOR[session.pr_state as PRState] ??
-                    "text-fg-muted")
+                  ? (PR_STATE_COLOR[session.pr_state as PRState] ?? "text-fg-muted")
                   : "text-fg-muted"
               }`}
               title={session.pr_title ?? ""}
@@ -317,13 +289,7 @@ function PRSection({ session }: { session: Session }) {
   );
 }
 
-function ReviewValue({
-  detail,
-  loading,
-}: {
-  detail: PRDetail | undefined;
-  loading: boolean;
-}) {
+function ReviewValue({ detail, loading }: { detail: PRDetail | undefined; loading: boolean }) {
   if (loading && !detail) return <Muted>…</Muted>;
   if (!detail) return <Muted>—</Muted>;
   return reviewBadge(detail.review_decision);
@@ -342,13 +308,7 @@ function reviewBadge(decision: PRReviewDecision): ReactNode {
   }
 }
 
-function ChecksValue({
-  detail,
-  loading,
-}: {
-  detail: PRDetail | undefined;
-  loading: boolean;
-}) {
+function ChecksValue({ detail, loading }: { detail: PRDetail | undefined; loading: boolean }) {
   if (loading && !detail) return <Muted>…</Muted>;
   if (!detail) return <Muted>—</Muted>;
   const c = detail.checks;
@@ -399,13 +359,7 @@ function ChecksValue({
   );
 }
 
-function CopyPRLink({
-  session,
-  detail,
-}: {
-  session: Session;
-  detail: PRDetail | undefined;
-}) {
+function CopyPRLink({ session, detail }: { session: Session; detail: PRDetail | undefined }) {
   const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -428,13 +382,10 @@ function CopyPRLink({
           // diff is optional — fall back to a link without it
         }
       }
-      const diff = stats
-        ? ` (+${stats.additions} / -${stats.deletions})`
-        : "";
+      const diff = stats ? ` (+${stats.additions} / -${stats.deletions})` : "";
       const html = `<a href="${escapeHtml(url)}">${escapeHtml(title)}</a>${escapeHtml(diff)}`;
       const text = `${title}${diff} ${url}`;
-      const w = window as Window &
-        typeof globalThis & { ClipboardItem?: typeof ClipboardItem };
+      const w = window as Window & typeof globalThis & { ClipboardItem?: typeof ClipboardItem };
       if (w.ClipboardItem && navigator.clipboard?.write) {
         await navigator.clipboard.write([
           new w.ClipboardItem({
@@ -479,5 +430,9 @@ function formatTime(ts?: number): ReactNode {
   const ms = ts < 1e12 ? ts * 1000 : ts;
   const d = new Date(ms);
   if (Number.isNaN(d.getTime())) return <Muted>—</Muted>;
-  return <span className="text-xs" title={d.toISOString()}>{d.toLocaleString()}</span>;
+  return (
+    <span className="text-xs" title={d.toISOString()}>
+      {d.toLocaleString()}
+    </span>
+  );
 }

@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { api, Board } from "@/api/client";
+import { api, type Board } from "@/api/client";
 import { useBoardForm } from "@/hooks/useBoardForm";
 import { Button } from "./Button";
 import { FormField, FormInput } from "./FormField";

@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { useEffect, useState } from "react";
-import { api, Column as ColumnType } from "@/api/client";
+import { api, type Column as ColumnType } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { addTicketRequestStore, useScalarSelector } from "@/store";
 import { useToast } from "@/toast";
@@ -46,10 +46,7 @@ export function Column(props: {
     },
   });
 
-  const requested = useScalarSelector(
-    addTicketRequestStore,
-    (id) => id === props.column.id,
-  );
+  const requested = useScalarSelector(addTicketRequestStore, (id) => id === props.column.id);
   useEffect(() => {
     if (!requested) return;
     setAdding(true);
@@ -64,7 +61,9 @@ export function Column(props: {
       className={`flex h-full min-w-72 flex-1 flex-col gap-2 overflow-hidden rounded border border-border bg-surface p-2 ${isOver ? "ring-2 ring-accent-600" : ""}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">{props.column.name}</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-fg">
+          {props.column.name}
+        </h2>
         <div className="flex items-center gap-2">
           {ticketCount > 0 && (
             <Button
@@ -82,11 +81,7 @@ export function Column(props: {
       <div className="-mx-0.5 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-0.5 py-0.5">
         <SortableContext items={props.ticketIds} strategy={verticalListSortingStrategy}>
           {props.ticketIds.map((id) => (
-            <Ticket
-              key={id}
-              id={id}
-              sessionId={props.sessionIdByTicket[id] ?? null}
-            />
+            <Ticket key={id} id={id} sessionId={props.sessionIdByTicket[id] ?? null} />
           ))}
         </SortableContext>
       </div>
@@ -126,7 +121,12 @@ export function Column(props: {
           </div>
         </form>
       ) : (
-        <Button data-ticket-add variant="dashed" className="text-xs" onClick={() => setAdding(true)}>
+        <Button
+          data-ticket-add
+          variant="dashed"
+          className="text-xs"
+          onClick={() => setAdding(true)}
+        >
           + add ticket
         </Button>
       )}
@@ -136,10 +136,10 @@ export function Column(props: {
         title={`Archive all in ${props.column.name}?`}
         description={
           <>
-            Archive all <span className="font-medium">{ticketCount}</span>{" "}
-            ticket{ticketCount === 1 ? "" : "s"} in{" "}
-            <span className="font-medium">{props.column.name}</span>? Their
-            sessions will be stopped.
+            Archive all <span className="font-medium">{ticketCount}</span> ticket
+            {ticketCount === 1 ? "" : "s"} in{" "}
+            <span className="font-medium">{props.column.name}</span>? Their sessions will be
+            stopped.
           </>
         }
         consequence="Tickets can be restored from the archive."

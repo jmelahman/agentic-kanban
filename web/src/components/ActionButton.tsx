@@ -1,4 +1,4 @@
-import { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { Button, Spinner } from "./Button";
 
 type Variant = NonNullable<ComponentProps<typeof Button>["variant"]>;

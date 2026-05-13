@@ -102,6 +102,9 @@ for the full table.
 
 - Go: `go test ./...`
 - Frontend types: `cd web && npm run typecheck`
+- Frontend lint/format (Biome): `cd web && npm run check` (`check:fix` to
+  auto-apply safe fixes). The `prek` `biome` hook runs the same check on
+  staged `web/**/*.{ts,tsx,js,jsx,json}` files.
 - Pre-commit hooks: `prek run --all-files` (run before committing).
 
 ## Perf benchmark

@@ -1,13 +1,6 @@
-import { ReactNode, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
-import {
-  ArchiveIcon,
-  CogIcon,
-  HelpIcon,
-  MenuIcon,
-  MoreIcon,
-  PlusIcon,
-} from "@/icons";
+import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon, MoreIcon, PlusIcon } from "@/icons";
 import { Button } from "./Button";
 
 type MenuAction = (() => void) | null;
@@ -120,17 +113,12 @@ function MenuItem({
   onClick?: () => void;
   href?: string;
 }) {
-  const className =
-    "flex w-full items-center gap-2 px-3 py-2 text-left text-fg hover:bg-surface-2";
+  const className = "flex w-full items-center gap-2 px-3 py-2 text-left text-fg hover:bg-surface-2";
   const content = (
     <>
-      <span className="inline-flex h-4 w-4 items-center justify-center text-fg-muted">
-        {icon}
-      </span>
+      <span className="inline-flex h-4 w-4 items-center justify-center text-fg-muted">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
-      {badge && (
-        <span aria-hidden className="h-2 w-2 rounded-full bg-accent-500" />
-      )}
+      {badge && <span aria-hidden className="h-2 w-2 rounded-full bg-accent-500" />}
     </>
   );
   if (as === "a") {

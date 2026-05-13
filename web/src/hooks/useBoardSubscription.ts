@@ -1,13 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { PullProgress, Session, subscribeBoard, Ticket } from "@/api/client";
+import { type PullProgress, type Session, subscribeBoard, type Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-import {
-  activeTicketStore,
-  pullProgressStore,
-  sessionStore,
-  ticketStore,
-} from "@/store";
+import { activeTicketStore, pullProgressStore, sessionStore, ticketStore } from "@/store";
 
 export type StreamStatus = "open" | "error" | "closed";
 
@@ -27,9 +22,7 @@ export function useBoardSubscription(
     const key = queryKeys.board(boardId);
     return subscribeBoard(boardId, {
       onEvent: (type, data) => {
-        applyBoardEvent(boardId, type, data, () =>
-          qc.invalidateQueries({ queryKey: key }),
-        );
+        applyBoardEvent(boardId, type, data, () => qc.invalidateQueries({ queryKey: key }));
         if (
           type === "ticket_archived" ||
           type === "ticket_unarchived" ||

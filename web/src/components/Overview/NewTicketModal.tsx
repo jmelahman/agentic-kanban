@@ -31,13 +31,9 @@ export function NewTicketModal({
     () => defaultBoardId ?? boards[0]?.id ?? null,
   );
   const [structure, setStructure] = useState<BoardStructure | null>(() =>
-    boardId != null
-      ? qc.getQueryData<BoardStructure>(queryKeys.board(boardId)) ?? null
-      : null,
+    boardId != null ? (qc.getQueryData<BoardStructure>(queryKeys.board(boardId)) ?? null) : null,
   );
-  const [columnId, setColumnId] = useState<number | null>(
-    () => structure?.columns[0]?.id ?? null,
-  );
+  const [columnId, setColumnId] = useState<number | null>(() => structure?.columns[0]?.id ?? null);
 
   // When the user changes the selected board, re-read the structure from
   // the cache (kept warm by BoardTree). If the cache is empty for that
@@ -84,10 +80,7 @@ export function NewTicketModal({
   });
 
   const canSubmit =
-    title.trim().length > 0 &&
-    boardId != null &&
-    columnId != null &&
-    !createMut.isPending;
+    title.trim().length > 0 && boardId != null && columnId != null && !createMut.isPending;
 
   function submit() {
     if (!canSubmit || boardId == null || columnId == null) return;
@@ -147,12 +140,7 @@ export function NewTicketModal({
           </select>
         </label>
         <div className="flex justify-end gap-2 pt-1">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-            disabled={createMut.isPending}
-          >
+          <Button type="button" variant="ghost" onClick={onClose} disabled={createMut.isPending}>
             cancel
           </Button>
           <Button

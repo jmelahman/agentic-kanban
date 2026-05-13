@@ -2,14 +2,8 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, Session, Ticket as TicketType } from "@/api/client";
-import {
-  activeTicketStore,
-  ticketStore,
-  useIsActiveTicket,
-  useSession,
-  useTicket,
-} from "@/store";
+import { api, type Session, type Ticket as TicketType } from "@/api/client";
+import { activeTicketStore, ticketStore, useIsActiveTicket, useSession, useTicket } from "@/store";
 
 export const STATUS_COLOR: Record<string, string> = {
   stopped: "text-fg-muted",

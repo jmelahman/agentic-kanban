@@ -47,9 +47,7 @@ function DesktopOverview() {
     handleRef.current?.open(boardId, ticketId);
   }, []);
 
-  const [openTicketIds, setOpenTicketIds] = useState<ReadonlySet<number>>(
-    () => new Set(),
-  );
+  const [openTicketIds, setOpenTicketIds] = useState<ReadonlySet<number>>(() => new Set());
 
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth);
   const [resizing, setResizing] = useState(false);
@@ -123,10 +121,7 @@ function DesktopOverview() {
         </>
       )}
       <div className="min-w-0 flex-1">
-        <PanelCanvas
-          registerHandle={registerHandle}
-          onOpenTicketsChange={setOpenTicketIds}
-        />
+        <PanelCanvas registerHandle={registerHandle} onOpenTicketsChange={setOpenTicketIds} />
       </div>
     </div>
   );

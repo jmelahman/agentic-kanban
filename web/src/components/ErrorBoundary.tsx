@@ -25,13 +25,27 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   render() {
     if (this.state.error) {
-      return <ErrorFallback error={this.state.error} onReload={() => window.location.reload()} onReset={this.reset} />;
+      return (
+        <ErrorFallback
+          error={this.state.error}
+          onReload={() => window.location.reload()}
+          onReset={this.reset}
+        />
+      );
     }
     return this.props.children;
   }
 }
 
-function ErrorFallback({ error, onReload, onReset }: { error: Error; onReload: () => void; onReset: () => void }) {
+function ErrorFallback({
+  error,
+  onReload,
+  onReset,
+}: {
+  error: Error;
+  onReload: () => void;
+  onReset: () => void;
+}) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-bg p-8">
       <div className="max-w-lg space-y-4 text-center">

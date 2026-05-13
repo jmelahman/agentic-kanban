@@ -80,14 +80,10 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
         kindStyles[toast.kind]
       } ${entered ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"}`}
     >
-      <div className="flex-1 break-words whitespace-pre-wrap font-mono text-xs leading-snug">{toast.message}</div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={onDismiss}
-        aria-label="Dismiss"
-      >
+      <div className="flex-1 break-words whitespace-pre-wrap font-mono text-xs leading-snug">
+        {toast.message}
+      </div>
+      <Button type="button" variant="ghost" size="icon" onClick={onDismiss} aria-label="Dismiss">
         ×
       </Button>
     </div>

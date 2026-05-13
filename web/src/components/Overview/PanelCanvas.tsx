@@ -102,28 +102,22 @@ export function PanelCanvas({
     });
   }, [qc]);
 
-  const open = useCallback(
-    (boardId: number, ticketId: number) => {
-      setPanels((prev) => {
-        const idx = prev.findIndex((p) => p.ticketId === ticketId);
-        if (idx >= 0) {
-          const next = prev.slice();
-          const [moved] = next.splice(idx, 1);
-          next.push(moved);
-          return next;
-        }
-        const last = prev[prev.length - 1];
-        const x = last ? Math.max(0, last.x + CASCADE_STEP) : 24;
-        const y = last ? Math.max(0, last.y + CASCADE_STEP) : 24;
-        return [
-          ...prev,
-          { ticketId, boardId, x, y, width: DEFAULT_W, height: DEFAULT_H },
-        ];
-      });
-      setFocusedTicketId(ticketId);
-    },
-    [],
-  );
+  const open = useCallback((boardId: number, ticketId: number) => {
+    setPanels((prev) => {
+      const idx = prev.findIndex((p) => p.ticketId === ticketId);
+      if (idx >= 0) {
+        const next = prev.slice();
+        const [moved] = next.splice(idx, 1);
+        next.push(moved);
+        return next;
+      }
+      const last = prev[prev.length - 1];
+      const x = last ? Math.max(0, last.x + CASCADE_STEP) : 24;
+      const y = last ? Math.max(0, last.y + CASCADE_STEP) : 24;
+      return [...prev, { ticketId, boardId, x, y, width: DEFAULT_W, height: DEFAULT_H }];
+    });
+    setFocusedTicketId(ticketId);
+  }, []);
 
   useEffect(() => {
     registerHandle({ open });
@@ -135,14 +129,9 @@ export function PanelCanvas({
     setFocusedTicketId((cur) => (cur === ticketId ? null : cur));
   }, []);
 
-  const update = useCallback(
-    (ticketId: number, patch: Partial<PersistedPanel>) => {
-      setPanels((prev) =>
-        prev.map((p) => (p.ticketId === ticketId ? { ...p, ...patch } : p)),
-      );
-    },
-    [],
-  );
+  const update = useCallback((ticketId: number, patch: Partial<PersistedPanel>) => {
+    setPanels((prev) => prev.map((p) => (p.ticketId === ticketId ? { ...p, ...patch } : p)));
+  }, []);
 
   const bringToFront = useCallback((ticketId: number) => {
     setPanels((prev) => {
@@ -170,36 +159,33 @@ export function PanelCanvas({
   // so un-tile can restore it. Calling with slot=null restores from
   // floatRect when present. Always clears prevTile — that field is only
   // meaningful within a toggleMaximize sequence.
-  const applyTile = useCallback(
-    (ticketId: number, slot: SlotKey | null) => {
-      setPanels((prev) =>
-        prev.map((p) => {
-          if (p.ticketId !== ticketId) return p;
-          if (slot === null) {
-            const f = p.floatRect;
-            if (f) {
-              return {
-                ...p,
-                x: f.x,
-                y: f.y,
-                width: f.width,
-                height: f.height,
-                tile: null,
-                floatRect: undefined,
-                prevTile: undefined,
-              };
-            }
-            return { ...p, tile: null, floatRect: undefined, prevTile: undefined };
+  const applyTile = useCallback((ticketId: number, slot: SlotKey | null) => {
+    setPanels((prev) =>
+      prev.map((p) => {
+        if (p.ticketId !== ticketId) return p;
+        if (slot === null) {
+          const f = p.floatRect;
+          if (f) {
+            return {
+              ...p,
+              x: f.x,
+              y: f.y,
+              width: f.width,
+              height: f.height,
+              tile: null,
+              floatRect: undefined,
+              prevTile: undefined,
+            };
           }
-          const floatRect = p.tile
-            ? p.floatRect
-            : { x: p.x, y: p.y, width: p.width, height: p.height };
-          return { ...p, tile: slot, floatRect, prevTile: undefined };
-        }),
-      );
-    },
-    [],
-  );
+          return { ...p, tile: null, floatRect: undefined, prevTile: undefined };
+        }
+        const floatRect = p.tile
+          ? p.floatRect
+          : { x: p.x, y: p.y, width: p.width, height: p.height };
+        return { ...p, tile: slot, floatRect, prevTile: undefined };
+      }),
+    );
+  }, []);
 
   // Toggle between "max" and the panel's previous state. Maximizing from a
   // tiled slot remembers it in prevTile so the next toggle restores that
@@ -239,12 +225,16 @@ export function PanelCanvas({
   // default board for the new-ticket modal.
   const focusedBoardId =
     focusedTicketId != null
-      ? panels.find((p) => p.ticketId === focusedTicketId)?.boardId ?? null
+      ? (panels.find((p) => p.ticketId === focusedTicketId)?.boardId ?? null)
       : null;
 
-  useShortcut("session.fullscreen", () => {
-    if (focusedTicketId != null) toggleMaximize(focusedTicketId);
-  }, { enabled: focusedTicketId != null });
+  useShortcut(
+    "session.fullscreen",
+    () => {
+      if (focusedTicketId != null) toggleMaximize(focusedTicketId);
+    },
+    { enabled: focusedTicketId != null },
+  );
 
   const [newTicketOpen, setNewTicketOpen] = useState(false);
   useShortcut("ticket.create", () => setNewTicketOpen(true));
@@ -259,11 +249,7 @@ export function PanelCanvas({
   }, []);
 
   const handleDrag = useCallback(
-    (
-      ticketId: number,
-      d: { x: number; y: number },
-      e: DraggableEvent,
-    ) => {
+    (ticketId: number, d: { x: number; y: number }, e: DraggableEvent) => {
       const cv = canvasRef.current;
       if (!cv) return;
       const rect = cv.getBoundingClientRect();
@@ -427,11 +413,7 @@ export function PanelCanvas({
         );
       })}
       {dragState?.tileZone && canvasSize.w > 0 && (
-        <TileZonePreview
-          slot={dragState.tileZone}
-          canvasW={canvasSize.w}
-          canvasH={canvasSize.h}
-        />
+        <TileZonePreview slot={dragState.tileZone} canvasW={canvasSize.w} canvasH={canvasSize.h} />
       )}
       {dragState?.guides.vertical.map((x) => (
         <div
@@ -542,10 +524,8 @@ function Panel({
     dragHandleClassName: "panel-drag-handle",
     onMouseDown: onBringToFront,
     onDragStart: () => onDragStart(),
-    onDrag: (e: DraggableEvent, d: { x: number; y: number }) =>
-      onDrag({ x: d.x, y: d.y }, e),
-    onDragStop: (_e: DraggableEvent, d: { x: number; y: number }) =>
-      onDragStop({ x: d.x, y: d.y }),
+    onDrag: (e: DraggableEvent, d: { x: number; y: number }) => onDrag({ x: d.x, y: d.y }, e),
+    onDragStop: (_e: DraggableEvent, d: { x: number; y: number }) => onDragStop({ x: d.x, y: d.y }),
     onResizeStop: (
       _e: MouseEvent | TouchEvent,
       _dir: unknown,
@@ -563,10 +543,7 @@ function Panel({
 
   if (!structure) {
     return (
-      <Rnd
-        {...rndProps}
-        className="rounded border border-border bg-bg shadow-lg"
-      >
+      <Rnd {...rndProps} className="rounded border border-border bg-bg shadow-lg">
         <div className="flex h-full items-center justify-center text-sm text-fg-muted">
           Loading board…
         </div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, Ticket } from "@/api/client";
+import { api, type Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { Button } from "./Button";
@@ -61,9 +61,7 @@ export function ArchivedDrawer({
   });
 
   const confirmPending =
-    confirmTicket !== null &&
-    deleteMut.isPending &&
-    deleteMut.variables === confirmTicket.id;
+    confirmTicket !== null && deleteMut.isPending && deleteMut.variables === confirmTicket.id;
   const archivedCount = archivedQ.data?.length ?? 0;
 
   return (
@@ -71,14 +69,8 @@ export function ArchivedDrawer({
       <Drawer open={open} onClose={onClose} title="Archived tickets">
         {archivedCount > 0 && (
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
-            <span className="text-xs text-fg-muted">
-              {archivedCount} archived
-            </span>
-            <Button
-              variant="danger"
-              size="sm"
-              onClick={() => setConfirmDeleteAll(true)}
-            >
+            <span className="text-xs text-fg-muted">{archivedCount} archived</span>
+            <Button variant="danger" size="sm" onClick={() => setConfirmDeleteAll(true)}>
               delete all
             </Button>
           </div>
@@ -108,8 +100,7 @@ export function ArchivedDrawer({
         title="Permanently delete ticket?"
         description={
           <>
-            Permanently delete{" "}
-            <span className="font-medium">"{confirmTicket?.title}"</span>?
+            Permanently delete <span className="font-medium">"{confirmTicket?.title}"</span>?
           </>
         }
         consequence="This stops the container, removes the worktree, and deletes the branch."
@@ -124,8 +115,8 @@ export function ArchivedDrawer({
         title="Permanently delete all archived?"
         description={
           <>
-            Permanently delete all{" "}
-            <span className="font-medium">{archivedCount}</span> archived ticket
+            Permanently delete all <span className="font-medium">{archivedCount}</span> archived
+            ticket
             {archivedCount === 1 ? "" : "s"}?
           </>
         }

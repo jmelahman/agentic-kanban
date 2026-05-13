@@ -2,9 +2,9 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import {
   closestCorners,
   DndContext,
-  DragEndEvent,
+  type DragEndEvent,
   DragOverlay,
-  DragStartEvent,
+  type DragStartEvent,
   PointerSensor,
   useDroppable,
   useSensor,
@@ -21,10 +21,7 @@ import type { BoardStructure } from "@/store";
 import { STATUS_BG, STATUS_BG_NONE } from "@/components/Ticket";
 import { moveTicketIdInStructure } from "@/components/Board";
 import { Button } from "@/components/Button";
-import {
-  loadCollapsedBoards,
-  writeCollapsedBoards,
-} from "./storage";
+import { loadCollapsedBoards, writeCollapsedBoards } from "./storage";
 
 export type OpenTicketFn = (boardId: number, ticketId: number) => void;
 
@@ -58,9 +55,7 @@ export function BoardTree({
 
   const header = (
     <div className="flex items-center border-b border-border px-3 py-2">
-      <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
-        Boards
-      </h2>
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">Boards</h2>
       {onCollapseSidebar && (
         <button
           type="button"
@@ -88,9 +83,7 @@ export function BoardTree({
     return (
       <div className="flex h-full flex-col">
         {header}
-        <p className="p-3 text-sm text-fg-muted">
-          No boards yet. Create one from the Board view.
-        </p>
+        <p className="p-3 text-sm text-fg-muted">No boards yet. Create one from the Board view.</p>
       </div>
     );
   }
@@ -144,8 +137,7 @@ function BoardNode({
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const createMut = useMutation({
-    mutationFn: (columnId: number) =>
-      api.createTicket(boardId, { column_id: columnId, title }),
+    mutationFn: (columnId: number) => api.createTicket(boardId, { column_id: columnId, title }),
     onSuccess: () => {
       setTitle("");
       setAddingColumnId(null);
@@ -160,10 +152,7 @@ function BoardNode({
   });
 
   const totalTickets = structure
-    ? Object.values(structure.ticketIdsByColumn).reduce(
-        (n, ids) => n + ids.length,
-        0,
-      )
+    ? Object.values(structure.ticketIdsByColumn).reduce((n, ids) => n + ids.length, 0)
     : 0;
 
   function onDragStart(e: DragStartEvent) {
@@ -192,16 +181,11 @@ function BoardNode({
       const overTicket = ticketStore.get(overTicketId);
       if (!overTicket) return;
       targetCol = overTicket.column_id;
-      const targetList = (ticketIdsByColumn[targetCol] ?? []).filter(
-        (id) => id !== ticketId,
-      );
+      const targetList = (ticketIdsByColumn[targetCol] ?? []).filter((id) => id !== ticketId);
       const idx = targetList.indexOf(overTicketId);
       if (idx < 0) {
         insertIndex = targetList.length;
-      } else if (
-        moved.column_id === targetCol &&
-        moved.position < overTicket.position
-      ) {
+      } else if (moved.column_id === targetCol && moved.position < overTicket.position) {
         insertIndex = idx + 1;
       } else {
         insertIndex = idx;
@@ -220,9 +204,7 @@ function BoardNode({
   }
 
   const draggingSessionId =
-    draggingId != null && structure
-      ? structure.sessionIdByTicket[draggingId] ?? null
-      : null;
+    draggingId != null && structure ? (structure.sessionIdByTicket[draggingId] ?? null) : null;
 
   return (
     <div className="border-b border-border">
@@ -324,10 +306,7 @@ function ColumnSection({
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `col-${columnId}` });
   return (
-    <div
-      ref={setNodeRef}
-      className={`px-3 py-1 ${isOver ? "bg-accent-500/10" : ""}`}
-    >
+    <div ref={setNodeRef} className={`px-3 py-1 ${isOver ? "bg-accent-500/10" : ""}`}>
       <div className="mb-1 flex items-center justify-between gap-2">
         <h3 className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
           {columnName}
@@ -419,8 +398,9 @@ function TicketRow({
 }) {
   const ticket = useTicket(ticketId);
   const session = useSession(sessionId);
-  const { attributes, listeners, setNodeRef, isDragging, transform, transition } =
-    useSortable({ id: ticketId });
+  const { attributes, listeners, setNodeRef, isDragging, transform, transition } = useSortable({
+    id: ticketId,
+  });
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),
     transition,
@@ -428,7 +408,7 @@ function TicketRow({
   };
   if (!ticket) return null;
   const status = session?.status ?? "";
-  const dotClass = status ? STATUS_BG[status] ?? STATUS_BG_NONE : STATUS_BG_NONE;
+  const dotClass = status ? (STATUS_BG[status] ?? STATUS_BG_NONE) : STATUS_BG_NONE;
   const activeCls = active
     ? "bg-accent-500/15 ring-1 ring-inset ring-accent-500/40"
     : "hover:bg-surface-2";
@@ -451,18 +431,12 @@ function TicketRow({
   );
 }
 
-function TicketRowPreview({
-  ticketId,
-  sessionId,
-}: {
-  ticketId: number;
-  sessionId: number | null;
-}) {
+function TicketRowPreview({ ticketId, sessionId }: { ticketId: number; sessionId: number | null }) {
   const ticket = useTicket(ticketId);
   const session = useSession(sessionId);
   if (!ticket) return null;
   const status = session?.status ?? "";
-  const dotClass = status ? STATUS_BG[status] ?? STATUS_BG_NONE : STATUS_BG_NONE;
+  const dotClass = status ? (STATUS_BG[status] ?? STATUS_BG_NONE) : STATUS_BG_NONE;
   return (
     <div className="flex items-center gap-2 rounded bg-surface-2 px-2 py-1 text-sm shadow-2xl ring-1 ring-border">
       <span className={`inline-block h-2 w-2 shrink-0 rounded-full ${dotClass}`} />

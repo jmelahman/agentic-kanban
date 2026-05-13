@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, Session } from "@/api/client";
+import { api, type Session } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
 import { CheckIcon, CopyIcon } from "@/icons";
@@ -9,7 +9,10 @@ import { Button } from "./Button";
 export function TasksPanel({ session }: { session: Session; boardId: number }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const tasksQ = useQuery({ queryKey: queryKeys.tasks(session.id), queryFn: () => api.discoverTasks(session.id) });
+  const tasksQ = useQuery({
+    queryKey: queryKeys.tasks(session.id),
+    queryFn: () => api.discoverTasks(session.id),
+  });
   const runsQ = useQuery({
     queryKey: queryKeys.runs(session.id),
     queryFn: () => api.listTaskRuns(session.id),
@@ -77,22 +80,34 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
     <div className="flex h-full flex-col gap-3 overflow-y-auto p-3 text-sm [scrollbar-gutter:stable]">
       <section>
         <h3 className="mb-2 text-xs uppercase tracking-wide text-fg-muted">Detected tasks</h3>
-        {tasks.length === 0 && <p className="text-fg-muted">No .vscode/tasks.json or launch.json detected.</p>}
+        {tasks.length === 0 && (
+          <p className="text-fg-muted">No .vscode/tasks.json or launch.json detected.</p>
+        )}
         <ul className="flex flex-col gap-1">
           {tasks.map((t) => {
             const port = t.has_port ? portByContainer.get(t.container_port!) : undefined;
             return (
-              <li key={t.label} className="flex items-center justify-between rounded bg-surface px-2 py-1">
+              <li
+                key={t.label}
+                className="flex items-center justify-between rounded bg-surface px-2 py-1"
+              >
                 <div>
                   <div className="font-medium">{t.label}</div>
-                  <div className="text-xs text-fg-muted">{t.command} {t.args?.join(" ")}</div>
+                  <div className="text-xs text-fg-muted">
+                    {t.command} {t.args?.join(" ")}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {t.has_port && (
                     <span className="text-xs text-fg-muted">
                       :{t.container_port}
                       {port && (
-                        <a className="ml-1 text-accent-500" href={`http://localhost:${port.host_port}`} target="_blank" rel="noreferrer">
+                        <a
+                          className="ml-1 text-accent-500"
+                          href={`http://localhost:${port.host_port}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
                           → :{port.host_port}
                         </a>
                       )}
@@ -120,7 +135,10 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
               <div className="flex items-center justify-between">
                 <div>
                   <div className="font-medium">{r.task_label}</div>
-                  <div className="text-xs text-fg-muted">{r.status}{r.exit_code != null ? ` (exit ${r.exit_code})` : ""}</div>
+                  <div className="text-xs text-fg-muted">
+                    {r.status}
+                    {r.exit_code != null ? ` (exit ${r.exit_code})` : ""}
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   {openOutputId === r.id && (
@@ -134,7 +152,11 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
                       {copied ? <CheckIcon /> : <CopyIcon />}
                     </Button>
                   )}
-                  <Button variant="ghost" size="sm" onClick={() => setOpenOutputId(openOutputId === r.id ? null : r.id)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setOpenOutputId(openOutputId === r.id ? null : r.id)}
+                  >
                     {openOutputId === r.id ? "hide" : "output"}
                   </Button>
                   {r.status === "running" && (
@@ -166,7 +188,10 @@ function TaskOutput({ lines }: { lines: string[] }) {
   }, [lines]);
 
   return (
-    <pre ref={ref} className="mt-2 max-h-64 overflow-y-auto rounded bg-bg p-2 text-xs leading-tight text-fg [scrollbar-gutter:stable]">
+    <pre
+      ref={ref}
+      className="mt-2 max-h-64 overflow-y-auto rounded bg-bg p-2 text-xs leading-tight text-fg [scrollbar-gutter:stable]"
+    >
       {lines.join("\n")}
     </pre>
   );

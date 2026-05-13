@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { MergeConfig, SyncConfig } from "@/api/client";
+import type { MergeConfig, SyncConfig } from "@/api/client";
 import { activeTicketStore, useActiveTicketId } from "@/store";
 import { FullscreenEnterIcon, FullscreenExitIcon } from "@/icons";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
-import { TerminalOrientation } from "@/hooks/useTerminalOrientation";
+import type { TerminalOrientation } from "@/hooks/useTerminalOrientation";
 import { useShortcut } from "@/keys/useShortcut";
 import { Button } from "./Button";
 import { SessionView } from "./SessionView";
@@ -17,14 +17,8 @@ const MAX_HEIGHT = 1200;
 const DEFAULT_HEIGHT = 360;
 const HEIGHT_STORAGE_KEY = "sessionPane.height";
 
-function loadInitialSize(
-  key: string,
-  fallback: number,
-  min: number,
-  max: number,
-): number {
-  const raw =
-    typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
+function loadInitialSize(key: string, fallback: number, min: number, max: number): number {
+  const raw = typeof localStorage !== "undefined" ? localStorage.getItem(key) : null;
   const n = raw ? Number(raw) : NaN;
   if (!Number.isFinite(n)) return fallback;
   return Math.min(max, Math.max(min, n));
@@ -93,10 +87,7 @@ export function SessionPane({
       // Let Escape reach the embedded terminal when it has focus.
       const target = e.target as Element | null;
       const active = document.activeElement;
-      if (
-        target?.closest?.("[data-terminal]") ||
-        active?.closest?.("[data-terminal]")
-      ) {
+      if (target?.closest?.("[data-terminal]") || active?.closest?.("[data-terminal]")) {
         return;
       }
       setFullscreen(false);
@@ -116,14 +107,8 @@ export function SessionPane({
     };
     const onMove = (e: MouseEvent) => {
       nextSize = isHorizontal
-        ? Math.min(
-            MAX_HEIGHT,
-            Math.max(MIN_HEIGHT, window.innerHeight - e.clientY),
-          )
-        : Math.min(
-            MAX_WIDTH,
-            Math.max(MIN_WIDTH, window.innerWidth - e.clientX),
-          );
+        ? Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, window.innerHeight - e.clientY))
+        : Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, window.innerWidth - e.clientX));
       if (pending == null) pending = requestAnimationFrame(apply);
     };
     const onUp = () => setResizing(false);
@@ -176,9 +161,7 @@ export function SessionPane({
             e.preventDefault();
             setResizing(true);
           }}
-          onDoubleClick={() =>
-            isHorizontal ? setHeight(DEFAULT_HEIGHT) : setWidth(DEFAULT_WIDTH)
-          }
+          onDoubleClick={() => (isHorizontal ? setHeight(DEFAULT_HEIGHT) : setWidth(DEFAULT_WIDTH))}
           className={
             isHorizontal
               ? `absolute left-0 top-0 z-20 h-1 w-full -translate-y-1/2 cursor-row-resize hover:bg-accent-500/40 ${

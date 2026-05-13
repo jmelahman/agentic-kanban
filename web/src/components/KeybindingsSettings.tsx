@@ -66,18 +66,9 @@ export function KeybindingsSettings() {
                         : "border-border"
                   }`}
                 >
-                  {isRecording
-                    ? "press a key…"
-                    : binding
-                      ? formatBinding(binding)
-                      : "—"}
+                  {isRecording ? "press a key…" : binding ? formatBinding(binding) : "—"}
                 </button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => resetBinding(a.id)}
-                >
+                <Button type="button" variant="ghost" size="sm" onClick={() => resetBinding(a.id)}>
                   reset
                 </Button>
               </div>
@@ -91,8 +82,8 @@ export function KeybindingsSettings() {
         </Button>
       </div>
       <span className="text-xs text-fg-muted">
-        Click a shortcut and press the new key combination. Backspace clears the
-        binding; Esc cancels.
+        Click a shortcut and press the new key combination. Backspace clears the binding; Esc
+        cancels.
       </span>
     </fieldset>
   );

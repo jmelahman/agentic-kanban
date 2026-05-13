@@ -52,11 +52,7 @@ export type Session = {
   claude_session_id?: string;
 };
 
-export type PRReviewDecision =
-  | "approved"
-  | "changes_requested"
-  | "review_required"
-  | "";
+export type PRReviewDecision = "approved" | "changes_requested" | "review_required" | "";
 
 export type PRCheckEntry = { name: string; url?: string };
 
@@ -197,15 +193,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   listBoards: () => request<Board[]>("/api/boards"),
-  createBoard: (input: { name: string; repo_path?: string; mount_path?: string; worktree_root?: string; base_branch?: string; branch_prefix?: string; git_author_name?: string; git_author_email?: string }) =>
-    request<Board>("/api/boards", { method: "POST", body: JSON.stringify(input) }),
-  updateBoard: (id: number, input: { name?: string; repo_path?: string; mount_path?: string; worktree_root?: string; base_branch?: string; branch_prefix?: string; git_author_name?: string; git_author_email?: string }) =>
-    request<Board>(`/api/boards/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  createBoard: (input: {
+    name: string;
+    repo_path?: string;
+    mount_path?: string;
+    worktree_root?: string;
+    base_branch?: string;
+    branch_prefix?: string;
+    git_author_name?: string;
+    git_author_email?: string;
+  }) => request<Board>("/api/boards", { method: "POST", body: JSON.stringify(input) }),
+  updateBoard: (
+    id: number,
+    input: {
+      name?: string;
+      repo_path?: string;
+      mount_path?: string;
+      worktree_root?: string;
+      base_branch?: string;
+      branch_prefix?: string;
+      git_author_name?: string;
+      git_author_email?: string;
+    },
+  ) => request<Board>(`/api/boards/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   deleteBoard: (id: number) => request<void>(`/api/boards/${id}`, { method: "DELETE" }),
   boardState: (id: number) => request<BoardState>(`/api/boards/${id}/state`),
 
   createTicket: (boardId: number, input: { column_id: number; title: string; body?: string }) =>
-    request<Ticket>(`/api/boards/${boardId}/tickets`, { method: "POST", body: JSON.stringify(input) }),
+    request<Ticket>(`/api/boards/${boardId}/tickets`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   updateTicket: (id: number, input: { title?: string; body?: string }) =>
     request<Ticket>(`/api/tickets/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   moveTicket: (id: number, input: { column_id: number; position: number }) =>
@@ -213,33 +231,49 @@ export const api = {
   archiveTicket: (id: number) => request<void>(`/api/tickets/${id}/archive`, { method: "POST" }),
   archiveColumnTickets: (columnId: number) =>
     request<void>(`/api/columns/${columnId}/archive-all`, { method: "POST" }),
-  unarchiveTicket: (id: number) => request<void>(`/api/tickets/${id}/unarchive`, { method: "POST" }),
+  unarchiveTicket: (id: number) =>
+    request<void>(`/api/tickets/${id}/unarchive`, { method: "POST" }),
   listArchivedTickets: (boardId: number) => request<Ticket[]>(`/api/boards/${boardId}/archived`),
   deleteTicket: (id: number) => request<void>(`/api/tickets/${id}`, { method: "DELETE" }),
   deleteAllArchived: (boardId: number) =>
     request<void>(`/api/boards/${boardId}/archived`, { method: "DELETE" }),
   syncTicket: (id: number, strategy: "rebase" | "merge") =>
-    request<void>(`/api/tickets/${id}/sync`, { method: "POST", body: JSON.stringify({ strategy }) }),
+    request<void>(`/api/tickets/${id}/sync`, {
+      method: "POST",
+      body: JSON.stringify({ strategy }),
+    }),
   mergeTicket: (id: number, strategy: "merge-commit" | "squash" | "rebase") =>
-    request<void>(`/api/tickets/${id}/merge`, { method: "POST", body: JSON.stringify({ strategy }) }),
+    request<void>(`/api/tickets/${id}/merge`, {
+      method: "POST",
+      body: JSON.stringify({ strategy }),
+    }),
   doneTicket: (id: number) => request<void>(`/api/tickets/${id}/done`, { method: "POST" }),
 
-  ensureSession: (ticketId: number) => request<Session>(`/api/tickets/${ticketId}/session`, { method: "POST" }),
+  ensureSession: (ticketId: number) =>
+    request<Session>(`/api/tickets/${ticketId}/session`, { method: "POST" }),
   startSession: (id: number) => request<Session>(`/api/sessions/${id}/start`, { method: "POST" }),
   stopSession: (id: number) => request<void>(`/api/sessions/${id}/stop`, { method: "POST" }),
-  restartSession: (id: number) => request<Session>(`/api/sessions/${id}/restart`, { method: "POST" }),
+  restartSession: (id: number) =>
+    request<Session>(`/api/sessions/${id}/restart`, { method: "POST" }),
 
-  discoverTasks: (sessionId: number) => request<DiscoverTasksResult>(`/api/sessions/${sessionId}/discover-tasks`),
+  discoverTasks: (sessionId: number) =>
+    request<DiscoverTasksResult>(`/api/sessions/${sessionId}/discover-tasks`),
   listTaskRuns: (sessionId: number) => request<TaskRun[]>(`/api/sessions/${sessionId}/task-runs`),
   startTaskRun: (sessionId: number, label: string) =>
-    request<TaskRun>(`/api/sessions/${sessionId}/task-runs`, { method: "POST", body: JSON.stringify({ label }) }),
+    request<TaskRun>(`/api/sessions/${sessionId}/task-runs`, {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    }),
   stopTaskRun: (id: number) => request<void>(`/api/task-runs/${id}`, { method: "DELETE" }),
 
   prDetail: (sessionId: number) => request<PRDetail>(`/api/sessions/${sessionId}/pr-detail`),
 
   listPorts: (sessionId: number) => request<PortAllocation[]>(`/api/sessions/${sessionId}/ports`),
   createPort: (sessionId: number, input: { label: string; container_port: number }) =>
-    request<PortAllocation[]>(`/api/sessions/${sessionId}/ports`, { method: "POST", body: JSON.stringify(input) }),
+    request<PortAllocation[]>(`/api/sessions/${sessionId}/ports`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
   deletePort: (id: number) => request<void>(`/api/ports/${id}`, { method: "DELETE" }),
 
   getSettings: () => request<AppSettings>("/api/settings"),
@@ -248,7 +282,9 @@ export const api = {
   listHarnesses: () => request<Harness[]>("/api/harnesses"),
 
   fsCheck: (path: string) =>
-    request<{ state: "git" | "not_git" | "unknown" }>(`/api/fs/check?path=${encodeURIComponent(path)}`),
+    request<{ state: "git" | "not_git" | "unknown" }>(
+      `/api/fs/check?path=${encodeURIComponent(path)}`,
+    ),
 
   getVersion: () => request<Version>("/api/version"),
 };
@@ -304,15 +340,23 @@ export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => v
     try {
       const parsed = JSON.parse(e.data);
       const payload =
-        parsed && typeof parsed === "object" && "data" in parsed
-          ? parsed.data
-          : parsed;
+        parsed && typeof parsed === "object" && "data" in parsed ? parsed.data : parsed;
       opts.onEvent(e.type, payload);
     } catch {
       opts.onEvent(e.type, null);
     }
   };
-  for (const t of ["ticket_created", "ticket_updated", "ticket_moved", "ticket_archived", "ticket_unarchived", "ticket_deleted", "session_updated", "session_pull_progress", "ready"]) {
+  for (const t of [
+    "ticket_created",
+    "ticket_updated",
+    "ticket_moved",
+    "ticket_archived",
+    "ticket_unarchived",
+    "ticket_deleted",
+    "session_updated",
+    "session_pull_progress",
+    "ready",
+  ]) {
     es.addEventListener(t, handler as EventListener);
   }
   es.onopen = () => opts.onStatus?.("open");

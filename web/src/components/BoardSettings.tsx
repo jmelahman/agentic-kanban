@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, Board } from "@/api/client";
+import { api, type Board } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useBoardForm } from "@/hooks/useBoardForm";
 import { useToast } from "@/toast";
@@ -139,7 +139,9 @@ export function BoardSettings({
               />
             </FormField>
             <div className="flex flex-col gap-1 text-xs text-fg-muted">
-              <span>slug: <span className="font-mono">{board.slug}</span></span>
+              <span>
+                slug: <span className="font-mono">{board.slug}</span>
+              </span>
             </div>
           </>
         )}
@@ -173,9 +175,9 @@ export function BoardSettings({
                 />
                 {worktreeRootChanged && (
                   <span className="text-xs text-amber-400">
-                    Existing sessions will keep their old worktree paths and won't be
-                    cleaned up automatically when the board is deleted. Stop and destroy
-                    them first if you want a clean switch.
+                    Existing sessions will keep their old worktree paths and won't be cleaned up
+                    automatically when the board is deleted. Stop and destroy them first if you want
+                    a clean switch.
                   </span>
                 )}
               </FormField>
@@ -217,9 +219,9 @@ export function BoardSettings({
                   />
                 </FormField>
                 <span className="text-xs text-fg-muted">
-                  Used for merge/squash commits when finishing a session. Set both
-                  fields to override; leave blank to fall back to whatever git can
-                  auto-detect inside the kanban container.
+                  Used for merge/squash commits when finishing a session. Set both fields to
+                  override; leave blank to fall back to whatever git can auto-detect inside the
+                  kanban container.
                 </span>
               </fieldset>
             )}
@@ -227,7 +229,9 @@ export function BoardSettings({
         )}
         {tab === "danger" && (
           <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-danger">Danger zone</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-danger">
+              Danger zone
+            </h3>
             <p className="mt-1 text-xs text-fg-muted">
               Deletes this board, all its tickets, and stops/destroys every running session
               (containers, worktrees, and branches).
@@ -247,12 +251,7 @@ export function BoardSettings({
         )}
         {tab !== "danger" && (
           <div className="mt-auto flex items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onClose}
-              disabled={busy}
-            >
+            <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
               cancel
             </Button>
             <Button
@@ -273,8 +272,7 @@ export function BoardSettings({
         title="Permanently delete board?"
         description={
           <>
-            Permanently delete board{" "}
-            <span className="font-medium">"{board.name}"</span>?
+            Permanently delete board <span className="font-medium">"{board.name}"</span>?
           </>
         }
         consequence="This stops all containers, removes worktrees, deletes branches, and removes every ticket."

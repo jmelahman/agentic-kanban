@@ -19,10 +19,7 @@ function isEditableTarget(el: EventTarget | null): boolean {
 function onKeyDown(e: KeyboardEvent): void {
   // Skip while a binding-capture button is recording so the user can press
   // any combination — including ones that match existing actions.
-  if (
-    e.target instanceof Element &&
-    e.target.getAttribute("data-keybind-capture") === "true"
-  ) {
+  if (e.target instanceof Element && e.target.getAttribute("data-keybind-capture") === "true") {
     return;
   }
   const editable = isEditableTarget(e.target);

@@ -14,10 +14,7 @@ import { Overview } from "@/components/Overview/Overview";
 import { Tab } from "@/components/Tab";
 import { TerminalsRoot } from "@/components/TerminalsRoot";
 import { useAccent } from "@/hooks/useAccent";
-import {
-  useBoardSubscription,
-  type StreamStatus,
-} from "@/hooks/useBoardSubscription";
+import { useBoardSubscription, type StreamStatus } from "@/hooks/useBoardSubscription";
 import { useContrast } from "@/hooks/useContrast";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useThemeMode } from "@/hooks/useThemeMode";
@@ -66,9 +63,7 @@ export default function App() {
   };
 
   const activeBoard =
-    activeId != null
-      ? (boardsQ.data?.find((b) => b.id === activeId) ?? null)
-      : null;
+    activeId != null ? (boardsQ.data?.find((b) => b.id === activeId) ?? null) : null;
   const noBoards = boardsQ.data?.length === 0;
 
   // When the board's mount path is a visible git repo but no repo_path is
@@ -90,9 +85,7 @@ export default function App() {
       const remembered = readActiveBoardId();
       const fallback = boardsQ.data[0].id;
       setActiveId(
-        remembered != null && boardsQ.data.some((b) => b.id === remembered)
-          ? remembered
-          : fallback,
+        remembered != null && boardsQ.data.some((b) => b.id === remembered) ? remembered : fallback,
       );
     }
   }, [boardsQ.data, activeId]);
@@ -145,24 +138,14 @@ export default function App() {
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
         <h1 className="hidden text-lg font-semibold sm:block">Kanban</h1>
         <nav className="flex self-stretch -my-2">
-          <Tab
-            active={view === "overview"}
-            onClick={() => setView("overview")}
-            label="overview"
-          />
-          <Tab
-            active={view === "board"}
-            onClick={() => setView("board")}
-            label="board"
-          />
+          <Tab active={view === "overview"} onClick={() => setView("overview")} label="overview" />
+          <Tab active={view === "board"} onClick={() => setView("board")} label="board" />
         </nav>
         {view === "board" && (
           <select
             className="min-w-0 max-w-[40vw] cursor-pointer rounded bg-surface px-2 py-1 text-sm"
             value={activeId ?? ""}
-            onChange={(e) =>
-              setActiveId(e.target.value ? Number(e.target.value) : null)
-            }
+            onChange={(e) => setActiveId(e.target.value ? Number(e.target.value) : null)}
           >
             <option value="">— select board —</option>
             {(boardsQ.data ?? []).map((b) => (
@@ -176,16 +159,8 @@ export default function App() {
           <div className="ml-auto">
             <HeaderMobileMenu
               onNewBoard={() => setCreateBoardOpen(true)}
-              onArchived={
-                view === "board" && activeId != null
-                  ? () => setShowArchived(true)
-                  : null
-              }
-              onBoardSettings={
-                view === "board" && activeBoard
-                  ? () => setShowSettings(true)
-                  : null
-              }
+              onArchived={view === "board" && activeId != null ? () => setShowArchived(true) : null}
+              onBoardSettings={view === "board" && activeBoard ? () => setShowSettings(true) : null}
               onAppSettings={() => setShowAppSettings(true)}
               suggestRepoLink={!!suggestRepoLink}
             />
@@ -279,11 +254,7 @@ export default function App() {
       </main>
       <TerminalsRoot />
       {view === "board" && activeId != null && showArchived && (
-        <ArchivedDrawer
-          open
-          boardId={activeId}
-          onClose={() => setShowArchived(false)}
-        />
+        <ArchivedDrawer open boardId={activeId} onClose={() => setShowArchived(false)} />
       )}
       {view === "board" && activeBoard && showSettings && (
         <BoardSettings
@@ -296,9 +267,7 @@ export default function App() {
           }}
         />
       )}
-      {showAppSettings && (
-        <AppSettings open onClose={() => setShowAppSettings(false)} />
-      )}
+      {showAppSettings && <AppSettings open onClose={() => setShowAppSettings(false)} />}
       <CreateBoardModal
         open={createBoardOpen}
         onClose={() => setCreateBoardOpen(false)}

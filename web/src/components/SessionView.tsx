@@ -1,29 +1,16 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   api,
   formatApiError,
-  MergeConfig,
+  type MergeConfig,
   PR_STATE_COLOR,
-  PRState,
-  PullProgress,
-  SyncConfig,
+  type PRState,
+  type PullProgress,
+  type SyncConfig,
 } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-import {
-  sessionStore,
-  setTerminalSlot,
-  usePullProgress,
-  useSession,
-  useTicket,
-} from "@/store";
+import { sessionStore, setTerminalSlot, usePullProgress, useSession, useTicket } from "@/store";
 import { useToast } from "@/toast";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useShortcut } from "@/keys/useShortcut";
@@ -51,9 +38,7 @@ const TAB_KEY_PREFIX = "sessionPane.tab.";
 function loadInitialTab(sessionId: number | null): TabId {
   if (sessionId == null || typeof localStorage === "undefined") return "agent";
   const raw = localStorage.getItem(TAB_KEY_PREFIX + sessionId);
-  return (TAB_ORDER as readonly string[]).includes(raw ?? "")
-    ? (raw as TabId)
-    : "agent";
+  return (TAB_ORDER as readonly string[]).includes(raw ?? "") ? (raw as TabId) : "agent";
 }
 
 type MergeStrategy = "merge-commit" | "squash" | "rebase";
@@ -134,9 +119,7 @@ export function SessionView({
   useShortcut(
     "tab.prev",
     () =>
-      setTab(
-        (t) => TAB_ORDER[(TAB_ORDER.indexOf(t) - 1 + TAB_ORDER.length) % TAB_ORDER.length],
-      ),
+      setTab((t) => TAB_ORDER[(TAB_ORDER.indexOf(t) - 1 + TAB_ORDER.length) % TAB_ORDER.length]),
     { enabled: tabsEnabled },
   );
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
@@ -247,16 +230,14 @@ export function SessionView({
   }, [session?.status, sessionId, qc, boardId]);
   const stopMut = useMutation({
     mutationFn: () => api.stopSession(session!.id),
-    onMutate: () =>
-      session ? optimisticStatus(session.id, "stopping") : { prev: null },
+    onMutate: () => (session ? optimisticStatus(session.id, "stopping") : { prev: null }),
     onError: (_err, _vars, ctx) => {
       if (session) rollbackStatus(session.id, ctx?.prev ?? null);
     },
   });
   const restartMut = useMutation({
     mutationFn: () => api.restartSession(session!.id),
-    onMutate: () =>
-      session ? optimisticStatus(session.id, "starting") : { prev: null },
+    onMutate: () => (session ? optimisticStatus(session.id, "starting") : { prev: null }),
     onSuccess: (sess) => {
       reconcileFromStartResponse(sess);
       toast.push("success", "container restarted");
@@ -284,8 +265,7 @@ export function SessionView({
     },
   });
   const mergeMut = useMutation({
-    mutationFn: (strategy: MergeStrategy) =>
-      api.mergeTicket(ticketId, strategy),
+    mutationFn: (strategy: MergeStrategy) => api.mergeTicket(ticketId, strategy),
     onSuccess: (_data, strategy) => {
       setMergeMenuOpen(false);
       toast.push("success", `${strategy} into ${baseBranch} succeeded`);
@@ -369,8 +349,7 @@ export function SessionView({
   const mergeStrategies = enabledMergeStrategies(mergeConfig);
   const syncStrategies = enabledSyncStrategies(syncConfig);
   const status = session?.status;
-  const isRunning =
-    status && !["stopped", "error", "stopping"].includes(status);
+  const isRunning = status && !["stopped", "error", "stopping"].includes(status);
   const canStart = session && !isRunning && status !== "starting";
 
   const renderHeaderContent = ({
@@ -390,8 +369,7 @@ export function SessionView({
           rel="noreferrer"
           className={`hover:underline ${
             session.pr_state
-              ? (PR_STATE_COLOR[session.pr_state as PRState] ??
-                "text-fg-muted")
+              ? (PR_STATE_COLOR[session.pr_state as PRState] ?? "text-fg-muted")
               : "text-fg-muted"
           }`}
           title={session.pr_state ? `PR ${session.pr_state}` : "pull request"}
@@ -485,8 +463,7 @@ export function SessionView({
                     className="block w-full text-left"
                     onClick={() => syncMut.mutate(s)}
                   >
-                    {SYNC_STRATEGY_LABELS[s]}{" "}
-                    <span className="font-mono">{baseBranch}</span>
+                    {SYNC_STRATEGY_LABELS[s]} <span className="font-mono">{baseBranch}</span>
                   </Button>
                 ))}
               </div>
@@ -507,10 +484,7 @@ export function SessionView({
           />
         )}
         {session && mergeStrategies.length > 1 && (
-          <div
-            className="relative"
-            ref={interactive ? mergeMenuRef : undefined}
-          >
+          <div className="relative" ref={interactive ? mergeMenuRef : undefined}>
             <ActionButton
               compact={compact}
               variant="neutral"
@@ -584,9 +558,7 @@ export function SessionView({
       >
         {renderHeaderContent({ compact: false, interactive: false })}
       </div>
-      {status === "starting" && (
-        <PullProgressBanner progress={pullProgress ?? null} />
-      )}
+      {status === "starting" && <PullProgressBanner progress={pullProgress ?? null} />}
       {!session && ensureMut.isError && (
         <div className="border-b border-border bg-danger/10 px-3 py-2 text-xs text-danger">
           <div className="font-medium">Couldn't create session</div>
@@ -596,26 +568,10 @@ export function SessionView({
         </div>
       )}
       <div className="flex border-b border-border text-sm">
-        <Tab
-          active={tab === "agent"}
-          onClick={() => setTab("agent")}
-          label="agent"
-        />
-        <Tab
-          active={tab === "shell"}
-          onClick={() => setTab("shell")}
-          label="terminal"
-        />
-        <Tab
-          active={tab === "tasks"}
-          onClick={() => setTab("tasks")}
-          label="tasks"
-        />
-        <Tab
-          active={tab === "info"}
-          onClick={() => setTab("info")}
-          label="info"
-        />
+        <Tab active={tab === "agent"} onClick={() => setTab("agent")} label="agent" />
+        <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="terminal" />
+        <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
+        <Tab active={tab === "info"} onClick={() => setTab("info")} label="info" />
       </div>
       <div className="min-h-0 flex-1 bg-bg">
         {tab === "agent" && (
@@ -623,9 +579,7 @@ export function SessionView({
             {session && isRunning ? (
               <div ref={onAgentSlot} className="h-full w-full" />
             ) : (
-              <p className="p-4 text-sm text-fg-muted">
-                Start the session to attach the agent.
-              </p>
+              <p className="p-4 text-sm text-fg-muted">Start the session to attach the agent.</p>
             )}
           </div>
         )}
@@ -634,22 +588,16 @@ export function SessionView({
             {session && isRunning ? (
               <div ref={onShellSlot} className="h-full w-full" />
             ) : (
-              <p className="p-4 text-sm text-fg-muted">
-                Start the session to attach a shell.
-              </p>
+              <p className="p-4 text-sm text-fg-muted">Start the session to attach a shell.</p>
             )}
           </div>
         )}
-        {tab === "tasks" && session && (
-          <TasksPanel session={session} boardId={boardId} />
-        )}
+        {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
         {tab === "info" &&
           (session ? (
             <InfoPanel session={session} />
           ) : (
-            <p className="p-4 text-sm text-fg-muted">
-              Create a session to see its info.
-            </p>
+            <p className="p-4 text-sm text-fg-muted">Create a session to see its info.</p>
           ))}
       </div>
     </div>
@@ -663,18 +611,13 @@ export function SessionView({
 function PullProgressBanner({ progress }: { progress: PullProgress | null }) {
   const hasBytes = progress != null && progress.total > 0;
   const pct = hasBytes
-    ? Math.min(
-        100,
-        Math.max(0, Math.round((progress.current / progress.total) * 100)),
-      )
+    ? Math.min(100, Math.max(0, Math.round((progress.current / progress.total) * 100)))
     : 0;
   const status = progress?.status?.toLowerCase() ?? "starting";
   return (
     <div className="border-b border-border bg-surface px-3 py-1.5 text-xs">
       <div className="flex items-center justify-between gap-2 text-fg-muted">
-        <span className="truncate">
-          {hasBytes ? `pulling image — ${status}` : "starting…"}
-        </span>
+        <span className="truncate">{hasBytes ? `pulling image — ${status}` : "starting…"}</span>
         <span className="shrink-0 font-mono">
           {hasBytes
             ? `${formatBytes(progress.current)} / ${formatBytes(progress.total)} (${pct}%)`

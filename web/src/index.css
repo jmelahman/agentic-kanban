@@ -117,5 +117,13 @@
   --color-accent-700: oklch(52.5% 0.223 3.958);
 }
 
-html, body, #root { height: 100%; margin: 0; }
-body { background-color: var(--color-bg); color: var(--color-fg); }
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+body {
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+}

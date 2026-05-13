@@ -39,3 +39,11 @@ repos:
           - --strict-ignore
           - --additional-pattern
           - ^sk-[A-Za-z0-9_\-]{20,}$
+      # biome is installed via `npm install` in web/ (see web/package.json).
+      # The wrapper strips the leading `web/` from each path so biome —
+      # invoked inside web/ where its biome.json lives — finds the files.
+      - id: biome
+        name: biome
+        entry: bash -c 'cd web && exec npx --no biome check --no-errors-on-unmatched "${@#web/}"' --
+        language: system
+        files: ^web/.*\.(ts|tsx|js|jsx|json|jsonc)$

@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 type Variant = "primary" | "secondary" | "neutral" | "danger" | "ghost" | "dashed";
 type Size = "sm" | "md" | "lg" | "icon";
@@ -12,7 +12,8 @@ type Props = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> & {
   children?: ReactNode;
 };
 
-const BASE = "rounded transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
+const BASE =
+  "rounded transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
 
 const VARIANTS: Record<Variant, string> = {
   primary: "bg-accent-700 text-white hover:bg-accent-600",
@@ -20,7 +21,8 @@ const VARIANTS: Record<Variant, string> = {
   neutral: "bg-surface-2 text-fg hover:bg-surface-3",
   danger: "bg-danger-bg text-danger hover:bg-danger-border hover:text-fg",
   ghost: "text-fg-muted hover:text-fg",
-  dashed: "border border-dashed border-border text-fg-muted hover:bg-surface-2 hover:border-fg-muted",
+  dashed:
+    "border border-dashed border-border text-fg-muted hover:bg-surface-2 hover:border-fg-muted",
 };
 
 const SIZES: Record<Size, string> = {
@@ -48,7 +50,7 @@ export function Button({
         {pendingLabel}
       </span>
     ) : (
-      idleLabel ?? children
+      (idleLabel ?? children)
     );
   return (
     <button

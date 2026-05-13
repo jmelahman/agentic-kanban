@@ -2,16 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-import { ACCENTS, Accent, setAccent, useAccent } from "@/hooks/useAccent";
-import { Contrast, setContrast, useContrast } from "@/hooks/useContrast";
-import {
-  setThemeMode,
-  ThemeMode,
-  useThemeMode,
-} from "@/hooks/useThemeMode";
+import { ACCENTS, type Accent, setAccent, useAccent } from "@/hooks/useAccent";
+import { type Contrast, setContrast, useContrast } from "@/hooks/useContrast";
+import { setThemeMode, type ThemeMode, useThemeMode } from "@/hooks/useThemeMode";
 import {
   setTerminalOrientation,
-  TerminalOrientation,
+  type TerminalOrientation,
   useTerminalOrientation,
 } from "@/hooks/useTerminalOrientation";
 import { useToast } from "@/toast";
@@ -38,9 +34,22 @@ type SettingsTab = "general" | "appearance" | "shortcuts";
 export function AppSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const { push } = useToast();
-  const settingsQ = useQuery({ queryKey: queryKeys.settings, queryFn: api.getSettings, enabled: open });
-  const harnessesQ = useQuery({ queryKey: queryKeys.harnesses, queryFn: api.listHarnesses, enabled: open });
-  const versionQ = useQuery({ queryKey: queryKeys.version, queryFn: api.getVersion, staleTime: Infinity, enabled: open });
+  const settingsQ = useQuery({
+    queryKey: queryKeys.settings,
+    queryFn: api.getSettings,
+    enabled: open,
+  });
+  const harnessesQ = useQuery({
+    queryKey: queryKeys.harnesses,
+    queryFn: api.listHarnesses,
+    enabled: open,
+  });
+  const versionQ = useQuery({
+    queryKey: queryKeys.version,
+    queryFn: api.getVersion,
+    staleTime: Infinity,
+    enabled: open,
+  });
 
   const [tab, setTab] = useState<SettingsTab>("general");
   const [harness, setHarness] = useState<string>("");
@@ -72,7 +81,11 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
       if (orientation !== savedOrientation) setTerminalOrientation(orientation);
       const payload: { harness?: string; worktrees_root?: string } = {};
       if (settingsQ.data && harness !== settingsQ.data.harness) payload.harness = harness;
-      if (settingsQ.data && !settingsQ.data.worktrees_root_locked && worktreesRoot.trim() !== settingsQ.data.worktrees_root) {
+      if (
+        settingsQ.data &&
+        !settingsQ.data.worktrees_root_locked &&
+        worktreesRoot.trim() !== settingsQ.data.worktrees_root
+      ) {
         payload.worktrees_root = worktreesRoot.trim();
       }
       await api.updateSettings(payload);
@@ -86,7 +99,8 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
 
   const harnessDirty = settingsQ.data ? harness !== settingsQ.data.harness : false;
   const worktreesRootDirty = settingsQ.data
-    ? !settingsQ.data.worktrees_root_locked && worktreesRoot.trim() !== settingsQ.data.worktrees_root
+    ? !settingsQ.data.worktrees_root_locked &&
+      worktreesRoot.trim() !== settingsQ.data.worktrees_root
     : false;
   const orientationDirty = orientation !== savedOrientation;
   const dirty = harnessDirty || orientationDirty || worktreesRootDirty;
@@ -99,7 +113,11 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
     <Modal open={open} onClose={onClose} title="Settings" busy={busy}>
       <div className="flex border-b border-border text-sm">
         <Tab active={tab === "general"} onClick={() => setTab("general")} label="general" />
-        <Tab active={tab === "appearance"} onClick={() => setTab("appearance")} label="appearance" />
+        <Tab
+          active={tab === "appearance"}
+          onClick={() => setTab("appearance")}
+          label="appearance"
+        />
         <Tab active={tab === "shortcuts"} onClick={() => setTab("shortcuts")} label="shortcuts" />
       </div>
       <form
@@ -129,8 +147,8 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
               <span className="text-xs text-fg-muted">
                 Saved to <span className="font-mono">~/.config/kanban/config.toml</span>. Takes
                 effect on the next session attach; running terminals keep their current process.
-                Leave unset to fall back to the repo's <span className="font-mono">.kanban.toml</span>
-                {" "}or the default.
+                Leave unset to fall back to the repo's{" "}
+                <span className="font-mono">.kanban.toml</span> or the default.
               </span>
             </FormField>
             <FormField label="Worktrees directory">
@@ -145,14 +163,13 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
                 spellCheck={false}
               />
               <span className="text-xs text-fg-muted">
-                Parent directory for new boards' worktrees. Leave empty to use the
-                default. Supports <span className="font-mono">~</span> for your
-                home directory. Existing boards keep their stored
-                {" "}<span className="font-mono">worktree_root</span>.
+                Parent directory for new boards' worktrees. Leave empty to use the default. Supports{" "}
+                <span className="font-mono">~</span> for your home directory. Existing boards keep
+                their stored <span className="font-mono">worktree_root</span>.
                 {worktreesLocked && (
                   <>
-                    {" "}Currently locked by{" "}
-                    <span className="font-mono">--worktrees-dir</span> or{" "}
+                    {" "}
+                    Currently locked by <span className="font-mono">--worktrees-dir</span> or{" "}
                     <span className="font-mono">$KANBAN_WORKTREES_DIR</span>:{" "}
                     <span className="font-mono">{worktreesResolved}</span>.
                   </>
@@ -193,12 +210,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
         )}
         {tab === "shortcuts" && <KeybindingsSettings />}
         <div className="mt-auto flex items-center justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={onClose}
-            disabled={busy}
-          >
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
             cancel
           </Button>
           <Button
@@ -232,7 +244,10 @@ function ThemeModeToggle({
     { v: "dark", label: "Dark" },
   ];
   return (
-    <div role="radiogroup" className="inline-flex w-fit overflow-hidden rounded border border-border">
+    <div
+      role="radiogroup"
+      className="inline-flex w-fit overflow-hidden rounded border border-border"
+    >
       {opts.map((o, i) => {
         const active = o.v === value;
         return (
@@ -244,11 +259,7 @@ function ThemeModeToggle({
             onClick={() => onChange(o.v)}
             className={`px-3 py-1 text-sm transition-colors duration-150 ${
               i > 0 ? "border-l border-border" : ""
-            } ${
-              active
-                ? "bg-accent-700 text-white"
-                : "bg-surface text-fg hover:bg-surface-2"
-            }`}
+            } ${active ? "bg-accent-700 text-white" : "bg-surface text-fg hover:bg-surface-2"}`}
           >
             {o.label}
           </button>

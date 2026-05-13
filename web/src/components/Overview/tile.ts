@@ -1,24 +1,12 @@
 import type { PersistedPanel } from "./storage";
 
-export type SlotKey =
-  | "left"
-  | "right"
-  | "top"
-  | "bottom"
-  | "tl"
-  | "tr"
-  | "bl"
-  | "br"
-  | "max";
+export type SlotKey = "left" | "right" | "top" | "bottom" | "tl" | "tr" | "bl" | "br" | "max";
 
 export type Direction = "L" | "R" | "U" | "D";
 
 export type Rect = { x: number; y: number; width: number; height: number };
 
-const SLOT_FRACTIONS: Record<
-  SlotKey,
-  { x: number; y: number; w: number; h: number }
-> = {
+const SLOT_FRACTIONS: Record<SlotKey, { x: number; y: number; w: number; h: number }> = {
   left: { x: 0, y: 0, w: 0.5, h: 1 },
   right: { x: 0.5, y: 0, w: 0.5, h: 1 },
   top: { x: 0, y: 0, w: 1, h: 0.5 },
@@ -48,10 +36,7 @@ export function slotRect(canvasW: number, canvasH: number, slot: SlotKey): Rect 
 // (F, F) is floating. Each arrow toggles its axis: pressing the same edge
 // you already hug removes it, pressing the opposite edge swaps. `max` is a
 // special state where any arrow exits.
-export function nextSlot(
-  current: SlotKey | null | undefined,
-  dir: Direction,
-): SlotKey | null {
+export function nextSlot(current: SlotKey | null | undefined, dir: Direction): SlotKey | null {
   if (current === "max") {
     if (dir === "L") return "left";
     if (dir === "R") return "right";

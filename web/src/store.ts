@@ -63,8 +63,7 @@ export class ScalarStore<T> {
   get = (): T => this.value;
 
   set = (next: T | ((prev: T) => T)): void => {
-    const v =
-      typeof next === "function" ? (next as (p: T) => T)(this.value) : next;
+    const v = typeof next === "function" ? (next as (p: T) => T)(this.value) : next;
     if (Object.is(v, this.value)) return;
     this.value = v;
     this.listeners.forEach((l) => l());
@@ -78,14 +77,8 @@ export class ScalarStore<T> {
   };
 }
 
-export function useEntity<T>(
-  store: EntityStore<T>,
-  id: number,
-): T | undefined {
-  const subscribe = useCallback(
-    (cb: () => void) => store.subscribe(id, cb),
-    [store, id],
-  );
+export function useEntity<T>(store: EntityStore<T>, id: number): T | undefined {
+  const subscribe = useCallback((cb: () => void) => store.subscribe(id, cb), [store, id]);
   const getSnapshot = useCallback(() => store.get(id), [store, id]);
   return useSyncExternalStore(subscribe, getSnapshot);
 }
@@ -94,10 +87,7 @@ export function useScalarStore<T>(store: ScalarStore<T>): T {
   return useSyncExternalStore(store.subscribe, store.get);
 }
 
-export function useScalarSelector<T, S>(
-  store: ScalarStore<T>,
-  select: (v: T) => S,
-): S {
+export function useScalarSelector<T, S>(store: ScalarStore<T>, select: (v: T) => S): S {
   const getSnapshot = useCallback(() => select(store.get()), [store, select]);
   return useSyncExternalStore(store.subscribe, getSnapshot);
 }
@@ -127,9 +117,7 @@ export type TerminalSlot = {
 };
 export const terminalSlotStore = new EntityStore<TerminalSlot>();
 
-export function useTerminalSlot(
-  ticketId: number | null | undefined,
-): TerminalSlot | undefined {
+export function useTerminalSlot(ticketId: number | null | undefined): TerminalSlot | undefined {
   return useEntity(terminalSlotStore, ticketId ?? -1);
 }
 
@@ -161,9 +149,7 @@ export function useSession(id: number | null | undefined): Session | undefined {
   return useEntity(sessionStore, id ?? -1);
 }
 
-export function usePullProgress(
-  id: number | null | undefined,
-): PullProgress | undefined {
+export function usePullProgress(id: number | null | undefined): PullProgress | undefined {
   return useEntity(pullProgressStore, id ?? -1);
 }
 
@@ -193,9 +179,7 @@ export type BoardStructure = {
 // entity stores, return the structural index. Reconciliation: any ticket
 // previously in `ticketStore` for this board that isn't in the new snapshot
 // (archived / deleted in another tab) is dropped, and so is its session.
-export async function fetchBoardStructure(
-  boardId: number,
-): Promise<BoardStructure> {
+export async function fetchBoardStructure(boardId: number): Promise<BoardStructure> {
   const data = await api.boardState(boardId);
 
   const newTicketIds = new Set(data.tickets.map((t) => t.id));

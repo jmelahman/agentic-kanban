@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
-  DragEndEvent,
+  type DragEndEvent,
   DragOverlay,
-  DragStartEvent,
+  type DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -16,7 +16,7 @@ import { useShortcut } from "@/keys/useShortcut";
 import {
   activeTicketStore,
   addTicketRequestStore,
-  BoardStructure,
+  type BoardStructure,
   fetchBoardStructure,
   ticketStore,
   useSession,
@@ -42,9 +42,7 @@ function nextTicketId(
     }
     return null;
   }
-  const colIdx = columns.findIndex((c) =>
-    (ticketIdsByColumn[c.id] ?? []).includes(activeId),
-  );
+  const colIdx = columns.findIndex((c) => (ticketIdsByColumn[c.id] ?? []).includes(activeId));
   if (colIdx === -1) return activeId;
   const list = ticketIdsByColumn[columns[colIdx].id] ?? [];
   const pos = list.indexOf(activeId);
@@ -115,9 +113,7 @@ export function Board({ boardId }: { boardId: number }) {
     const activeColIdx =
       activeId == null
         ? -1
-        : columns.findIndex((c) =>
-            (ticketIdsByColumn[c.id] ?? []).includes(activeId),
-          );
+        : columns.findIndex((c) => (ticketIdsByColumn[c.id] ?? []).includes(activeId));
     const target = columns[activeColIdx >= 0 ? activeColIdx : 0];
     addTicketRequestStore.set(target.id);
   });
@@ -153,16 +149,11 @@ export function Board({ boardId }: { boardId: number }) {
       const overTicket = ticketStore.get(overTicketId);
       if (!overTicket) return;
       targetCol = overTicket.column_id;
-      const targetList = (ticketIdsByColumn[targetCol] ?? []).filter(
-        (id) => id !== ticketId,
-      );
+      const targetList = (ticketIdsByColumn[targetCol] ?? []).filter((id) => id !== ticketId);
       const idx = targetList.indexOf(overTicketId);
       if (idx < 0) {
         insertIndex = targetList.length;
-      } else if (
-        moved.column_id === targetCol &&
-        moved.position < overTicket.position
-      ) {
+      } else if (moved.column_id === targetCol && moved.position < overTicket.position) {
         // Dragging downward within the same column: drop after the over ticket.
         insertIndex = idx + 1;
       } else {
@@ -182,7 +173,9 @@ export function Board({ boardId }: { boardId: number }) {
   }
 
   return (
-    <div className={`flex h-full min-w-0 ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}>
+    <div
+      className={`flex h-full min-w-0 ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}
+    >
       <DndContext
         sensors={sensors}
         onDragStart={onDragStart}
@@ -202,10 +195,7 @@ export function Board({ boardId }: { boardId: number }) {
         </div>
         <DragOverlay>
           {draggingId != null ? (
-            <DraggingPreview
-              id={draggingId}
-              sessionId={sessionIdByTicket[draggingId] ?? null}
-            />
+            <DraggingPreview id={draggingId} sessionId={sessionIdByTicket[draggingId] ?? null} />
           ) : null}
         </DragOverlay>
       </DndContext>
