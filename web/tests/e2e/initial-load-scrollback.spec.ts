@@ -1,5 +1,6 @@
 import { api, waitForSession, isAttachable } from "./fixtures/api";
 import { test, expect } from "./fixtures/seed";
+import { BoardPage } from "./pages/BoardPage";
 
 // Initial-load scrollback path: a session has been running with output,
 // the user loads the page, the terminal WS opens, and the broker
@@ -20,10 +21,8 @@ test("first UI WS connect replays prior shell output", async ({
 
   // 2) Seed the active board, then navigate to the app so we have a
   // real origin for the throwaway WebSocket.
-  await page.addInitScript((boardId) => {
-    localStorage.setItem("kanban.activeBoardId", String(boardId));
-  }, seed.board.id);
-  await page.goto("/");
+  const board = new BoardPage(page);
+  await board.goto(seed.board.id);
 
   // 3) Inject a known marker via a throwaway shell WS, then close it.
   // The broker keeps the last ~64 KiB in its ring buffer (broker.go:19)
@@ -72,15 +71,12 @@ test("first UI WS connect replays prior shell output", async ({
       shellAggregates.set(key, (shellAggregates.get(key) ?? "") + text);
     });
   });
-  await page.reload();
+  await board.reload();
 
   // 5) Drive the UI to open the shell WS: pick the ticket, switch to
   // the "terminal" tab.
-  const ticketCard = page.locator('[data-ticket-card="true"]').filter({
-    hasText: seed.ticket.title,
-  });
-  await ticketCard.click();
-  await page.getByRole("button", { name: "terminal" }).click();
+  await board.ticketCard(seed.ticket.title).click();
+  await board.sessionPane.openTerminalTab();
 
   // 6) Any of the captured shell WS aggregations should contain the
   // replayed marker.

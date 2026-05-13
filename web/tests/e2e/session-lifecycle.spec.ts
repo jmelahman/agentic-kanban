@@ -1,5 +1,6 @@
 import { api, waitForSession, isAttachable } from "./fixtures/api";
 import { test, expect } from "./fixtures/seed";
+import { BoardPage } from "./pages/BoardPage";
 
 // Full UI walk through a session: open the board, click a ticket, watch
 // the auto-ensure + auto-start flow drive the status pill through
@@ -9,47 +10,44 @@ test("ticket click ensures, starts, and stops a session via UI", async ({
   page,
   seed,
 }) => {
-  await page.addInitScript((boardId) => {
-    localStorage.setItem("kanban.activeBoardId", String(boardId));
-  }, seed.board.id);
+  const board = new BoardPage(page);
 
   const wsOpens: string[] = [];
   page.on("websocket", (ws) => wsOpens.push(ws.url()));
 
-  await page.goto("/");
+  await board.goto(seed.board.id);
 
-  const ticketCard = page.locator('[data-ticket-card="true"]').filter({
-    hasText: seed.ticket.title,
-  });
-  await expect(ticketCard).toBeVisible();
+  const ticketCard = board.ticketCard(seed.ticket.title);
+  await ticketCard.expectVisible();
   await ticketCard.click();
 
   // Wait for the session to flip into an attachable state. The UI
   // status pill mirrors the SSE-driven sessionStore.
-  const session = await waitForSession(seed.board.id, await firstSessionId(seed.board.id, seed.ticket.id), isAttachable, {
+  const sessionId = await firstSessionId(seed.board.id, seed.ticket.id);
+  const session = await waitForSession(seed.board.id, sessionId, isAttachable, {
     timeoutMs: 60_000,
   });
   expect(["idle", "working"]).toContain(session.status);
 
   // Status text on the ticket card matches the backend.
-  await expect(ticketCard).toContainText(session.status);
+  await ticketCard.expectStatus(session.status);
 
   // The agent terminal mounts whenever a session is attachable.
-  await expect(page.locator('[data-terminal="true"]').first()).toBeVisible();
+  await board.sessionPane.expectTerminalMounted();
 
   // A WebSocket to /ws/sessions/{id}/pty opened during the attach.
-  expect(
-    wsOpens.some((u) => u.includes(`/ws/sessions/${session.id}/pty`)),
-  ).toBe(true);
+  await expect
+    .poll(() => wsOpens.some((u) => u.includes(`/ws/sessions/${session.id}/pty`)))
+    .toBe(true);
 
   // Stop via the header action button (aria-label="stop").
-  await page.getByRole("button", { name: "stop", exact: true }).click();
+  await board.sessionPane.stop();
 
   await waitForSession(seed.board.id, session.id, (s) => s.status === "stopped", {
     timeoutMs: 30_000,
   });
-  await expect(ticketCard).toContainText("stopped");
-  await expect(page.locator('[data-terminal="true"]')).toHaveCount(0);
+  await ticketCard.expectStatus("stopped");
+  await board.sessionPane.expectTerminalAbsent();
 });
 
 // Helper: poll boardState until a session exists for this ticket.
