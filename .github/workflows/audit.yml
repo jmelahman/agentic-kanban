@@ -1,0 +1,62 @@
+name: Audit
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # ratchet:actions/setup-go@v6.0.0
+        with:
+          go-version: stable
+          cache: false
+      - uses: golang/govulncheck-action@b625fbe08f3bccbe446d94fbf87fcc875a4f50ee # ratchet:golang/govulncheck-action@v1.0.4
+        with:
+          go-version-input: stable
+          check-latest: true
+
+  npm-audit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # ratchet:actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # ratchet:actions/setup-node@v6.0.0 # zizmor: ignore[cache-poisoning]
+        with:
+          node-version: "24"
+      - run: npm audit --audit-level=high
+        working-directory: web
+
+  grype:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          # Runtime base for the kanban image (see Dockerfile).
+          - alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
+          # Devcontainer base (see build/devcontainer/Dockerfile).
+          - ubuntu:24.04
+    steps:
+      - uses: anchore/scan-action@e1165082ffb1fe366ebaf02d8526e7c4989ea9d2 # ratchet:anchore/scan-action@v7.4.0
+        with:
+          image: ${{ matrix.image }}
+          severity-cutoff: high
+          fail-build: true
+          only-fixed: false

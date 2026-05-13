@@ -8,7 +8,13 @@ on:
 permissions: {}
 
 jobs:
+  audit:
+    uses: ./.github/workflows/audit.yml
+    permissions:
+      contents: read
+
   devcontainer:
+    needs: audit
     runs-on: ubuntu-latest
     environment:
       name: release
