@@ -2,6 +2,15 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Prek",
+      "type": "shell",
+      "command": "prek",
+      "args": ["run", "--from-ref", "origin/master", "--to-ref", "HEAD"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      }
+    },
+    {
       "label": "Run Tests",
       "type": "shell",
       "command": "go",
