@@ -18,11 +18,6 @@ repos:
       - id: end-of-file-fixer
       - id: fix-byte-order-marker
       - id: trailing-whitespace
-
-  # actionlint and ripsecrets are installed in the devcontainer image (see
-  # .devcontainer/Dockerfile). Using language: system avoids prek's
-  # `go install` / `cargo install` paths, which fail when the upstream
-  # registry's IPs rotate out of the firewall ipset captured at boot.
   - repo: local
     hooks:
       - id: actionlint
@@ -55,9 +50,6 @@ repos:
         # without serial, concurrent `npm ci` runs race on web/node_modules
         # and corrupt the install. biome handles file parallelism itself.
         require_serial: true
-      # govulncheck is installed in the devcontainer image (see
-      # build/devcontainer/Dockerfile). language: system avoids prek's
-      # `go install` path, which fails behind the firewall ipset.
       - id: govulncheck
         name: govulncheck
         entry: govulncheck ./...
