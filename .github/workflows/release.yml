@@ -5,6 +5,8 @@ on:
     tags:
       - "v*.*.*"
 
+permissions: {}
+
 jobs:
   devcontainer:
     runs-on: ubuntu-latest
@@ -59,11 +61,9 @@ jobs:
         with:
           go-version: stable
           cache: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # zizmor: ignore[cache-poisoning]
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - run: npm --prefix web ci
       - uses: goreleaser/goreleaser-action@1a80836c5c9d9e5755a25cb59ec6f45a3b5f41a8
         with:
@@ -76,6 +76,8 @@ jobs:
   build-pypi:
     needs: devcontainer
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         os-arch:
@@ -95,18 +97,20 @@ jobs:
         with:
           go-version: stable
           cache: false
-      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # zizmor: ignore[cache-poisoning]
         with:
           node-version: "24"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
         with:
           enable-cache: false
-      - run: |
-          GOOS="${{ matrix.os-arch.goos }}" \
-          GOARCH="${{ matrix.os-arch.goarch }}" \
-          KANBAN_DEVCONTAINER_IMAGE="lahmanja/kanban-devcontainer@${{ needs.devcontainer.outputs.digest }}" \
+      - env:
+          DEVCONTAINER_DIGEST: ${{ needs.devcontainer.outputs.digest }}
+          MATRIX_GOOS: ${{ matrix.os-arch.goos }}
+          MATRIX_GOARCH: ${{ matrix.os-arch.goarch }}
+        run: |
+          GOOS="$MATRIX_GOOS" \
+          GOARCH="$MATRIX_GOARCH" \
+          KANBAN_DEVCONTAINER_IMAGE="lahmanja/kanban-devcontainer@${DEVCONTAINER_DIGEST}" \
           uv build --wheel
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
