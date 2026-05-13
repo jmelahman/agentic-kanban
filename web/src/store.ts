@@ -22,13 +22,15 @@ export class EntityStore<T> {
   set = (id: number, value: T): void => {
     if (this.values.get(id) === value) return;
     this.values.set(id, value);
-    this.idListeners.get(id)?.forEach((l) => l());
+    const listeners = this.idListeners.get(id);
+    if (listeners) for (const l of listeners) l();
   };
 
   delete = (id: number): void => {
     if (!this.values.has(id)) return;
     this.values.delete(id);
-    this.idListeners.get(id)?.forEach((l) => l());
+    const listeners = this.idListeners.get(id);
+    if (listeners) for (const l of listeners) l();
   };
 
   subscribe = (id: number, cb: () => void): (() => void) => {
@@ -66,7 +68,7 @@ export class ScalarStore<T> {
     const v = typeof next === "function" ? (next as (p: T) => T)(this.value) : next;
     if (Object.is(v, this.value)) return;
     this.value = v;
-    this.listeners.forEach((l) => l());
+    for (const l of this.listeners) l();
   };
 
   subscribe = (cb: () => void): (() => void) => {

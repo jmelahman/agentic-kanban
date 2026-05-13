@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api, type Column as ColumnType } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { addTicketRequestStore, useScalarSelector } from "@/store";
@@ -22,6 +22,11 @@ export function Column(props: {
   const [adding, setAdding] = useState(false);
   const [title, setTitle] = useState("");
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const addInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (adding) addInputRef.current?.focus();
+  }, [adding]);
 
   const createMut = useMutation({
     mutationFn: () => api.createTicket(props.boardId, { column_id: props.column.id, title }),
@@ -95,7 +100,7 @@ export function Column(props: {
           className="flex flex-col gap-1"
         >
           <input
-            autoFocus
+            ref={addInputRef}
             className="rounded bg-surface-2 px-2 py-1 text-sm"
             value={title}
             onChange={(e) => setTitle(e.target.value)}

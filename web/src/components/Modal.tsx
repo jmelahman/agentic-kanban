@@ -115,9 +115,21 @@ function DialogShell({
       : "fixed inset-0 z-40 flex";
   const backdrop =
     flavor === "modal" ? (
-      <div className="absolute inset-0 bg-black/50" onClick={busy ? undefined : onClose} />
+      <button
+        type="button"
+        aria-label="Close"
+        tabIndex={-1}
+        className="absolute inset-0 bg-black/50"
+        onClick={busy ? undefined : onClose}
+      />
     ) : (
-      <div className="flex-1 bg-black/50" onClick={busy ? undefined : onClose} />
+      <button
+        type="button"
+        aria-label="Close"
+        tabIndex={-1}
+        className="flex-1 bg-black/50"
+        onClick={busy ? undefined : onClose}
+      />
     );
 
   return createPortal(

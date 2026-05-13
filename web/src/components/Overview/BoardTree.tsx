@@ -12,7 +12,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useBoardSubscription } from "@/hooks/useBoardSubscription";
@@ -305,6 +305,10 @@ function ColumnSection({
   pendingAdd: boolean;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `col-${columnId}` });
+  const addInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isAdding) addInputRef.current?.focus();
+  }, [isAdding]);
   return (
     <div ref={setNodeRef} className={`px-3 py-1 ${isOver ? "bg-accent-500/10" : ""}`}>
       <div className="mb-1 flex items-center justify-between gap-2">
@@ -332,7 +336,7 @@ function ColumnSection({
           className="mb-1 flex flex-col gap-1"
         >
           <input
-            autoFocus
+            ref={addInputRef}
             className="rounded bg-surface-2 px-2 py-1 text-sm"
             value={title}
             onChange={(e) => onTitleChange(e.target.value)}

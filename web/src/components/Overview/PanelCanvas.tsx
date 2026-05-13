@@ -1,3 +1,5 @@
+// biome-ignore-all lint/a11y/useSemanticElements: no native semantic for focus-tracked draggable panels and their drag handles.
+// biome-ignore-all lint/a11y/noNoninteractiveTabindex: panels capture focus to track the active panel among siblings.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DraggableEvent } from "react-draggable";
@@ -557,13 +559,24 @@ function Panel({
       className={`overflow-hidden rounded border bg-bg shadow-lg ${focused ? "border-accent-500" : "border-border"}`}
     >
       <div
+        role="group"
+        aria-label="Ticket panel"
         tabIndex={0}
         onFocus={onFocus}
         onMouseDown={onFocus}
         className="flex h-full flex-col outline-none"
       >
         <div
+          role="button"
+          tabIndex={0}
+          aria-label="Drag to move, double-click to maximize"
           onDoubleClick={onToggleMaximize}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onToggleMaximize();
+            }
+          }}
           className="panel-drag-handle flex h-5 cursor-move items-center bg-surface-2 px-2 text-[10px] uppercase tracking-wide text-fg-muted"
         >
           drag

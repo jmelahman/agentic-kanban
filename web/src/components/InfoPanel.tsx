@@ -235,6 +235,7 @@ function Copyable({ text, display }: { text: string; display?: string }) {
   };
   return (
     <button
+      type="button"
       onClick={onCopy}
       title={copied ? "copied" : "click to copy"}
       className="group inline-flex items-center gap-1 text-left font-mono text-xs hover:text-accent-500"
@@ -313,46 +314,46 @@ function ChecksValue({ detail, loading }: { detail: PRDetail | undefined; loadin
   if (!detail) return <Muted>—</Muted>;
   const c = detail.checks;
   if (c.total === 0) return <Muted>none</Muted>;
-  const parts: ReactNode[] = [];
+  const parts: { key: string; node: ReactNode }[] = [];
   if (c.success > 0) {
-    parts.push(
-      <span key="ok" className="text-emerald-400">
-        ✓ {c.success}
-      </span>,
-    );
+    parts.push({
+      key: "ok",
+      node: <span className="text-emerald-400">✓ {c.success}</span>,
+    });
   }
   if (c.failure > 0) {
-    parts.push(
-      <span
-        key="fail"
-        className="cursor-help text-red-400"
-        title={
-          c.failing.length > 0
-            ? `Failing:\n${c.failing.map((f) => `• ${f.name}`).join("\n")}`
-            : `${c.failure} failing`
-        }
-      >
-        ✗ {c.failure}
-      </span>,
-    );
+    parts.push({
+      key: "fail",
+      node: (
+        <span
+          className="cursor-help text-red-400"
+          title={
+            c.failing.length > 0
+              ? `Failing:\n${c.failing.map((f) => `• ${f.name}`).join("\n")}`
+              : `${c.failure} failing`
+          }
+        >
+          ✗ {c.failure}
+        </span>
+      ),
+    });
   }
   if (c.pending > 0) {
-    parts.push(
-      <span key="pend" className="text-amber-400">
-        · {c.pending}
-      </span>,
-    );
+    parts.push({
+      key: "pend",
+      node: <span className="text-amber-400">· {c.pending}</span>,
+    });
   }
   return (
     <span className="inline-flex items-center gap-2">
       {parts.flatMap((p, i) =>
         i === 0
-          ? [p]
+          ? [<span key={p.key}>{p.node}</span>]
           : [
-              <span key={`sep-${i}`} className="text-fg-muted">
+              <span key={`sep-${p.key}`} className="text-fg-muted">
                 /
               </span>,
-              p,
+              <span key={p.key}>{p.node}</span>,
             ],
       )}
     </span>

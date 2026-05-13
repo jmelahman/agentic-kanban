@@ -115,8 +115,8 @@ function applyBoardEvent(
       }
       return;
     }
-    case "ready":
     default:
+      // "ready" and any unknown event types — no state to update.
       return;
   }
 }

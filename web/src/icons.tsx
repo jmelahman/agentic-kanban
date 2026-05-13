@@ -13,6 +13,8 @@ function baseProps({ size = 14, ...rest }: IconProps) {
     strokeWidth: 2,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+    focusable: false,
     ...rest,
   };
 }

@@ -13,6 +13,11 @@ export function useClickOutside(
   onOutside: (e: MouseEvent) => void,
   { enabled = true, exemptSelectors = [] }: Options = {},
 ): void {
+  // We key on the joined selector string rather than the array identity so
+  // callers don't need to memoize a stable array reference. Callers needing
+  // dynamic selectors can rebuild the array each render — the join is what
+  // determines re-subscription.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   useEffect(() => {
     if (!enabled) return;
     const handler = (e: MouseEvent) => {
@@ -26,8 +31,5 @@ export function useClickOutside(
     };
     window.addEventListener("mousedown", handler);
     return () => window.removeEventListener("mousedown", handler);
-    // exemptSelectors is expected to be stable across renders; if callers
-    // need dynamic selectors they can recreate the array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, ref, onOutside, exemptSelectors.join("|")]);
 }

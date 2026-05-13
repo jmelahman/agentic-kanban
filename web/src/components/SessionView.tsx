@@ -285,7 +285,10 @@ export function SessionView({
 
   // Per-ticket transient UI state. Switching tickets resets these so that
   // an in-flight action on the previous ticket doesn't leave the new
-  // ticket's button stuck in its spinner state.
+  // ticket's button stuck in its spinner state. Mutation handles are stable
+  // for the lifetime of this component; listing them as deps would re-fire
+  // on every render.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   useEffect(() => {
     setSyncMenuOpen(false);
     setMergeMenuOpen(false);
@@ -297,9 +300,11 @@ export function SessionView({
     syncMut.reset();
     mergeMut.reset();
     doneMut.reset();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
+  // ticketId isn't referenced directly, but switching tickets remounts the
+  // header DOM, so we re-measure to recompute the compact threshold.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   useLayoutEffect(() => {
     const header = headerRef.current;
     const ghost = headerGhostRef.current;

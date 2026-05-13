@@ -112,7 +112,10 @@ function DesktopOverview() {
               onCollapseSidebar={toggleCollapsed}
             />
           </aside>
+          {/* biome-ignore lint/a11y/useFocusableInteractive: mouse-only resize handle; no keyboard resize affordance yet. */}
+          {/* biome-ignore lint/a11y/useSemanticElements: HTML has no semantic resizer; role="separator" is the canonical ARIA pattern. */}
           <div
+            // biome-ignore lint/a11y/useAriaPropsForRole: aria-valuenow is N/A for a continuous resize-by-drag handle.
             role="separator"
             aria-orientation="vertical"
             onMouseDown={onResizeStart}

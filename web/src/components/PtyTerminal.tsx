@@ -219,7 +219,7 @@ function createTerminalControls(
 
 let offscreenContainer: HTMLDivElement | null = null;
 function getOffscreenContainer(): HTMLDivElement {
-  if (offscreenContainer && offscreenContainer.isConnected) return offscreenContainer;
+  if (offscreenContainer?.isConnected) return offscreenContainer;
   const div = document.createElement("div");
   div.style.position = "absolute";
   div.style.left = "-99999px";

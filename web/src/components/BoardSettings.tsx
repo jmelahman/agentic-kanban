@@ -41,6 +41,10 @@ export function BoardSettings({
   const { fields, update, reset, hasRepo, hasMount } = useBoardForm(fieldsFromBoard(board));
   const [confirmDelete, setConfirmDelete] = useState(false);
 
+  // Listing individual fields keeps the reset confined to the props this form
+  // mirrors; depending on `board` would re-fire on every unrelated mutation
+  // (timestamps, column counts, etc.) and stomp in-progress edits.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   useEffect(() => {
     reset(fieldsFromBoard(board));
   }, [
@@ -193,7 +197,7 @@ export function BoardSettings({
                 <span className="text-xs text-fg-muted">
                   New session branches are{" "}
                   <span className="font-mono">
-                    {(fields.branchPrefix.trim() || `kanban/${board.slug}`) + "/<ticket-slug>"}
+                    {`${fields.branchPrefix.trim() || `kanban/${board.slug}`}/<ticket-slug>`}
                   </span>
                   . Existing sessions keep their original branch.
                 </span>

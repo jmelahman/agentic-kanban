@@ -55,13 +55,27 @@ function TicketCard({
 }) {
   const status = session?.status ?? "stopped";
   const interactiveCls = interactive ? "cursor-pointer hover:bg-surface-3" : "";
+  const isInteractive = interactive && !!onClick;
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: role/tabIndex/onKeyDown applied conditionally below.
     <div
       ref={innerRef}
       {...dragProps}
       style={style}
+      role={isInteractive ? "button" : undefined}
+      tabIndex={isInteractive ? 0 : undefined}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onKeyDown={
+        isInteractive
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick?.();
+              }
+            }
+          : undefined
+      }
       data-ticket-card="true"
       className={`rounded bg-surface-2 p-2 text-sm transition-colors duration-150 ${interactiveCls} ${active ? "ring-2 ring-accent-500" : ""} ${className ?? ""}`}
     >

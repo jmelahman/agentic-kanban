@@ -183,6 +183,9 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
 function TaskOutput({ lines }: { lines: string[] }) {
   const ref = useRef<HTMLPreElement>(null);
 
+  // `lines` isn't referenced inside, but every append produces a new array
+  // identity, so listing it as a dep is what triggers the autoscroll.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
   }, [lines]);

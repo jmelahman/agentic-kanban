@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import type { Board } from "@/api/client";
 import { queryKeys } from "@/api/keys";
@@ -34,6 +34,11 @@ export function NewTicketModal({
     boardId != null ? (qc.getQueryData<BoardStructure>(queryKeys.board(boardId)) ?? null) : null,
   );
   const [columnId, setColumnId] = useState<number | null>(() => structure?.columns[0]?.id ?? null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    titleInputRef.current?.focus();
+  }, []);
 
   // When the user changes the selected board, re-read the structure from
   // the cache (kept warm by BoardTree). If the cache is empty for that
@@ -99,7 +104,7 @@ export function NewTicketModal({
         <label className="flex flex-col gap-1">
           <span className="text-xs text-fg-muted">Title</span>
           <input
-            autoFocus
+            ref={titleInputRef}
             className="rounded bg-surface-2 px-2 py-1"
             value={title}
             onChange={(e) => setTitle(e.target.value)}

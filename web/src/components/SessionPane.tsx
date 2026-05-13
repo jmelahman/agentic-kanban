@@ -96,6 +96,9 @@ export function SessionPane({
     return () => window.removeEventListener("keydown", onKey);
   }, [fullscreen]);
 
+  // height/width are read once as the resize start point; adding them to deps
+  // would tear down and re-attach listeners on every mouse move.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
   useEffect(() => {
     if (!resizing) return;
     let pending: number | null = null;
@@ -154,7 +157,10 @@ export function SessionPane({
   return (
     <aside className={paneClass} style={paneStyle}>
       {!overlay && (
+        // biome-ignore lint/a11y/useFocusableInteractive: mouse-only resize handle; no keyboard resize affordance yet.
+        // biome-ignore lint/a11y/useSemanticElements: HTML has no semantic resizer; role="separator" is the canonical ARIA pattern.
         <div
+          // biome-ignore lint/a11y/useAriaPropsForRole: aria-valuenow is N/A for a continuous resize-by-drag handle.
           role="separator"
           aria-orientation={isHorizontal ? "horizontal" : "vertical"}
           onMouseDown={(e) => {
