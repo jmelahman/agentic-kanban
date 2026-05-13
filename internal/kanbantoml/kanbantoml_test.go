@@ -294,7 +294,7 @@ func TestLoad_NoFiles(t *testing.T) {
 	repo := writeProject(t, "")
 
 	f := Load(repo)
-	if f.Harness != nil || f.Sync != nil || f.Merge != nil || f.GitHub != nil || f.Devcontainer != nil || f.Tasks != nil {
+	if f.Harness != nil || f.Sync != nil || f.Merge != nil || f.GitHub != nil || f.Devcontainer != nil || f.Agent != nil || f.Tasks != nil {
 		t.Errorf("expected fully empty File, got %+v", f)
 	}
 }
@@ -334,5 +334,38 @@ allow_rebase = false
 	}
 	if f.Sync == nil || f.Sync.AllowRebase == nil || *f.Sync.AllowRebase {
 		t.Errorf("sync.allow_rebase = %v; want false (preserved)", f.Sync)
+	}
+}
+
+func TestLoad_AgentSectionAbsentDefaults(t *testing.T) {
+	withUserConfig(t, "")
+	repo := writeProject(t, "")
+	f := Load(repo)
+	if f.Agent != nil {
+		t.Fatalf("Agent should be nil when no config sets it; got %+v", f.Agent)
+	}
+}
+
+func TestLoad_AgentAutoStartProjectOnly(t *testing.T) {
+	withUserConfig(t, "")
+	repo := writeProject(t, `[agent]
+auto_start = true
+`)
+	f := Load(repo)
+	if f.Agent == nil || f.Agent.AutoStart == nil || !*f.Agent.AutoStart {
+		t.Errorf("auto_start = %+v; want true", f.Agent)
+	}
+}
+
+func TestLoad_AgentAutoStartUserOverridesProject(t *testing.T) {
+	withUserConfig(t, `[agent]
+auto_start = false
+`)
+	repo := writeProject(t, `[agent]
+auto_start = true
+`)
+	f := Load(repo)
+	if f.Agent == nil || f.Agent.AutoStart == nil || *f.Agent.AutoStart {
+		t.Errorf("auto_start = %+v; want false (user override)", f.Agent)
 	}
 }
