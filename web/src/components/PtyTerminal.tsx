@@ -118,6 +118,11 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
         window.removeEventListener(APPEARANCE_EVENT, onAppearance);
         dataDisp.dispose();
         resizeDisp.dispose();
+        // Drop handlers before close() — the close event fires async and
+        // would otherwise call term.write() on the disposed terminal.
+        ws.onopen = null;
+        ws.onmessage = null;
+        ws.onclose = null;
         ws.close();
         term.dispose();
         controls.dispose();
