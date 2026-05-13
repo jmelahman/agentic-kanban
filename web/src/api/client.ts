@@ -308,6 +308,7 @@ export async function postError(p: {
   source: string;
   url?: string;
   user_agent?: string;
+  meta?: Record<string, string>;
 }): Promise<void> {
   if (reportingError) return;
   reportingError = true;
@@ -321,6 +322,7 @@ export async function postError(p: {
         source: p.source,
         url: p.url ?? (typeof window !== "undefined" ? window.location.href : ""),
         user_agent: p.user_agent ?? (typeof navigator !== "undefined" ? navigator.userAgent : ""),
+        meta: p.meta,
       }),
     });
   } catch {

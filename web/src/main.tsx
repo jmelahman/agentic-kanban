@@ -4,8 +4,11 @@ import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@ta
 import App from "@/App";
 import { ApiError, formatApiError, postError } from "@/api/client";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { installRuntimeReporting } from "@/instrumentation/runtimeReport";
 import { ToastProvider, useToast } from "@/toast";
 import "@/index.css";
+
+installRuntimeReporting();
 
 // reportRuntimeError forwards unexpected errors to the backend. 4xx ApiErrors
 // are user-visible business errors (board renamed in another tab, validation

@@ -1320,16 +1320,18 @@ func (h *handlers) httpError(w http.ResponseWriter, err error, code int) {
 }
 
 type reportFrontendErrorReq struct {
-	Message   string `json:"message"`
-	Stack     string `json:"stack"`
-	Source    string `json:"source"`
-	URL       string `json:"url"`
-	UserAgent string `json:"user_agent"`
+	Message   string            `json:"message"`
+	Stack     string            `json:"stack"`
+	Source    string            `json:"source"`
+	URL       string            `json:"url"`
+	UserAgent string            `json:"user_agent"`
+	Meta      map[string]string `json:"meta"`
 }
 
 // reportFrontendError accepts error reports from the React app's
-// ErrorBoundary and global React Query onError. Always returns 204; when the
-// reporter is disabled (the default), this endpoint silently absorbs reports.
+// ErrorBoundary, global React Query onError, window error/unhandledrejection
+// listeners, and the long-task observer. Always returns 204; when the reporter
+// is disabled (the default), this endpoint silently absorbs reports.
 func (h *handlers) reportFrontendError(w http.ResponseWriter, r *http.Request) {
 	req, err := decodeBody[reportFrontendErrorReq](r)
 	if err != nil {
@@ -1341,10 +1343,17 @@ func (h *handlers) reportFrontendError(w http.ResponseWriter, r *http.Request) {
 		if source == "" {
 			source = "frontend"
 		}
-		h.reporter.Report(r.Context(), source, req.Message, req.Stack, map[string]string{
+		meta := map[string]string{
 			"url":        req.URL,
 			"user_agent": req.UserAgent,
-		})
+		}
+		for k, v := range req.Meta {
+			if _, taken := meta[k]; taken {
+				continue
+			}
+			meta[k] = v
+		}
+		h.reporter.Report(r.Context(), source, req.Message, req.Stack, meta)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

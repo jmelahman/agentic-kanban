@@ -133,4 +133,13 @@ Sessions are the running container + worktree + harness for a ticket. The most u
 
 ## Frontend error reporting
 
-- `POST /api/errors` — used internally by the web UI to file frontend exceptions as tickets when error reporting is enabled.
+- `POST /api/errors` — used internally by the web UI to file frontend exceptions
+  as tickets when error reporting is enabled. The body is
+  `{ message, stack, source, url, user_agent, meta }`; `meta` is an optional
+  string map merged into the ticket body. Sources used today:
+  `boundary` (React render errors), `react-query` (query/mutation 5xx),
+  `window` (uncaught exceptions), `unhandledrejection` (rejected promises with
+  no `.catch`), and `longtask` (main-thread blocks ≥2s reported by the
+  PerformanceObserver — useful for catching UI freezes that throw nothing).
+  Always returns 204; reports are silently dropped when `[errors] enabled` is
+  false.
