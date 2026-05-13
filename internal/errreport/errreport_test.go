@@ -109,6 +109,59 @@ func TestReporter_DeduplicatesOnSecondOccurrence(t *testing.T) {
 	if !strings.Contains(tickets[0].Body, "Seen again at") {
 		t.Fatalf("body should be updated with 'Seen again': %q", tickets[0].Body)
 	}
+	if !strings.HasSuffix(tickets[0].Title, "(×2)") {
+		t.Fatalf("title should carry occurrence count: %q", tickets[0].Title)
+	}
+}
+
+// TestReporter_RecurrenceBumpsToNew verifies that when a user moves a
+// recurring error ticket to "Investigating" (or "Resolved") and the error
+// happens again, the ticket is bumped back to the "New" column so the
+// recurrence is visible. Without this, dedup silently appends to a ticket
+// that may be in a column the user has stopped watching.
+func TestReporter_RecurrenceBumpsToNew(t *testing.T) {
+	store := newStore(t)
+	r := errreport.New(store, errreport.Config{Enabled: true, BoardName: "Errors"})
+	stack := "main.go:42\nfoo.go:10\nbar.go:99"
+	ctx := context.Background()
+	r.Report(ctx, "panic", "boom", stack, nil)
+
+	board := boardSlug(t, store, "errors")
+	cols, err := store.ListColumns(ctx, board.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newCol, investigating := cols[0], cols[1]
+
+	tickets, _ := store.ListTickets(ctx, board.ID)
+	if len(tickets) != 1 || tickets[0].ColumnID != newCol.ID {
+		t.Fatalf("setup: expected 1 ticket in New, got %+v", tickets)
+	}
+	// User moves it off "New" — pretend they're investigating.
+	if err := store.MoveTicket(ctx, tickets[0].ID, investigating.ID, 0); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same error recurs.
+	r.Report(ctx, "panic", "boom", stack, nil)
+
+	tickets, _ = store.ListTickets(ctx, board.ID)
+	if len(tickets) != 1 {
+		t.Fatalf("expected dedup, got %d tickets", len(tickets))
+	}
+	if tickets[0].ColumnID != newCol.ID {
+		t.Fatalf("recurrence should bump ticket back to 'New' column %d, got %d", newCol.ID, tickets[0].ColumnID)
+	}
+	if tickets[0].Position != 0 {
+		t.Fatalf("recurrence should bump ticket to position 0, got %d", tickets[0].Position)
+	}
+
+	// A third occurrence updates the count without compounding the suffix.
+	r.Report(ctx, "panic", "boom", stack, nil)
+	tickets, _ = store.ListTickets(ctx, board.ID)
+	if !strings.HasSuffix(tickets[0].Title, "(×3)") {
+		t.Fatalf("title should reflect 3 occurrences: %q", tickets[0].Title)
+	}
 }
 
 func TestReporter_IgnoresArchivedTicket(t *testing.T) {

@@ -11,9 +11,9 @@
 //      the freeze itself throws nothing, but the long task is reported when
 //      the main thread eventually unblocks.
 //
-// All paths funnel through postError which is throttled (one in-flight call
-// at a time) and silently swallows transport failures, so this module can
-// never amplify an existing problem.
+// All paths funnel through postError which caps concurrent requests and
+// silently swallows transport failures, so this module can never amplify an
+// existing problem.
 //
 // Title strings are stable per (source, kind, location.pathname) so the
 // backend's fingerprint dedup collapses repeated occurrences into a single
@@ -77,23 +77,26 @@ function installLongTaskObserver(): void {
   const supported = PerformanceObserver.supportedEntryTypes;
   if (!supported?.includes("longtask")) return;
 
+  // Collapse a callback's batch to its worst entry. With `buffered: true`
+  // a fresh observer can flush a dozen tasks at once, all mapping to the
+  // same (bucket, pathname) fingerprint — sending them individually would
+  // burn the postError in-flight budget without adding signal.
+  const callback = (list: PerformanceObserverEntryList) => {
+    let max = 0;
+    for (const entry of list.getEntries()) {
+      if (entry.duration < LONG_TASK_THRESHOLD_MS) continue;
+      if (entry.duration > max) max = entry.duration;
+    }
+    if (max >= LONG_TASK_THRESHOLD_MS) reportLongTask(max);
+  };
+
   try {
-    const observer = new PerformanceObserver((list) => {
-      for (const entry of list.getEntries()) {
-        if (entry.duration < LONG_TASK_THRESHOLD_MS) continue;
-        reportLongTask(entry.duration);
-      }
-    });
+    const observer = new PerformanceObserver(callback);
     observer.observe({ type: "longtask", buffered: true });
   } catch {
     // Older Safari throws on { type, buffered } — fall back to the legacy form.
     try {
-      const observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (entry.duration < LONG_TASK_THRESHOLD_MS) continue;
-          reportLongTask(entry.duration);
-        }
-      });
+      const observer = new PerformanceObserver(callback);
       observer.observe({ entryTypes: ["longtask"] });
     } catch {
       // No longtask support — skip silently.

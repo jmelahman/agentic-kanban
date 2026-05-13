@@ -8,9 +8,11 @@
 //
 // Dedup: a sha256 fingerprint over (source, title, top stack frames) is
 // stored on each ticket. Subsequent captures with the same fingerprint update
-// the existing open ticket (appending a "Seen again at <time>" line) instead
-// of creating a new one. Archived tickets are ignored, so a recurrence after
-// resolution files a fresh ticket.
+// the existing open ticket (appending a "Seen again at <time>" line, bumping
+// the occurrence count in the title, and moving it back to the "New" column
+// so the recurrence is visible) instead of creating a new one. Only archived
+// tickets free the fingerprint — non-archived "Resolved" tickets still match,
+// since unresolving a still-recurring error would be misleading.
 package errreport
 
 import (
@@ -20,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"regexp"
 	"runtime"
 	"strings"
 	"sync"
@@ -102,9 +105,17 @@ func (r *Reporter) Report(ctx context.Context, source, title, stack string, meta
 
 	fp := computeFingerprint(source, title, stack)
 	if existing, err := r.store.FindOpenTicketByFingerprint(ctx, boardID, fp); err == nil && existing != nil {
+		occurrences := strings.Count(existing.Body, "Seen again at") + 2
+		existing.Title = titleWithCount(stripOccurrenceCount(existing.Title), occurrences)
 		existing.Body = appendOccurrence(existing.Body, time.Now().UTC())
 		if err := r.store.UpdateTicket(ctx, existing); err != nil {
 			log.Printf("errreport: update existing ticket %d: %v", existing.ID, err)
+		}
+		// Bump the ticket back to the top of "New" so a recurrence is visible
+		// in the UI even if the user previously moved it to Investigating /
+		// Resolved. A no-op when the ticket is already at (newCol, 0).
+		if err := r.store.MoveTicket(ctx, existing.ID, newColID, 0); err != nil {
+			log.Printf("errreport: bump existing ticket %d: %v", existing.ID, err)
 		}
 		return
 	}
@@ -263,6 +274,21 @@ func truncateTitle(s string) string {
 		return "(unknown error)"
 	}
 	return s
+}
+
+// occurrenceSuffixRE matches a trailing " (×N)" recurrence counter so dedup
+// can rewrite it on each new occurrence without the count compounding.
+var occurrenceSuffixRE = regexp.MustCompile(` \(×\d+\)$`)
+
+func stripOccurrenceCount(title string) string {
+	return occurrenceSuffixRE.ReplaceAllString(title, "")
+}
+
+func titleWithCount(baseTitle string, count int) string {
+	if count <= 1 {
+		return baseTitle
+	}
+	return fmt.Sprintf("%s (×%d)", baseTitle, count)
 }
 
 func formatBody(source, stack string, meta map[string]string) string {

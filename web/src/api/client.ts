@@ -296,12 +296,19 @@ export type SubscribeOptions = {
 
 // postError reports a frontend exception to the backend, which may file a
 // kanban ticket if error reporting is enabled in `.kanban.toml`. Always
-// best-effort: failures are silently swallowed, and a single in-flight call
-// blocks re-entry so one capture site can never spiral into a loop.
+// best-effort: failures are silently swallowed.
 //
 // Uses raw fetch (not request<T>) so an HTTP error here can't throw into the
 // React Query global onError and re-trigger this function.
-let reportingError = false;
+//
+// Concurrency: capped at POST_ERROR_MAX_IN_FLIGHT concurrent requests so a
+// burst (PerformanceObserver flushing many buffered longtasks at once) can't
+// be silenced by a single in-flight call. Each request gets a hard timeout
+// via AbortController — without this, a wedged backend would permanently
+// stick the in-flight count at the cap and mute all future reports.
+const POST_ERROR_MAX_IN_FLIGHT = 4;
+const POST_ERROR_TIMEOUT_MS = 3000;
+let postErrorInFlight = 0;
 export async function postError(p: {
   message: string;
   stack?: string;
@@ -310,8 +317,10 @@ export async function postError(p: {
   user_agent?: string;
   meta?: Record<string, string>;
 }): Promise<void> {
-  if (reportingError) return;
-  reportingError = true;
+  if (postErrorInFlight >= POST_ERROR_MAX_IN_FLIGHT) return;
+  postErrorInFlight++;
+  const controller = new AbortController();
+  const timeoutID = setTimeout(() => controller.abort(), POST_ERROR_TIMEOUT_MS);
   try {
     await fetch("/api/errors", {
       method: "POST",
@@ -324,11 +333,13 @@ export async function postError(p: {
         user_agent: p.user_agent ?? (typeof navigator !== "undefined" ? navigator.userAgent : ""),
         meta: p.meta,
       }),
+      signal: controller.signal,
     });
   } catch {
     // never toast, never recurse
   } finally {
-    reportingError = false;
+    clearTimeout(timeoutID);
+    postErrorInFlight--;
   }
 }
 
