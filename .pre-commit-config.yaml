@@ -40,10 +40,18 @@ repos:
           - --additional-pattern
           - ^sk-[A-Za-z0-9_\-]{20,}$
       # biome is installed via `npm install` in web/ (see web/package.json).
-      # The wrapper strips the leading `web/` from each path so biome —
-      # invoked inside web/ where its biome.json lives — finds the files.
+      # If web/node_modules is missing (fresh clone, CI), bootstrap with
+      # `npm ci` so the hook works without a separate setup step — without
+      # it, `npx biome` would try to resolve an unrelated `biome` package
+      # from the registry. The wrapper strips the leading `web/` from each
+      # path so biome — invoked inside web/ where its biome.json lives —
+      # finds the files.
       - id: biome
         name: biome
-        entry: bash -c 'cd web && exec npx --no biome check --no-errors-on-unmatched "${@#web/}"' --
+        entry: bash -c 'cd web && { [ -x node_modules/.bin/biome ] || npm ci --no-audit --no-fund; } >&2 && exec node_modules/.bin/biome check --no-errors-on-unmatched "${@#web/}"' --
         language: system
         files: ^web/.*\.(ts|tsx|js|jsx|json|jsonc)$
+        # Hook is invoked in parallel batches by prek when many files match;
+        # without serial, concurrent `npm ci` runs race on web/node_modules
+        # and corrupt the install. biome handles file parallelism itself.
+        require_serial: true
