@@ -324,12 +324,12 @@ func (p *Poller) applyTransition(ctx context.Context, board *db.Board, sess *db.
 }
 
 func (p *Poller) listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
-	owner, repo, host, err := parseGitHubRepo(repoPath)
+	owner, repo, host, err := ParseGitHubRepo(repoPath)
 	if err != nil {
 		return nil, err
 	}
-	apiBase := apiBaseFor(host)
-	tok := token(host)
+	apiBase := APIBaseFor(host)
+	tok := Token(host)
 
 	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
@@ -366,12 +366,15 @@ func (p *Poller) listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
 			return nil, fmt.Errorf("github api: parse: %w", err)
 		}
 		all = append(all, pageData...)
-		next = parseNextLink(resp.Header.Get("Link"))
+		next = ParseNextLink(resp.Header.Get("Link"))
 	}
 	return all, nil
 }
 
-func parseGitHubRepo(repoPath string) (owner, repo, host string, err error) {
+// ParseGitHubRepo resolves the owner, repo, and host from the origin remote
+// of the git checkout at repoPath. Shared by the PR poller and the build-cop
+// poller — both need the same translation from on-disk repo to GitHub coords.
+func ParseGitHubRepo(repoPath string) (owner, repo, host string, err error) {
 	cmd := exec.Command("git", "-C", repoPath, "remote", "get-url", "origin")
 	out, err := cmd.Output()
 	if err != nil {
@@ -412,10 +415,10 @@ func parseRemoteURL(remote string) (owner, repo, host string, err error) {
 	return parts[0], parts[1], u.Host, nil
 }
 
-// apiBaseFor returns the REST API root for a given git host. Honors
+// APIBaseFor returns the REST API root for a given git host. Honors
 // GITHUB_API_URL (matching gh's convention) and falls back to the GitHub
 // Enterprise Server convention of https://<host>/api/v3 for unknown hosts.
-func apiBaseFor(host string) string {
+func APIBaseFor(host string) string {
 	if v := os.Getenv("GITHUB_API_URL"); v != "" {
 		return strings.TrimRight(v, "/")
 	}
@@ -433,7 +436,11 @@ var (
 	}
 )
 
-func token(host string) string {
+// Token returns the GitHub API token for host, preferring $GH_TOKEN then
+// $GITHUB_TOKEN, then shelling out to `gh auth token` (cached per host).
+// Returns "" when no token is available — callers fall back to unauthenticated
+// requests (rate-limited at 60/hr per IP).
+func Token(host string) string {
 	if v := os.Getenv("GH_TOKEN"); v != "" {
 		return v
 	}
@@ -461,8 +468,8 @@ func token(host string) string {
 	return tok
 }
 
-// parseNextLink extracts the URL of rel="next" from a GitHub Link header.
-func parseNextLink(h string) string {
+// ParseNextLink extracts the URL of rel="next" from a GitHub Link header.
+func ParseNextLink(h string) string {
 	if h == "" {
 		return ""
 	}

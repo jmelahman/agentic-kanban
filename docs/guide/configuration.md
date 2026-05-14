@@ -42,6 +42,24 @@ closed_column = "Done"
 enabled    = false
 board_name = "kanban-errors"
 
+# Build Cop polls GitHub Actions on a schedule and files tickets when a job's
+# failure rate over a rolling window exceeds the threshold. Off by default.
+# Each [[buildcop.boards]] entry produces one auto-managed board scoped to
+# the given branch filter; columns are "Failing" / "Investigating" / "Fixed".
+# A job auto-moves to "Fixed" once it has `green_streak_required` consecutive
+# successful runs.
+[buildcop]
+enabled = false
+
+[[buildcop.boards]]
+name                  = "Build Cop: master"  # optional — defaults to "Build Cop: <branch>"
+repo_path             = "/workspace"         # required: absolute path to a checkout with a GitHub origin
+branch                = "master"             # "" or "*" matches every branch
+failure_threshold     = 0.10                 # rate (0..1) above which a ticket is filed
+min_runs              = 5                    # minimum runs in the window before evaluating
+green_streak_required = 10                   # consecutive green runs to auto-move to Fixed
+window_days           = 7                    # rolling window in days
+
 # Extra knobs layered onto the worktree's devcontainer.json at session spawn.
 # `mounts` and `run_args` append to whatever the devcontainer.json declares;
 # `container_env` merges with kanban values winning. `docker_socket` and
@@ -75,12 +93,17 @@ label = "Start Backend"
 container_port = 8080
 ```
 
+### Build Cop authentication
+
+The poller calls the GitHub REST API the same way the PR-state poller does: it reads `$GH_TOKEN`, falls back to `$GITHUB_TOKEN`, then shells out to `gh auth token`. Without any of those, requests go out unauthenticated and hit the 60-requests-per-hour-per-IP limit almost immediately. For a typical board (one workflow, ~50 runs in 7 days) the poller needs a few hundred requests per hour, so use an authenticated token. `$GITHUB_API_URL` is honored for GitHub Enterprise Server hosts.
+
 ## Merge semantics
 
-Most sections are object-merged: a key set in the user file wins; keys only set in the project file remain. Two sections behave specially:
+Most sections are object-merged: a key set in the user file wins; keys only set in the project file remain. Three sections behave specially:
 
 - `[devcontainer].mounts` and `[devcontainer].run_args` are **appended** to whatever the worktree's `devcontainer.json` already declares. They aren't overrides.
 - `[[task]]` entries merge by `label`: a user entry with the same `label` replaces the project entry, and user-only labels are appended.
+- `[[buildcop.boards]]` is **replaced wholesale** when the user file sets any entries — board names can change and there's no stable identity to merge by, so the rule is "if the user declared boards, those are the boards."
 
 ## Overriding the user-config path
 

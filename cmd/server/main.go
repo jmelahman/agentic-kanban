@@ -21,6 +21,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/jmelahman/kanban/internal/api"
+	"github.com/jmelahman/kanban/internal/buildcop"
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
@@ -244,6 +245,12 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 	pollerCtx, pollerCancel := context.WithCancel(context.Background())
 	defer pollerCancel()
 	go github.NewPoller(store, bus, sessionMgr, 30*time.Second).Start(pollerCtx)
+
+	buildCopCfg := buildcop.ResolveConfig("")
+	if buildCopCfg.Enabled && len(buildCopCfg.Boards) > 0 {
+		log.Printf("buildcop enabled, %d board(s)", len(buildCopCfg.Boards))
+		go buildcop.NewPoller(store, bus, buildCopCfg, 2*time.Minute).Start(pollerCtx)
+	}
 
 	// h2c lets clients that opt in (curl --http2-prior-knowledge, Go's
 	// http2.Transport, or a TLS-terminating proxy upstream) multiplex over

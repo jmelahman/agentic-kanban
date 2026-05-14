@@ -1,0 +1,619 @@
+// Package buildcop polls the GitHub Actions REST API and files tickets on a
+// dedicated board for each workflow job whose failure rate, over a rolling
+// window, exceeds a configurable threshold. When a tracked job recovers (a
+// configurable streak of green runs) the ticket is auto-moved to "Fixed".
+//
+// The design mirrors internal/errreport (board+columns are created lazily on
+// first poll) and internal/github (one ticker per process; gh-CLI token
+// fallback). The poller derives ticket state entirely from the API window
+// on each tick — no per-job persistence in the DB beyond the ticket and its
+// fingerprint.
+package buildcop
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"math"
+	"net/http"
+	"net/url"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/jmelahman/kanban/internal/db"
+	"github.com/jmelahman/kanban/internal/github"
+)
+
+const (
+	ColumnFailing       = "Failing"
+	ColumnInvestigating = "Investigating"
+	ColumnFixed         = "Fixed"
+)
+
+// Publisher mirrors github.Publisher so the SSE bus is injected without
+// pulling the api package into buildcop's import graph.
+type Publisher interface {
+	Publish(boardID int64, typ string, data any)
+}
+
+type Poller struct {
+	store    *db.Store
+	bus      Publisher
+	cfg      Config
+	interval time.Duration
+	http     *http.Client
+
+	mu     sync.Mutex
+	boards map[string]boardCache // slug -> {boardID, columnIDs}
+}
+
+type boardCache struct {
+	ID   int64
+	Cols map[string]int64
+}
+
+// NewPoller constructs a poller. interval defaults to 2 minutes when <=0:
+// workflow runs change much more slowly than PR state, and the higher
+// cadence would waste rate-limit budget without surfacing failures sooner
+// than the GitHub UI does.
+func NewPoller(store *db.Store, bus Publisher, cfg Config, interval time.Duration) *Poller {
+	if interval <= 0 {
+		interval = 2 * time.Minute
+	}
+	return &Poller{
+		store:    store,
+		bus:      bus,
+		cfg:      cfg,
+		interval: interval,
+		http:     &http.Client{Timeout: 30 * time.Second},
+		boards:   make(map[string]boardCache),
+	}
+}
+
+// Start blocks until ctx is done. No-op when the config is disabled or has
+// zero boards — the caller is expected to wrap the goroutine launch with
+// `if cfg.Enabled` but we re-check defensively.
+func (p *Poller) Start(ctx context.Context) {
+	if !p.cfg.Enabled || len(p.cfg.Boards) == 0 {
+		return
+	}
+	t := time.NewTicker(p.interval)
+	defer t.Stop()
+	p.tick(ctx)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			p.tick(ctx)
+		}
+	}
+}
+
+func (p *Poller) tick(ctx context.Context) {
+	for _, b := range p.cfg.Boards {
+		if b.RepoPath == "" {
+			log.Printf("buildcop: board %q has no repo_path, skipping", b.Name)
+			continue
+		}
+		if err := p.syncBoard(ctx, b); err != nil {
+			log.Printf("buildcop: board %q: %v", b.Name, err)
+		}
+	}
+}
+
+func (p *Poller) syncBoard(ctx context.Context, cfg BoardConfig) error {
+	cache, err := p.ensureBoard(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("ensure board: %w", err)
+	}
+	since := time.Now().UTC().Add(-time.Duration(cfg.WindowDays) * 24 * time.Hour)
+	runs, err := p.listRuns(ctx, cfg.RepoPath, cfg.Branch, since)
+	if err != nil {
+		return fmt.Errorf("list runs: %w", err)
+	}
+	// Filter to within window (the API filter is approximate when paginating)
+	// and to the configured branch.
+	filtered := runs[:0]
+	for _, r := range runs {
+		if r.CreatedAt.Before(since) {
+			continue
+		}
+		if !cfg.MatchesAllBranches() && r.HeadBranch != cfg.Branch {
+			continue
+		}
+		filtered = append(filtered, r)
+	}
+	runs = filtered
+
+	jobsByRun := make(map[int64][]ghJob, len(runs))
+	for _, r := range runs {
+		jobs, err := p.listJobs(ctx, cfg.RepoPath, r.ID)
+		if err != nil {
+			log.Printf("buildcop: board %q: jobs for run %d: %v", cfg.Name, r.ID, err)
+			continue
+		}
+		jobsByRun[r.ID] = jobs
+	}
+
+	stats := aggregate(runs, jobsByRun)
+	return p.reconcile(ctx, cfg, cache, stats)
+}
+
+func (p *Poller) reconcile(ctx context.Context, cfg BoardConfig, cache boardCache, stats map[string]jobStats) error {
+	failingColID := cache.Cols[ColumnFailing]
+	fixedColID := cache.Cols[ColumnFixed]
+	if failingColID == 0 || fixedColID == 0 {
+		return fmt.Errorf("board %q missing required columns", cfg.Name)
+	}
+
+	for _, s := range stats {
+		fp := computeFingerprint(s.Workflow, s.Job)
+		existing, err := p.store.FindOpenTicketByFingerprint(ctx, cache.ID, fp)
+		if err != nil && !errors.Is(err, db.ErrNotFound) {
+			log.Printf("buildcop: find fingerprint %s: %v", fp, err)
+			continue
+		}
+		switch {
+		case shouldFile(s, cfg):
+			if existing == nil {
+				p.createTicket(ctx, cache.ID, failingColID, s, fp)
+			} else {
+				p.updateOrRestore(ctx, existing, failingColID, fixedColID, s)
+			}
+		case existing != nil && shouldFix(s, cfg):
+			p.moveToFixed(ctx, existing, fixedColID, s)
+		}
+	}
+	return nil
+}
+
+func (p *Poller) createTicket(ctx context.Context, boardID, colID int64, s jobStats, fp string) {
+	t := &db.Ticket{
+		BoardID:     boardID,
+		ColumnID:    colID,
+		Title:       titleFor(s),
+		Slug:        slugify(fmt.Sprintf("buildcop-%s-%s", s.Workflow, s.Job)),
+		Body:        bodyFor(s),
+		Fingerprint: fp,
+	}
+	if err := p.store.CreateTicket(ctx, t); err != nil {
+		log.Printf("buildcop: create ticket: %v", err)
+		return
+	}
+	p.publish(boardID, "ticket_created", t)
+}
+
+// updateOrRestore refreshes the ticket's title/body to reflect the current
+// stats. If the ticket sits in the Fixed column it is moved back to Failing
+// — the job has regressed, so the user should see it re-open.
+func (p *Poller) updateOrRestore(ctx context.Context, t *db.Ticket, failingColID, fixedColID int64, s jobStats) {
+	t.Title = titleFor(s)
+	t.Body = bodyFor(s)
+	if err := p.store.UpdateTicket(ctx, t); err != nil {
+		log.Printf("buildcop: update ticket %d: %v", t.ID, err)
+		return
+	}
+	if t.ColumnID == fixedColID {
+		if err := p.move(ctx, t, failingColID); err != nil {
+			log.Printf("buildcop: re-open ticket %d: %v", t.ID, err)
+			return
+		}
+		return
+	}
+	p.publish(t.BoardID, "ticket_updated", t)
+}
+
+func (p *Poller) moveToFixed(ctx context.Context, t *db.Ticket, fixedColID int64, s jobStats) {
+	if t.ColumnID == fixedColID {
+		return
+	}
+	t.Title = titleFor(s)
+	t.Body = bodyFor(s)
+	if err := p.store.UpdateTicket(ctx, t); err != nil {
+		log.Printf("buildcop: update before move %d: %v", t.ID, err)
+		return
+	}
+	if err := p.move(ctx, t, fixedColID); err != nil {
+		log.Printf("buildcop: move ticket %d to Fixed: %v", t.ID, err)
+	}
+}
+
+func (p *Poller) move(ctx context.Context, t *db.Ticket, colID int64) error {
+	maxPos, err := p.store.MaxTicketPosition(ctx, colID)
+	if err != nil {
+		return err
+	}
+	if err := p.store.MoveTicket(ctx, t.ID, colID, maxPos+1); err != nil {
+		return err
+	}
+	if fresh, err := p.store.GetTicket(ctx, t.ID); err == nil {
+		p.publish(t.BoardID, "ticket_moved", fresh)
+	}
+	return nil
+}
+
+func (p *Poller) publish(boardID int64, typ string, data any) {
+	if p.bus == nil {
+		return
+	}
+	p.bus.Publish(boardID, typ, data)
+}
+
+// ensureBoard returns the cached board+column IDs, populating the cache from
+// the DB (or creating fresh rows) on first call per slug. Holds the mutex
+// across the DB calls so concurrent first ticks don't race to create
+// duplicate boards.
+func (p *Poller) ensureBoard(ctx context.Context, cfg BoardConfig) (boardCache, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if cache, ok := p.boards[cfg.Slug]; ok {
+		return cache, nil
+	}
+	cache, err := p.loadOrCreateBoard(ctx, cfg)
+	if err != nil {
+		return boardCache{}, err
+	}
+	p.boards[cfg.Slug] = cache
+	return cache, nil
+}
+
+func (p *Poller) loadOrCreateBoard(ctx context.Context, cfg BoardConfig) (boardCache, error) {
+	board, err := p.store.GetBoardBySlug(ctx, cfg.Slug)
+	if errors.Is(err, db.ErrNotFound) {
+		b := &db.Board{
+			Name:       cfg.Name,
+			Slug:       cfg.Slug,
+			RepoPath:   cfg.RepoPath,
+			BaseBranch: defaultBaseBranch(cfg.Branch),
+		}
+		if err := p.store.CreateBoardRaw(ctx, b); err != nil {
+			return boardCache{}, fmt.Errorf("create board: %w", err)
+		}
+		cols := []db.Column{
+			{BoardID: b.ID, Name: ColumnFailing, Position: 0},
+			{BoardID: b.ID, Name: ColumnInvestigating, Position: 1},
+			{BoardID: b.ID, Name: ColumnFixed, Position: 2},
+		}
+		out := boardCache{ID: b.ID, Cols: map[string]int64{}}
+		for i := range cols {
+			if err := p.store.CreateColumn(ctx, &cols[i]); err != nil {
+				return boardCache{}, fmt.Errorf("create column %s: %w", cols[i].Name, err)
+			}
+			out.Cols[cols[i].Name] = cols[i].ID
+		}
+		return out, nil
+	}
+	if err != nil {
+		return boardCache{}, fmt.Errorf("lookup board: %w", err)
+	}
+	cols, err := p.store.ListColumns(ctx, board.ID)
+	if err != nil {
+		return boardCache{}, fmt.Errorf("list columns: %w", err)
+	}
+	out := boardCache{ID: board.ID, Cols: map[string]int64{}}
+	for _, c := range cols {
+		out.Cols[c.Name] = c.ID
+	}
+	return out, nil
+}
+
+// defaultBaseBranch is what the auto-created board records as its
+// base_branch column. Cosmetic — the board has no sessions, so base_branch
+// is informational only. We use the configured branch when scoped to a
+// specific one, else "main".
+func defaultBaseBranch(branch string) string {
+	if branch == "" || branch == "*" {
+		return "main"
+	}
+	return branch
+}
+
+// GitHub API plumbing -------------------------------------------------------
+
+type ghRun struct {
+	ID         int64     `json:"id"`
+	Name       string    `json:"name"`
+	WorkflowID int64     `json:"workflow_id"`
+	HeadBranch string    `json:"head_branch"`
+	Status     string    `json:"status"`
+	Conclusion string    `json:"conclusion"`
+	HTMLURL    string    `json:"html_url"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type ghRunsResp struct {
+	WorkflowRuns []ghRun `json:"workflow_runs"`
+}
+
+type ghJob struct {
+	ID         int64  `json:"id"`
+	RunID      int64  `json:"run_id"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	HTMLURL    string `json:"html_url"`
+}
+
+type ghJobsResp struct {
+	Jobs []ghJob `json:"jobs"`
+}
+
+func (p *Poller) listRuns(ctx context.Context, repoPath, branch string, since time.Time) ([]ghRun, error) {
+	owner, repo, host, err := github.ParseGitHubRepo(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	apiBase := github.APIBaseFor(host)
+	tok := github.Token(host)
+
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	branchParam := ""
+	if branch != "" && branch != "*" {
+		branchParam = "&branch=" + url.QueryEscape(branch)
+	}
+	// `created` uses GitHub's search-style >=DATE filter (URL-encoded as %3E%3D)
+	// to keep the response bounded on busy repos. We still re-filter client-side
+	// because the API matches whole days, not the exact `since` instant.
+	next := fmt.Sprintf("%s/repos/%s/%s/actions/runs?status=completed&per_page=100&created=%%3E%%3D%s%s",
+		apiBase, url.PathEscape(owner), url.PathEscape(repo),
+		since.UTC().Format("2006-01-02"), branchParam)
+
+	var all []ghRun
+	for page := 0; page < 5 && next != ""; page++ {
+		var resp ghRunsResp
+		link, err := p.fetchPage(cctx, tok, next, &resp)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, resp.WorkflowRuns...)
+		// Stop once the page's oldest run falls before the window: subsequent
+		// pages only have older runs.
+		if n := len(resp.WorkflowRuns); n > 0 && resp.WorkflowRuns[n-1].CreatedAt.Before(since) {
+			break
+		}
+		next = link
+	}
+	return all, nil
+}
+
+func (p *Poller) listJobs(ctx context.Context, repoPath string, runID int64) ([]ghJob, error) {
+	owner, repo, host, err := github.ParseGitHubRepo(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	apiBase := github.APIBaseFor(host)
+	tok := github.Token(host)
+
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	next := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/jobs?per_page=100",
+		apiBase, url.PathEscape(owner), url.PathEscape(repo), runID)
+
+	var all []ghJob
+	for page := 0; page < 3 && next != ""; page++ {
+		var resp ghJobsResp
+		link, err := p.fetchPage(cctx, tok, next, &resp)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Jobs...)
+		next = link
+	}
+	return all, nil
+}
+
+// fetchPage is a thin wrapper around github.GetJSON that also returns the
+// rel="next" Link header for pagination. github.GetJSON itself doesn't
+// expose response headers, so we issue the request here to capture Link.
+func (p *Poller) fetchPage(ctx context.Context, tok, u string, out any) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	if tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := p.http.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("github api: %w", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("github api: read body: %w", err)
+	}
+	if resp.StatusCode/100 != 2 {
+		return "", fmt.Errorf("github api %s: %s: %s",
+			u, resp.Status, strings.TrimSpace(string(body)))
+	}
+	if err := json.Unmarshal(body, out); err != nil {
+		return "", fmt.Errorf("github api: parse: %w", err)
+	}
+	return github.ParseNextLink(resp.Header.Get("Link")), nil
+}
+
+// Aggregation --------------------------------------------------------------
+
+type aggKey struct {
+	Workflow string
+	Job      string
+}
+
+type jobStats struct {
+	Workflow       string
+	Job            string
+	Total          int
+	Successes      int
+	Failures       int
+	GreenStreak    int
+	LastFailureURL string
+	LastFailureAt  time.Time
+}
+
+// aggregate folds the runs+jobs into per-(workflow,job) statistics. Runs are
+// processed newest-first so GreenStreak — number of leading consecutive
+// successes before the first failure — is computed in one pass.
+func aggregate(runs []ghRun, jobsByRun map[int64][]ghJob) map[string]jobStats {
+	sortedRuns := append([]ghRun(nil), runs...)
+	sort.SliceStable(sortedRuns, func(i, j int) bool {
+		return sortedRuns[i].CreatedAt.After(sortedRuns[j].CreatedAt)
+	})
+
+	type entry struct {
+		stats        jobStats
+		streakBroken bool
+	}
+	byKey := make(map[aggKey]*entry)
+
+	for _, r := range sortedRuns {
+		for _, j := range jobsByRun[r.ID] {
+			class := classifyConclusion(j.Conclusion)
+			if class == "skip" {
+				continue
+			}
+			workflow := r.Name
+			if workflow == "" {
+				workflow = fmt.Sprintf("workflow %d", r.WorkflowID)
+			}
+			k := aggKey{Workflow: workflow, Job: j.Name}
+			e, ok := byKey[k]
+			if !ok {
+				e = &entry{stats: jobStats{Workflow: workflow, Job: j.Name}}
+				byKey[k] = e
+			}
+			e.stats.Total++
+			switch class {
+			case "success":
+				e.stats.Successes++
+				if !e.streakBroken {
+					e.stats.GreenStreak++
+				}
+			case "failure":
+				e.stats.Failures++
+				e.streakBroken = true
+				if e.stats.LastFailureAt.IsZero() {
+					e.stats.LastFailureAt = r.CreatedAt
+					if j.HTMLURL != "" {
+						e.stats.LastFailureURL = j.HTMLURL
+					} else {
+						e.stats.LastFailureURL = r.HTMLURL
+					}
+				}
+			}
+		}
+	}
+	out := make(map[string]jobStats, len(byKey))
+	for k, e := range byKey {
+		out[k.Workflow+":"+k.Job] = e.stats
+	}
+	return out
+}
+
+// classifyConclusion maps a GitHub Actions conclusion string to one of
+// "success", "failure", or "skip". `cancelled` is treated as skip: GitHub
+// cancels jobs both when the user clicks Cancel and when a required prior
+// job failed, and we don't want either to inflate the failure count.
+func classifyConclusion(c string) string {
+	switch strings.ToLower(c) {
+	case "success", "neutral":
+		return "success"
+	case "failure", "timed_out", "action_required":
+		return "failure"
+	}
+	return "skip"
+}
+
+func computeFingerprint(workflow, job string) string {
+	h := sha256.New()
+	h.Write([]byte(workflow))
+	h.Write([]byte{':'})
+	h.Write([]byte(job))
+	return hex.EncodeToString(h.Sum(nil))[:16]
+}
+
+func shouldFile(s jobStats, cfg BoardConfig) bool {
+	if s.Total < cfg.MinRuns {
+		return false
+	}
+	rate := float64(s.Failures) / float64(s.Total)
+	return rate > cfg.FailureThreshold
+}
+
+func shouldFix(s jobStats, cfg BoardConfig) bool {
+	return s.GreenStreak >= cfg.GreenStreakRequired
+}
+
+func titleFor(s jobStats) string {
+	rate := 0.0
+	if s.Total > 0 {
+		rate = float64(s.Failures) / float64(s.Total) * 100
+	}
+	return fmt.Sprintf("%s / %s failing (%d%% over %d runs)",
+		s.Workflow, s.Job, int(math.Round(rate)), s.Total)
+}
+
+func bodyFor(s jobStats) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "**workflow:** `%s`\n", s.Workflow)
+	fmt.Fprintf(&b, "**job:** `%s`\n", s.Job)
+	fmt.Fprintf(&b, "**runs:** %d (success %d, failure %d)\n", s.Total, s.Successes, s.Failures)
+	if s.Total > 0 {
+		rate := float64(s.Failures) / float64(s.Total) * 100
+		fmt.Fprintf(&b, "**failure rate:** %.1f%%\n", rate)
+	}
+	if s.GreenStreak > 0 {
+		fmt.Fprintf(&b, "**green streak:** %d\n", s.GreenStreak)
+	}
+	if !s.LastFailureAt.IsZero() {
+		fmt.Fprintf(&b, "**last failure:** %s\n", s.LastFailureAt.UTC().Format(time.RFC3339))
+	}
+	if s.LastFailureURL != "" {
+		fmt.Fprintf(&b, "\n[Most recent failing job](%s)\n", s.LastFailureURL)
+	}
+	return b.String()
+}
+
+// slugify mirrors the same helper in errreport — duplicated to avoid a
+// cross-internal-package dependency on a one-off string utility.
+func slugify(s string) string {
+	const maxLen = 80
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	prevDash := false
+	for _, c := range s {
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+			b.WriteRune(c)
+			prevDash = false
+		case c == '-' || c == '_':
+			b.WriteRune('-')
+			prevDash = true
+		default:
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	out := strings.TrimRight(b.String(), "-")
+	if len(out) > maxLen {
+		out = strings.TrimRight(out[:maxLen], "-")
+	}
+	if out == "" {
+		out = "build-cop"
+	}
+	return out
+}

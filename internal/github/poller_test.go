@@ -42,17 +42,17 @@ func TestParseRemoteURL(t *testing.T) {
 
 func TestApiBaseFor(t *testing.T) {
 	t.Setenv("GITHUB_API_URL", "")
-	if got := apiBaseFor("github.com"); got != defaultAPIBase {
+	if got := APIBaseFor("github.com"); got != defaultAPIBase {
 		t.Errorf("github.com: got %q, want %q", got, defaultAPIBase)
 	}
-	if got := apiBaseFor(""); got != defaultAPIBase {
+	if got := APIBaseFor(""); got != defaultAPIBase {
 		t.Errorf("empty host: got %q, want %q", got, defaultAPIBase)
 	}
-	if got := apiBaseFor("ghe.example.com"); got != "https://ghe.example.com/api/v3" {
+	if got := APIBaseFor("ghe.example.com"); got != "https://ghe.example.com/api/v3" {
 		t.Errorf("GHE host: got %q", got)
 	}
 	t.Setenv("GITHUB_API_URL", "https://override.example/api/")
-	if got := apiBaseFor("github.com"); got != "https://override.example/api" {
+	if got := APIBaseFor("github.com"); got != "https://override.example/api" {
 		t.Errorf("override: got %q", got)
 	}
 }
@@ -73,8 +73,8 @@ func TestParseNextLink(t *testing.T) {
 		},
 	}
 	for _, c := range cases {
-		if got := parseNextLink(c.in); got != c.want {
-			t.Errorf("parseNextLink(%q) = %q, want %q", c.in, got, c.want)
+		if got := ParseNextLink(c.in); got != c.want {
+			t.Errorf("ParseNextLink(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
@@ -103,11 +103,11 @@ func TestTokenPrefersGHToken(t *testing.T) {
 	resetTokenCache()
 	t.Setenv("GH_TOKEN", "")
 	t.Setenv("GITHUB_TOKEN", "fallback")
-	if got := token(""); got != "fallback" {
+	if got := Token(""); got != "fallback" {
 		t.Errorf("fallback: got %q", got)
 	}
 	t.Setenv("GH_TOKEN", "primary")
-	if got := token(""); got != "primary" {
+	if got := Token(""); got != "primary" {
 		t.Errorf("primary: got %q", got)
 	}
 }
@@ -132,17 +132,17 @@ func TestTokenFallsBackToGHCLI(t *testing.T) {
 		return []byte("ghcli-token\n"), nil
 	}
 
-	if got := token("github.com"); got != "ghcli-token" {
+	if got := Token("github.com"); got != "ghcli-token" {
 		t.Errorf("github.com: got %q", got)
 	}
-	if got := token("github.com"); got != "ghcli-token" {
+	if got := Token("github.com"); got != "ghcli-token" {
 		t.Errorf("cached: got %q", got)
 	}
 	if calls != 1 {
 		t.Errorf("expected 1 gh exec, got %d", calls)
 	}
 
-	if got := token("ghe.example.com"); got != "ghcli-token" {
+	if got := Token("ghe.example.com"); got != "ghcli-token" {
 		t.Errorf("ghe: got %q", got)
 	}
 	if calls != 2 {

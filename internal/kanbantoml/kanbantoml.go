@@ -27,6 +27,7 @@ type File struct {
 	Branches     *BranchesSection     `toml:"branches"`
 	Devcontainer *DevcontainerSection `toml:"devcontainer"`
 	Errors       *ErrorsSection       `toml:"errors"`
+	BuildCop     *BuildCopSection     `toml:"buildcop"`
 	Tasks        []TaskEntry          `toml:"task"`
 }
 
@@ -51,6 +52,28 @@ type BranchesSection struct {
 type ErrorsSection struct {
 	Enabled   *bool   `toml:"enabled"`
 	BoardName *string `toml:"board_name"`
+}
+
+// BuildCopSection configures the GitHub Actions failure poller. Disabled by
+// default. Each entry in Boards produces one auto-managed board scoped to a
+// branch filter; the poller files a ticket when a job's failure rate over
+// the rolling window exceeds the threshold.
+type BuildCopSection struct {
+	Enabled *bool           `toml:"enabled"`
+	Boards  []BuildCopBoard `toml:"boards"`
+}
+
+// BuildCopBoard configures a single Build Cop board. RepoPath is the only
+// required field; everything else has a default applied at resolve time.
+// Branch == "" or "*" matches every branch.
+type BuildCopBoard struct {
+	Name                *string  `toml:"name"`
+	RepoPath            *string  `toml:"repo_path"`
+	Branch              *string  `toml:"branch"`
+	FailureThreshold    *float64 `toml:"failure_threshold"`
+	MinRuns             *int     `toml:"min_runs"`
+	GreenStreakRequired *int     `toml:"green_streak_required"`
+	WindowDays          *int     `toml:"window_days"`
 }
 
 type SyncSection struct {
@@ -164,6 +187,7 @@ func merge(project, user File) File {
 	out.Branches = mergeBranches(project.Branches, user.Branches)
 	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
 	out.Errors = mergeErrors(project.Errors, user.Errors)
+	out.BuildCop = mergeBuildCop(project.BuildCop, user.BuildCop)
 	out.Tasks = mergeTasks(project.Tasks, user.Tasks)
 
 	return out
@@ -212,6 +236,31 @@ func mergeErrors(p, u *ErrorsSection) *ErrorsSection {
 		}
 		if u.BoardName != nil {
 			out.BoardName = u.BoardName
+		}
+	}
+	return &out
+}
+
+// mergeBuildCop overlays user-set fields atop project-set fields. The Boards
+// slice is replaced wholesale when the user file sets it — there's no
+// stable identity to merge entries by (board names can change), and the
+// "user wins" rule is simpler than per-entry diffing. Project entries
+// remain when the user file doesn't declare any.
+func mergeBuildCop(p, u *BuildCopSection) *BuildCopSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := BuildCopSection{}
+	if p != nil {
+		out.Enabled = p.Enabled
+		out.Boards = p.Boards
+	}
+	if u != nil {
+		if u.Enabled != nil {
+			out.Enabled = u.Enabled
+		}
+		if len(u.Boards) > 0 {
+			out.Boards = u.Boards
 		}
 	}
 	return &out

@@ -50,12 +50,12 @@ type PRCheckEntry struct {
 // parallel. Sub-fetch failures are logged into the returned struct as
 // zero-value sections rather than aborting the whole request.
 func FetchPRDetail(ctx context.Context, repoPath string, prNumber int64) (PRDetail, error) {
-	owner, repo, host, err := parseGitHubRepo(repoPath)
+	owner, repo, host, err := ParseGitHubRepo(repoPath)
 	if err != nil {
 		return PRDetail{}, err
 	}
-	apiBase := apiBaseFor(host)
-	tok := token(host)
+	apiBase := APIBaseFor(host)
+	tok := Token(host)
 
 	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
@@ -107,7 +107,7 @@ func fetchPRBasic(ctx context.Context, client *http.Client, apiBase, tok, owner,
 	u := fmt.Sprintf("%s/repos/%s/%s/pulls/%d",
 		apiBase, url.PathEscape(owner), url.PathEscape(repo), num)
 	var out ghPRBasic
-	if err := getJSON(ctx, client, tok, u, &out); err != nil {
+	if err := GetJSON(ctx, client, tok, u, &out); err != nil {
 		return ghPRBasic{}, err
 	}
 	return out, nil
@@ -125,7 +125,7 @@ func fetchReviewDecision(ctx context.Context, client *http.Client, apiBase, tok,
 	u := fmt.Sprintf("%s/repos/%s/%s/pulls/%d/reviews?per_page=100",
 		apiBase, url.PathEscape(owner), url.PathEscape(repo), num)
 	var reviews []ghReview
-	if err := getJSON(ctx, client, tok, u, &reviews); err != nil {
+	if err := GetJSON(ctx, client, tok, u, &reviews); err != nil {
 		return "", err
 	}
 	// Pick the latest non-pending, non-comment review per reviewer; the
@@ -197,12 +197,12 @@ func fetchChecks(ctx context.Context, client *http.Client, apiBase, tok, owner, 
 	runsURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/check-runs?per_page=100",
 		apiBase, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(sha))
 	var runs ghCheckRunsResp
-	_ = getJSON(ctx, client, tok, runsURL, &runs)
+	_ = GetJSON(ctx, client, tok, runsURL, &runs)
 
 	statusURL := fmt.Sprintf("%s/repos/%s/%s/commits/%s/status",
 		apiBase, url.PathEscape(owner), url.PathEscape(repo), url.PathEscape(sha))
 	var combined ghCombinedStatus
-	_ = getJSON(ctx, client, tok, statusURL, &combined)
+	_ = GetJSON(ctx, client, tok, statusURL, &combined)
 
 	out := PRChecks{}
 	// Latest run per name wins — re-runs of the same check land as new rows.
@@ -274,7 +274,10 @@ func firstNonEmpty(s ...string) string {
 	return ""
 }
 
-func getJSON(ctx context.Context, client *http.Client, tok, u string, out any) error {
+// GetJSON issues a GET against u and decodes the JSON body into out. Sets the
+// standard GitHub API headers and bearer auth when tok is non-empty. Shared
+// between the PR poller, PR-detail aggregator, and the build-cop poller.
+func GetJSON(ctx context.Context, client *http.Client, tok, u string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return err
