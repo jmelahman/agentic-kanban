@@ -1,6 +1,9 @@
 import { api, waitForSession, isAttachable } from "./fixtures/api";
+import { DOCKER_AVAILABLE } from "./fixtures/docker";
 import { test, expect } from "./fixtures/seed";
 import { BoardPage } from "./pages/BoardPage";
+
+test.skip(!DOCKER_AVAILABLE, "requires a reachable docker daemon");
 
 // Full UI walk through a session: open the board, click a ticket, watch
 // the auto-ensure + auto-start flow drive the status pill through

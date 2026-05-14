@@ -1,5 +1,8 @@
 import { api, waitForSession, isAttachable } from "./fixtures/api";
+import { DOCKER_AVAILABLE } from "./fixtures/docker";
 import { test, expect } from "./fixtures/seed";
+
+test.skip(!DOCKER_AVAILABLE, "requires a reachable docker daemon");
 
 // Server-contract test for the broker's ring-buffer replay. Frontend
 // auto-reconnect for terminal WS is a known gap (PtyTerminal.tsx:89 just

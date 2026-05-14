@@ -1,5 +1,8 @@
 import { api, waitForSession, isAttachable } from "./fixtures/api";
+import { DOCKER_AVAILABLE } from "./fixtures/docker";
 import { test, expect } from "./fixtures/seed";
+
+test.skip(!DOCKER_AVAILABLE, "requires a reachable docker daemon");
 
 // Two concurrent sessions on the same board: write distinct markers to
 // each WS and assert each session's stream stays isolated. Catches

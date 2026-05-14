@@ -182,7 +182,10 @@ export class BoardTreeNode {
 
   constructor(page: Page, boardId: number) {
     this.root = page.locator(`[data-board-node="${boardId}"]`);
-    this.toggleButton = this.root.locator("button").first();
+    // The toggle button carries `aria-expanded`; the drag handle sibling
+    // does not. Filtering on the attribute keeps this stable if a third
+    // button (e.g. a board-level menu) is ever added.
+    this.toggleButton = this.root.locator("button[aria-expanded]");
   }
 
   async expectVisible() {

@@ -1,6 +1,9 @@
 import { api, waitForSession, isAttachable } from "./fixtures/api";
+import { DOCKER_AVAILABLE } from "./fixtures/docker";
 import { test, expect } from "./fixtures/seed";
 import { BoardPage } from "./pages/BoardPage";
+
+test.skip(!DOCKER_AVAILABLE, "requires a reachable docker daemon");
 
 // Initial-load scrollback path: a session has been running with output,
 // the user loads the page, the terminal WS opens, and the broker

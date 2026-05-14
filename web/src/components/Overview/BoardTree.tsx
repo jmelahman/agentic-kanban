@@ -280,6 +280,7 @@ function BoardNode({
         <button
           type="button"
           onClick={onToggle}
+          aria-expanded={!collapsed}
           className="flex flex-1 items-center gap-2 px-1 py-2 pr-3 text-left text-sm"
         >
           <span
