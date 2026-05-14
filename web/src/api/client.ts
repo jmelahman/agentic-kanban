@@ -292,7 +292,30 @@ export const api = {
       `/api/fs/check?path=${encodeURIComponent(path)}`,
     ),
 
+  listSessionPlans: (sessionId: number) => request<PlanMeta[]>(`/api/sessions/${sessionId}/plans`),
+  getSessionPlan: async (sessionId: number, name: string): Promise<string> => {
+    const res = await fetch(`/api/sessions/${sessionId}/plans/${encodeURIComponent(name)}`);
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed.error === "string") message = parsed.error;
+      } catch {
+        // not JSON; use raw body
+      }
+      throw new ApiError(res.status, message || `HTTP ${res.status}`, text);
+    }
+    return res.text();
+  },
+
   getVersion: () => request<Version>("/api/version"),
+};
+
+export type PlanMeta = {
+  name: string;
+  mod_time: string;
+  size: number;
 };
 
 export type SubscribeOptions = {

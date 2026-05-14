@@ -85,6 +85,9 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/sessions/{id}/status", h.updateSessionStatus)
 	mux.HandleFunc("PATCH /api/sessions/{id}/claude-session", h.updateClaudeSessionID)
 
+	mux.HandleFunc("GET /api/sessions/{id}/plans", h.listSessionPlans)
+	mux.HandleFunc("GET /api/sessions/{id}/plans/{name}", h.getSessionPlan)
+
 	mux.HandleFunc("GET /api/sessions/{id}/discover-tasks", h.discoverTasks)
 	mux.HandleFunc("GET /api/sessions/{id}/task-runs", h.listTaskRuns)
 	mux.HandleFunc("POST /api/sessions/{id}/task-runs", h.createTaskRun)

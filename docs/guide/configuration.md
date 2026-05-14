@@ -16,6 +16,14 @@ id = "claude-code"            # default harness for new sessions
 [worktrees]
 root = "/path/to/worktrees"   # parent dir for new worktrees (overrides --worktrees-dir)
 
+# Directory the per-ticket "plans" tab reads. The tab only appears when the
+# directory has at least one `.md` file. An absolute path is shared across
+# every ticket. A relative path (e.g. "./plans") is resolved against each
+# session's worktree, so each ticket sees its own plans — Claude Code's
+# `/plan` mode writes there by default.
+[plans]
+dir = "~/.claude/plans"        # default; expand-home is applied
+
 [branches]
 prefix = "kanban"              # branch name = "<prefix>/<ticket-slug>"
 

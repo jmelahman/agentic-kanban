@@ -1,5 +1,13 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   api,
   formatApiError,
@@ -27,10 +35,11 @@ import {
 import { ActionButton } from "./ActionButton";
 import { Button } from "./Button";
 import { InfoPanel } from "./InfoPanel";
+import { PlansPanel } from "./PlansPanel";
 import { Tab } from "./Tab";
 import { TasksPanel } from "./TasksPanel";
 
-const TAB_ORDER = ["agent", "shell", "tasks", "info"] as const;
+const TAB_ORDER = ["agent", "shell", "tasks", "plans", "info"] as const;
 type TabId = (typeof TAB_ORDER)[number];
 
 const TAB_KEY_PREFIX = "sessionPane.tab.";
@@ -111,17 +120,50 @@ export function SessionView({
   const toast = useToast();
   const [tab, setTab] = useState<TabId>(() => loadInitialTab(sessionId));
   const tabsEnabled = shortcutsEnabled;
+
+  // The Plans tab only appears when the session's plans directory has at
+  // least one .md file. The poll catches files created mid-session (e.g.
+  // via Claude Code's /plan mode) without a manual refresh.
+  const plansQ = useQuery({
+    queryKey: queryKeys.sessionPlans(sessionId ?? 0),
+    queryFn: () => api.listSessionPlans(sessionId as number),
+    enabled: sessionId != null,
+    refetchInterval: 5000,
+  });
+  const hasPlans = (plansQ.data?.length ?? 0) > 0;
+
+  // Visible tabs follow `TAB_ORDER` minus any conditionally-hidden ones.
+  // Shortcuts and the bounce-on-hidden effect both consult this so a
+  // hidden tab is treated as if it never existed.
+  const visibleTabs = useMemo<readonly TabId[]>(
+    () => TAB_ORDER.filter((t) => t !== "plans" || hasPlans),
+    [hasPlans],
+  );
+
   useShortcut(
     "tab.next",
-    () => setTab((t) => TAB_ORDER[(TAB_ORDER.indexOf(t) + 1) % TAB_ORDER.length]),
+    () =>
+      setTab((t) => {
+        const i = visibleTabs.indexOf(t);
+        return visibleTabs[(i + 1) % visibleTabs.length];
+      }),
     { enabled: tabsEnabled },
   );
   useShortcut(
     "tab.prev",
     () =>
-      setTab((t) => TAB_ORDER[(TAB_ORDER.indexOf(t) - 1 + TAB_ORDER.length) % TAB_ORDER.length]),
+      setTab((t) => {
+        const i = visibleTabs.indexOf(t);
+        return visibleTabs[(i - 1 + visibleTabs.length) % visibleTabs.length];
+      }),
     { enabled: tabsEnabled },
   );
+
+  // If the persisted tab points at a hidden one (e.g. user was on plans
+  // and then deleted every .md file), fall back to a sensible default.
+  useEffect(() => {
+    if (!visibleTabs.includes(tab)) setTab(visibleTabs[0] ?? "agent");
+  }, [tab, visibleTabs]);
   const [syncMenuOpen, setSyncMenuOpen] = useState(false);
   const syncMenuRef = useRef<HTMLDivElement | null>(null);
   const [mergeMenuOpen, setMergeMenuOpen] = useState(false);
@@ -576,6 +618,7 @@ export function SessionView({
         <Tab active={tab === "agent"} onClick={() => setTab("agent")} label="agent" />
         <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="terminal" />
         <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
+        {hasPlans && <Tab active={tab === "plans"} onClick={() => setTab("plans")} label="plans" />}
         <Tab active={tab === "info"} onClick={() => setTab("info")} label="info" />
       </div>
       <div className="min-h-0 flex-1 bg-bg">
@@ -598,6 +641,7 @@ export function SessionView({
           </div>
         )}
         {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
+        {tab === "plans" && session && <PlansPanel session={session} />}
         {tab === "info" &&
           (session ? (
             <InfoPanel session={session} />

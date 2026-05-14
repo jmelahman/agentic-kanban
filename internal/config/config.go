@@ -95,6 +95,31 @@ func userConfigWorktreesRoot() string {
 	return strings.TrimSpace(*f.Worktrees.Root)
 }
 
+// PlansDir returns the configured plans directory verbatim — possibly a
+// relative path like "./plans". Callers that need an absolute path must
+// resolve it themselves (the per-session handler joins it against the
+// session worktree when relative). The default is `~/.claude/plans`,
+// expanded to the user's home. TOML is re-read on each call so a config
+// edit takes effect without a restart.
+func (c *Config) PlansDir() string {
+	dir := userConfigPlansDir()
+	if dir == "" {
+		dir = "~/.claude/plans"
+	}
+	if expanded, err := expandHome(dir); err == nil {
+		return expanded
+	}
+	return dir
+}
+
+func userConfigPlansDir() string {
+	f := kanbantoml.Load("")
+	if f.Plans == nil || f.Plans.Dir == nil {
+		return ""
+	}
+	return strings.TrimSpace(*f.Plans.Dir)
+}
+
 func expandHome(path string) (string, error) {
 	if path == "~" || strings.HasPrefix(path, "~/") {
 		home, err := os.UserHomeDir()

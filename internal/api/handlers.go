@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
@@ -1444,6 +1445,98 @@ func (h *handlers) fsCheck(w http.ResponseWriter, r *http.Request) {
 
 func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+// Plans
+//
+// resolvePlansDir gives a session-scoped absolute path for the configured
+// plans directory. An absolute config value (the default `~/.claude/plans`
+// post-expansion) is shared globally; a relative one (e.g. `./plans`) is
+// joined onto the session worktree so each ticket gets its own plans.
+func (h *handlers) resolvePlansDir(sess *db.Session) string {
+	dir := h.config.PlansDir()
+	if filepath.IsAbs(dir) {
+		return dir
+	}
+	if sess.WorktreePath == "" {
+		return dir
+	}
+	return filepath.Join(sess.WorktreePath, dir)
+}
+
+type planMeta struct {
+	Name    string    `json:"name"`
+	ModTime time.Time `json:"mod_time"`
+	Size    int64     `json:"size"`
+}
+
+// listSessionPlans returns the markdown files in the session's plans
+// directory. A missing directory is treated as "no plans" and returns an
+// empty list — the frontend uses an empty response as its "hide the tab"
+// signal, so 404-on-missing-dir would be hostile.
+func (h *handlers) listSessionPlans(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	dir := h.resolvePlansDir(sess)
+	plans := []planMeta{}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			writeJSON(w, 200, plans)
+			return
+		}
+		h.httpError(w, err, 500)
+		return
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".md") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		plans = append(plans, planMeta{
+			Name:    e.Name(),
+			ModTime: info.ModTime(),
+			Size:    info.Size(),
+		})
+	}
+	writeJSON(w, 200, plans)
+}
+
+// getSessionPlan returns one plan file's raw markdown bytes. Rejects
+// names containing path separators or `..` so the handler can never
+// escape resolvePlansDir.
+func (h *handlers) getSessionPlan(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	name := r.PathValue("name")
+	if name == "" || strings.ContainsAny(name, `/\`) || strings.Contains(name, "..") {
+		h.httpError(w, fmt.Errorf("invalid plan name"), 400)
+		return
+	}
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	full := filepath.Join(h.resolvePlansDir(sess), name)
+	data, err := os.ReadFile(full)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			h.httpError(w, fmt.Errorf("plan not found"), 404)
+			return
+		}
+		h.httpError(w, err, 500)
+		return
+	}
+	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+	w.WriteHeader(200)
+	_, _ = w.Write(data)
 }
 
 // slugMaxLen caps slugified output so that branch names built as

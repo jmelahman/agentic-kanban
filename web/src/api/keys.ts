@@ -9,4 +9,6 @@ export const queryKeys = {
   settings: ["settings"] as const,
   harnesses: ["harnesses"] as const,
   version: ["version"] as const,
+  sessionPlans: (sessionId: number) => ["sessionPlans", sessionId] as const,
+  sessionPlan: (sessionId: number, name: string) => ["sessionPlan", sessionId, name] as const,
 };

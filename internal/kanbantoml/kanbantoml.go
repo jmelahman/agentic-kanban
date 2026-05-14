@@ -24,6 +24,7 @@ type File struct {
 	Merge        *MergeSection        `toml:"merge"`
 	GitHub       *GitHubSection       `toml:"github"`
 	Worktrees    *WorktreesSection    `toml:"worktrees"`
+	Plans        *PlansSection        `toml:"plans"`
 	Branches     *BranchesSection     `toml:"branches"`
 	Devcontainer *DevcontainerSection `toml:"devcontainer"`
 	Errors       *ErrorsSection       `toml:"errors"`
@@ -37,6 +38,15 @@ type HarnessSection struct {
 
 type WorktreesSection struct {
 	Root *string `toml:"root"`
+}
+
+// PlansSection configures the directory the in-app Plans tab reads. An
+// absolute path (the default `~/.claude/plans` after `~`-expansion) is
+// shared across every ticket. A relative path (e.g. `./plans`) is
+// resolved against each session's worktree, so each ticket sees its own
+// plans.
+type PlansSection struct {
+	Dir *string `toml:"dir"`
 }
 
 // BranchesSection sets defaults for the branch name new sessions get. Prefix
@@ -184,6 +194,7 @@ func merge(project, user File) File {
 	out.Merge = mergeMerge(project.Merge, user.Merge)
 	out.GitHub = mergeGitHub(project.GitHub, user.GitHub)
 	out.Worktrees = mergeWorktrees(project.Worktrees, user.Worktrees)
+	out.Plans = mergePlans(project.Plans, user.Plans)
 	out.Branches = mergeBranches(project.Branches, user.Branches)
 	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
 	out.Errors = mergeErrors(project.Errors, user.Errors)
@@ -203,6 +214,20 @@ func mergeWorktrees(p, u *WorktreesSection) *WorktreesSection {
 	}
 	if u != nil && u.Root != nil {
 		out.Root = u.Root
+	}
+	return &out
+}
+
+func mergePlans(p, u *PlansSection) *PlansSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := PlansSection{}
+	if p != nil {
+		out.Dir = p.Dir
+	}
+	if u != nil && u.Dir != nil {
+		out.Dir = u.Dir
 	}
 	return &out
 }

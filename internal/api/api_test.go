@@ -659,6 +659,94 @@ func TestPorts(t *testing.T) {
 	})
 }
 
+// ---------- Plans ----------
+
+func TestSessionPlans(t *testing.T) {
+	// Point XDG_CONFIG_HOME at a temp dir with a kanban config that uses a
+	// relative plans dir, so the resolution is rooted at the session worktree.
+	cfgHome := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfgHome)
+	if err := os.MkdirAll(filepath.Join(cfgHome, "kanban"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(cfgHome, "kanban", "config.toml"),
+		[]byte("[plans]\ndir = \"./plans\"\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	e := newEnv(t)
+	board := e.seedBoard("Plans")
+	tk := e.seedTicket(board, "P")
+	sess := e.seedSession(tk)
+
+	t.Run("empty_when_dir_missing", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/plans", sess.ID))
+		assertStatus(t, resp, 200)
+		body := strings.TrimSpace(string(readBody(t, resp)))
+		if body != "[]" {
+			t.Errorf("plans = %s; want []", body)
+		}
+	})
+
+	t.Run("lists_md_files", func(t *testing.T) {
+		dir := filepath.Join(sess.WorktreePath, "plans")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mdContent := "# Hello\n\nbody"
+		if err := os.WriteFile(filepath.Join(dir, "first.md"), []byte(mdContent), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		// A non-.md file should be filtered out.
+		if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/plans", sess.ID))
+		assertStatus(t, resp, 200)
+		var plans []map[string]any
+		if err := json.Unmarshal(readBody(t, resp), &plans); err != nil {
+			t.Fatal(err)
+		}
+		if len(plans) != 1 || plans[0]["name"] != "first.md" {
+			t.Errorf("plans = %+v; want [first.md]", plans)
+		}
+	})
+
+	t.Run("reads_plan_content", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/plans/first.md", sess.ID))
+		assertStatus(t, resp, 200)
+		if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") {
+			t.Errorf("Content-Type = %q; want text/markdown", ct)
+		}
+		body := string(readBody(t, resp))
+		if !strings.Contains(body, "# Hello") {
+			t.Errorf("body = %q; want it to contain the markdown", body)
+		}
+	})
+
+	t.Run("rejects_traversal", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/plans/..%%2Fescape.md", sess.ID))
+		// Path normalization in Go's mux may turn this into a different route
+		// or leave it; either way the handler must reject it.
+		if resp.StatusCode == 200 {
+			t.Errorf("expected non-200 for traversal attempt")
+		}
+	})
+
+	t.Run("missing_plan_404", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/plans/nope.md", sess.ID))
+		assertStatus(t, resp, 404)
+	})
+
+	t.Run("unknown_session_404", func(t *testing.T) {
+		resp := e.get("/api/sessions/999999/plans")
+		assertStatus(t, resp, 404)
+	})
+}
+
 // ---------- Static frontend ----------
 
 func TestStatic(t *testing.T) {
