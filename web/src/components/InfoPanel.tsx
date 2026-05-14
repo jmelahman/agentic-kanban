@@ -9,6 +9,7 @@ import {
   type Session,
 } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { ticketStore, useTicket } from "@/store";
 
 export function InfoPanel({ session }: { session: Session }) {
@@ -227,11 +228,10 @@ function StatusValue({ status }: { status: string }) {
 }
 
 function Copyable({ text, display }: { text: string; display?: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, markCopied } = useCopyFeedback(1200);
   const onCopy = () => {
     navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    markCopied();
   };
   return (
     <button
@@ -361,7 +361,7 @@ function ChecksValue({ detail, loading }: { detail: PRDetail | undefined; loadin
 }
 
 function CopyPRLink({ session, detail }: { session: Session; detail: PRDetail | undefined }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, markCopied } = useCopyFeedback(1500);
   const [busy, setBusy] = useState(false);
 
   if (!session.pr_url) return null;
@@ -397,8 +397,7 @@ function CopyPRLink({ session, detail }: { session: Session; detail: PRDetail | 
       } else {
         await navigator.clipboard.writeText(text);
       }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      markCopied();
     } finally {
       setBusy(false);
     }

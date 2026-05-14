@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Session } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useToast } from "@/toast";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { CheckIcon, CopyIcon } from "@/icons";
 import { Button } from "./Button";
 
@@ -26,22 +27,21 @@ export function TasksPanel({ session }: { session: Session; boardId: number }) {
 
   const [openOutputId, setOpenOutputId] = useState<number | null>(null);
   const [outputLines, setOutputLines] = useState<string[]>([]);
-  const [copied, setCopied] = useState(false);
+  const { copied, markCopied, reset: resetCopied } = useCopyFeedback(1500);
 
   useEffect(() => {
-    setCopied(false);
+    resetCopied();
     setOutputLines([]);
     if (openOutputId === null) return;
     const es = new EventSource(`/api/task-runs/${openOutputId}/output`);
     es.onmessage = (e) => setOutputLines((prev) => [...prev.slice(-500), e.data]);
     es.addEventListener("end", () => es.close());
     return () => es.close();
-  }, [openOutputId]);
+  }, [openOutputId, resetCopied]);
 
   const onCopy = () => {
     navigator.clipboard.writeText(outputLines.join("\n"));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    markCopied();
   };
 
   const startMut = useMutation({

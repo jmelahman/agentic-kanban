@@ -258,28 +258,14 @@ func (s *Store) CreateTicket(ctx context.Context, t *Ticket) error {
 }
 
 func (s *Store) ListTickets(ctx context.Context, boardID int64) ([]Ticket, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at
-         FROM tickets WHERE board_id=? AND archived_at IS NULL ORDER BY column_id, position`,
+	return s.queryTickets(ctx,
+		`SELECT `+ticketCols+` FROM tickets WHERE board_id=? AND archived_at IS NULL ORDER BY column_id, position`,
 		boardID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	tickets := []Ticket{}
-	for rows.Next() {
-		t, err := scanTicket(rows)
-		if err != nil {
-			return nil, err
-		}
-		tickets = append(tickets, *t)
-	}
-	return tickets, rows.Err()
 }
 
 func (s *Store) GetTicket(ctx context.Context, id int64) (*Ticket, error) {
 	t, err := scanTicket(s.db.QueryRowContext(ctx,
-		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at FROM tickets WHERE id=?`, id))
+		`SELECT `+ticketCols+` FROM tickets WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -402,23 +388,9 @@ func (s *Store) ArchiveTicket(ctx context.Context, id int64) error {
 
 // ListTicketsInColumn returns non-archived tickets in a column ordered by position.
 func (s *Store) ListTicketsInColumn(ctx context.Context, columnID int64) ([]Ticket, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at
-         FROM tickets WHERE column_id=? AND archived_at IS NULL ORDER BY position`,
+	return s.queryTickets(ctx,
+		`SELECT `+ticketCols+` FROM tickets WHERE column_id=? AND archived_at IS NULL ORDER BY position`,
 		columnID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	tickets := []Ticket{}
-	for rows.Next() {
-		t, err := scanTicket(rows)
-		if err != nil {
-			return nil, err
-		}
-		tickets = append(tickets, *t)
-	}
-	return tickets, rows.Err()
 }
 
 // ArchiveTicketsInColumn archives every non-archived ticket in the column in
@@ -460,23 +432,9 @@ func (s *Store) UnarchiveTicket(ctx context.Context, id int64) error {
 }
 
 func (s *Store) ListArchivedTickets(ctx context.Context, boardID int64) ([]Ticket, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, board_id, column_id, title, slug, body, position, created_at, archived_at
-         FROM tickets WHERE board_id=? AND archived_at IS NOT NULL ORDER BY archived_at DESC`,
+	return s.queryTickets(ctx,
+		`SELECT `+ticketCols+` FROM tickets WHERE board_id=? AND archived_at IS NOT NULL ORDER BY archived_at DESC`,
 		boardID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	tickets := []Ticket{}
-	for rows.Next() {
-		t, err := scanTicket(rows)
-		if err != nil {
-			return nil, err
-		}
-		tickets = append(tickets, *t)
-	}
-	return tickets, rows.Err()
 }
 
 func (s *Store) DeleteTicket(ctx context.Context, id int64) error {
@@ -631,6 +589,23 @@ func (s *Store) ListPorts(ctx context.Context, sessionID int64) ([]PortAllocatio
 func (s *Store) ListAllActivePorts(ctx context.Context) ([]PortAllocation, error) {
 	return s.queryPorts(ctx,
 		`SELECT id, session_id, label, container_port, host_port, proxy_active FROM port_allocations WHERE proxy_active=1`)
+}
+
+func (s *Store) queryTickets(ctx context.Context, query string, args ...any) ([]Ticket, error) {
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	tickets := []Ticket{}
+	for rows.Next() {
+		t, err := scanTicket(rows)
+		if err != nil {
+			return nil, err
+		}
+		tickets = append(tickets, *t)
+	}
+	return tickets, rows.Err()
 }
 
 func (s *Store) queryPorts(ctx context.Context, query string, args ...any) ([]PortAllocation, error) {
@@ -817,6 +792,9 @@ func scanSession(sc scanner) (*Session, error) {
 	sess.ClaudeSessionID = claudeSessionID.String
 	return &sess, nil
 }
+
+// ticketCols is the projection scanned by scanTicket. Keep them in sync.
+const ticketCols = "id, board_id, column_id, title, slug, body, position, created_at, archived_at"
 
 func scanTicket(sc scanner) (*Ticket, error) {
 	var t Ticket

@@ -511,17 +511,17 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 		return rawOrError(raw, err), nil
 
 	case "get_board":
-		id, err := s.client.ResolveBoardID(ctx, a.Board)
-		if err != nil {
-			return errorResult(err.Error()), nil
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
 		}
 		raw, err := s.client.GetBoard(ctx, id)
 		return rawOrError(raw, err), nil
 
 	case "update_board":
-		id, err := s.client.ResolveBoardID(ctx, a.Board)
-		if err != nil {
-			return errorResult(err.Error()), nil
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
 		}
 		patch := client.UpdateBoardArgs{}
 		if hasField("name") {
@@ -552,9 +552,9 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 		return rawOrError(raw, err), nil
 
 	case "delete_board":
-		id, err := s.client.ResolveBoardID(ctx, a.Board)
-		if err != nil {
-			return errorResult(err.Error()), nil
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
 		}
 		if err := s.client.DeleteBoard(ctx, id); err != nil {
 			return errorResult(err.Error()), nil
@@ -562,25 +562,25 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 		return textResult("ok"), nil
 
 	case "board_state":
-		id, err := s.client.ResolveBoardID(ctx, a.Board)
-		if err != nil {
-			return errorResult(err.Error()), nil
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
 		}
 		raw, err := s.client.BoardState(ctx, id)
 		return rawOrError(raw, err), nil
 
 	case "list_archived":
-		id, err := s.client.ResolveBoardID(ctx, a.Board)
-		if err != nil {
-			return errorResult(err.Error()), nil
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
 		}
 		raw, err := s.client.ListArchived(ctx, id)
 		return rawOrError(raw, err), nil
 
 	case "delete_archived":
-		id, err := s.client.ResolveBoardID(ctx, a.Board)
-		if err != nil {
-			return errorResult(err.Error()), nil
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
 		}
 		if err := s.client.DeleteArchived(ctx, id); err != nil {
 			return errorResult(err.Error()), nil
@@ -682,6 +682,17 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", p.Name)
 	}
+}
+
+// boardID resolves ident through the client, returning (id, nil) on success
+// or (0, errorResult) on failure. Callers do `id, errRes := s.boardID(...)
+// if errRes != nil { return errRes, nil }`.
+func (s *server) boardID(ctx context.Context, ident string) (int64, map[string]any) {
+	id, err := s.client.ResolveBoardID(ctx, ident)
+	if err != nil {
+		return 0, errorResult(err.Error())
+	}
+	return id, nil
 }
 
 func rawOrError(raw json.RawMessage, err error) map[string]any {

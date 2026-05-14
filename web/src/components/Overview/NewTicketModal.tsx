@@ -6,6 +6,7 @@ import { queryKeys } from "@/api/keys";
 import type { BoardStructure } from "@/store";
 import { fetchBoardStructure } from "@/store";
 import { Button } from "@/components/Button";
+import { FormField } from "@/components/FormField";
 import { Modal } from "@/components/Modal";
 
 // Mounted only while open. We deliberately read board metadata via
@@ -101,8 +102,7 @@ export function NewTicketModal({
         }}
         className="flex flex-col gap-3 p-3 text-sm"
       >
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Title</span>
+        <FormField label="Title">
           <input
             ref={titleInputRef}
             className="rounded bg-surface-2 px-2 py-1"
@@ -111,9 +111,8 @@ export function NewTicketModal({
             disabled={createMut.isPending}
             placeholder="ticket title"
           />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Board</span>
+        </FormField>
+        <FormField label="Board">
           <select
             aria-label="Board"
             className="rounded bg-surface-2 px-2 py-1"
@@ -128,9 +127,8 @@ export function NewTicketModal({
               </option>
             ))}
           </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-fg-muted">Column</span>
+        </FormField>
+        <FormField label="Column">
           <select
             aria-label="Column"
             className="rounded bg-surface-2 px-2 py-1"
@@ -145,7 +143,7 @@ export function NewTicketModal({
               </option>
             ))}
           </select>
-        </label>
+        </FormField>
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="ghost" onClick={onClose} disabled={createMut.isPending}>
             cancel

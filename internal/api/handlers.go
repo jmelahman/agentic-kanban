@@ -709,19 +709,19 @@ func (h *handlers) ensureSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handlers) startSession(w http.ResponseWriter, r *http.Request) {
-	id := pathID(r, "id")
-	sess, err := h.sessions.Start(r.Context(), id, h.makePullProgressCb(r.Context(), id))
-	if err != nil {
-		h.httpError(w, err, 500)
-		return
-	}
-	h.publishSessionUpdated(r.Context(), sess.ID)
-	writeJSON(w, 200, sess)
+	h.sessionStartOrRestart(w, r, h.sessions.Start)
 }
 
 func (h *handlers) restartSession(w http.ResponseWriter, r *http.Request) {
+	h.sessionStartOrRestart(w, r, h.sessions.Restart)
+}
+
+func (h *handlers) sessionStartOrRestart(
+	w http.ResponseWriter, r *http.Request,
+	action func(context.Context, int64, docker.PullProgressFunc) (*db.Session, error),
+) {
 	id := pathID(r, "id")
-	sess, err := h.sessions.Restart(r.Context(), id, h.makePullProgressCb(r.Context(), id))
+	sess, err := action(r.Context(), id, h.makePullProgressCb(r.Context(), id))
 	if err != nil {
 		h.httpError(w, err, 500)
 		return
