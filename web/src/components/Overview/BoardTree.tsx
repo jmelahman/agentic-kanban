@@ -1,5 +1,6 @@
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  closestCenter,
   closestCorners,
   DndContext,
   type DragEndEvent,
@@ -13,7 +14,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/api/client";
+import { api, type Board } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useBoardSubscription } from "@/hooks/useBoardSubscription";
 import { fetchBoardStructure, ticketStore, useSession, useTicket } from "@/store";
@@ -34,6 +35,7 @@ export function BoardTree({
   openTicketIds: ReadonlySet<number>;
   onCollapseSidebar?: () => void;
 }) {
+  const qc = useQueryClient();
   const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
   const boards = boardsQ.data ?? [];
   const structures = useQueries({
@@ -42,6 +44,35 @@ export function BoardTree({
       queryFn: () => fetchBoardStructure(b.id),
     })),
   });
+
+  const boardSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+  );
+
+  const moveBoardMut = useMutation({
+    mutationFn: (input: { id: number; position: number }) =>
+      api.moveBoard(input.id, input.position),
+    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.boards }),
+  });
+
+  function onBoardDragEnd(e: DragEndEvent) {
+    const activeId = Number(e.active.id);
+    const overId = e.over?.id;
+    if (overId == null) return;
+    const overNum = Number(overId);
+    if (activeId === overNum) return;
+    const oldIdx = boards.findIndex((b) => b.id === activeId);
+    const newIdx = boards.findIndex((b) => b.id === overNum);
+    if (oldIdx < 0 || newIdx < 0) return;
+    qc.setQueryData<Board[]>(queryKeys.boards, (old) => {
+      if (!old) return old;
+      const next = [...old];
+      const [moved] = next.splice(oldIdx, 1);
+      next.splice(newIdx, 0, moved);
+      return next;
+    });
+    moveBoardMut.mutate({ id: activeId, position: newIdx });
+  }
 
   const [collapsed, setCollapsed] = useState<Set<number>>(loadCollapsedBoards);
   const toggle = (boardId: number) =>
@@ -91,18 +122,26 @@ export function BoardTree({
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       {header}
-      {boards.map((b, i) => (
-        <BoardNode
-          key={b.id}
-          boardId={b.id}
-          boardName={b.name}
-          structure={structures[i]?.data}
-          collapsed={collapsed.has(b.id)}
-          onToggle={() => toggle(b.id)}
-          onOpenTicket={onOpenTicket}
-          openTicketIds={openTicketIds}
-        />
-      ))}
+      <DndContext
+        sensors={boardSensors}
+        collisionDetection={closestCenter}
+        onDragEnd={onBoardDragEnd}
+      >
+        <SortableContext items={boards.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+          {boards.map((b, i) => (
+            <BoardNode
+              key={b.id}
+              boardId={b.id}
+              boardName={b.name}
+              structure={structures[i]?.data}
+              collapsed={collapsed.has(b.id)}
+              onToggle={() => toggle(b.id)}
+              onOpenTicket={onOpenTicket}
+              openTicketIds={openTicketIds}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }
@@ -128,6 +167,20 @@ function BoardNode({
   // animate in real time. See useBoardSubscription doc for the connection
   // limit caveat.
   useBoardSubscription(boardId);
+
+  const {
+    setNodeRef: setSortableRef,
+    attributes: sortableAttrs,
+    listeners: sortableListeners,
+    transform: sortableTransform,
+    transition: sortableTransition,
+    isDragging: isBoardDragging,
+  } = useSortable({ id: boardId });
+  const sortableStyle: React.CSSProperties = {
+    transform: CSS.Translate.toString(sortableTransform),
+    transition: sortableTransition,
+    opacity: isBoardDragging ? 0.4 : 1,
+  };
 
   const qc = useQueryClient();
   const [addingColumnId, setAddingColumnId] = useState<number | null>(null);
@@ -207,20 +260,37 @@ function BoardNode({
     draggingId != null && structure ? (structure.sessionIdByTicket[draggingId] ?? null) : null;
 
   return (
-    <div className="border-b border-border" data-board-node={boardId}>
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2"
-      >
-        <span
-          className={`inline-block w-3 text-xs text-fg-muted transition-transform ${collapsed ? "" : "rotate-90"}`}
+    <div
+      ref={setSortableRef}
+      style={sortableStyle}
+      className="group/board border-b border-border"
+      data-board-node={boardId}
+    >
+      <div className="flex w-full items-center hover:bg-surface-2">
+        <button
+          type="button"
+          {...sortableAttrs}
+          {...sortableListeners}
+          title="Drag to reorder board"
+          aria-label={`Reorder ${boardName}`}
+          className="touch-none cursor-grab px-1 py-2 text-xs leading-none text-fg-muted opacity-0 group-hover/board:opacity-100 focus:opacity-100"
         >
-          ▶
-        </span>
-        <span className="font-medium">{boardName}</span>
-        <span className="ml-auto text-xs text-fg-muted">{totalTickets}</span>
-      </button>
+          ⋮⋮
+        </button>
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex flex-1 items-center gap-2 px-1 py-2 pr-3 text-left text-sm"
+        >
+          <span
+            className={`inline-block w-3 text-xs text-fg-muted transition-transform ${collapsed ? "" : "rotate-90"}`}
+          >
+            ▶
+          </span>
+          <span className="font-medium">{boardName}</span>
+          <span className="ml-auto text-xs text-fg-muted">{totalTickets}</span>
+        </button>
+      </div>
       {!collapsed && structure && (
         <DndContext
           sensors={sensors}

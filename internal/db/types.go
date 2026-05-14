@@ -12,6 +12,7 @@ type Board struct {
 	GitAuthorName  string `json:"git_author_name"`
 	GitAuthorEmail string `json:"git_author_email"`
 	CreatedAt      int64  `json:"created_at"`
+	Position       int    `json:"position"`
 }
 
 type Column struct {

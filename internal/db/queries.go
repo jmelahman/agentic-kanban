@@ -24,9 +24,14 @@ func (s *Store) CreateBoard(ctx context.Context, b *Board) error {
 // installing whatever column layout they need afterwards. Used by
 // errreport to bootstrap an Errors board with its own three-column flow.
 func (s *Store) CreateBoardRaw(ctx context.Context, b *Board) error {
+	var maxPos sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `SELECT MAX(position) FROM boards`).Scan(&maxPos); err != nil {
+		return err
+	}
+	b.Position = int(maxPos.Int64) + 1
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO boards (name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		b.Name, b.Slug, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch, nullIfEmpty(b.BranchPrefix), nullIfEmpty(b.GitAuthorName), nullIfEmpty(b.GitAuthorEmail),
+		`INSERT INTO boards (name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		b.Name, b.Slug, nullIfEmpty(b.RepoPath), nullIfEmpty(b.MountPath), nullIfEmpty(b.WorktreeRoot), b.BaseBranch, nullIfEmpty(b.BranchPrefix), nullIfEmpty(b.GitAuthorName), nullIfEmpty(b.GitAuthorEmail), b.Position,
 	)
 	if err != nil {
 		return err
@@ -69,7 +74,7 @@ func (s *Store) createDefaultColumns(ctx context.Context, boardID int64) error {
 }
 
 func (s *Store) ListBoards(ctx context.Context) ([]Board, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email, created_at FROM boards ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email, created_at, position FROM boards ORDER BY position, id`)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +101,66 @@ func (s *Store) UpdateBoard(ctx context.Context, b *Board) error {
 	return affectedOrNotFound(res)
 }
 
+// MoveBoard reorders boards so the given board lands at index `position`
+// in the position-sorted list. All boards are renumbered to a contiguous
+// 0..N-1 range in one transaction. Board counts stay small, so a full
+// renumber is simpler than the per-row shifts used for tickets.
+func (s *Store) MoveBoard(ctx context.Context, id int64, position int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM boards ORDER BY position, id`)
+	if err != nil {
+		return err
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var bid int64
+		if err := rows.Scan(&bid); err != nil {
+			rows.Close()
+			return err
+		}
+		ids = append(ids, bid)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	idx := -1
+	for i, bid := range ids {
+		if bid == id {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return ErrNotFound
+	}
+	ids = append(ids[:idx], ids[idx+1:]...)
+
+	if position < 0 {
+		position = 0
+	}
+	if position > len(ids) {
+		position = len(ids)
+	}
+	newIDs := make([]int64, 0, len(ids)+1)
+	newIDs = append(newIDs, ids[:position]...)
+	newIDs = append(newIDs, id)
+	newIDs = append(newIDs, ids[position:]...)
+
+	for i, bid := range newIDs {
+		if _, err := tx.ExecContext(ctx, `UPDATE boards SET position=? WHERE id=?`, i, bid); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) DeleteBoard(ctx context.Context, id int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM boards WHERE id=?`, id)
 	if err != nil {
@@ -106,7 +171,7 @@ func (s *Store) DeleteBoard(ctx context.Context, id int64) error {
 
 func (s *Store) GetBoard(ctx context.Context, id int64) (*Board, error) {
 	b, err := scanBoard(s.db.QueryRowContext(ctx,
-		`SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email, created_at FROM boards WHERE id=?`, id))
+		`SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email, created_at, position FROM boards WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -115,7 +180,7 @@ func (s *Store) GetBoard(ctx context.Context, id int64) (*Board, error) {
 
 func (s *Store) GetBoardBySlug(ctx context.Context, slug string) (*Board, error) {
 	b, err := scanBoard(s.db.QueryRowContext(ctx,
-		`SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email, created_at FROM boards WHERE slug=?`, slug))
+		`SELECT id, name, slug, repo_path, mount_path, worktree_root, base_branch, branch_prefix, git_author_name, git_author_email, created_at, position FROM boards WHERE slug=?`, slug))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -726,7 +791,7 @@ func affectedOrNotFound(res sql.Result) error {
 func scanBoard(sc scanner) (*Board, error) {
 	var b Board
 	var repo, mount, worktreeRoot, branchPrefix, gitAuthorName, gitAuthorEmail sql.NullString
-	if err := sc.Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &branchPrefix, &gitAuthorName, &gitAuthorEmail, &b.CreatedAt); err != nil {
+	if err := sc.Scan(&b.ID, &b.Name, &b.Slug, &repo, &mount, &worktreeRoot, &b.BaseBranch, &branchPrefix, &gitAuthorName, &gitAuthorEmail, &b.CreatedAt, &b.Position); err != nil {
 		return nil, err
 	}
 	b.RepoPath = repo.String

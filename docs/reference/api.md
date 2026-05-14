@@ -81,6 +81,10 @@ If both `git_author_name` and `git_author_email` are set, the server passes `-c 
 
 Patch any of the fields above. Pointer-style: omit a field to leave it untouched, send an empty string to clear it.
 
+### `PATCH /api/boards/{id}/move`
+
+Reorder boards. Body: `{"position": <int>}`, where `position` is the zero-based index the board should occupy in `GET /api/boards` after the move. The server renumbers every board so positions stay contiguous. `GET /api/boards` orders by this field, and the Overview sidebar exposes it as drag-to-reorder.
+
 ### `GET /api/boards/{id}`
 
 Fetch a single board.

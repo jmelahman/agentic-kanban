@@ -73,13 +73,44 @@ func Open(path string) (*Store, error) {
 	return &Store{db: db}, nil
 }
 
-// migrate is a placeholder for post-v1.0 schema migrations. Pre-v1.0,
-// schema.sql is the single source of truth and existing databases must
-// match it; once v1.0 ships, add idempotent ALTER statements here in the
-// order they need to apply.
+// migrate applies idempotent schema changes to existing databases that
+// CREATE TABLE IF NOT EXISTS in schema.sql cannot reach. Each step must
+// be safe to re-run on an already-migrated DB.
 func migrate(db *sql.DB) error {
-	_ = db
+	hasColumn, err := boardsHasPosition(db)
+	if err != nil {
+		return fmt.Errorf("inspect boards: %w", err)
+	}
+	if !hasColumn {
+		if _, err := db.Exec(`ALTER TABLE boards ADD COLUMN position INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add boards.position: %w", err)
+		}
+		// Seed deterministic order matching the previous ORDER BY id behavior.
+		if _, err := db.Exec(`UPDATE boards SET position = id WHERE position = 0`); err != nil {
+			return fmt.Errorf("backfill boards.position: %w", err)
+		}
+	}
 	return nil
+}
+
+func boardsHasPosition(db *sql.DB) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(boards)`)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, ctype string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
+			return false, err
+		}
+		if name == "position" {
+			return true, nil
+		}
+	}
+	return false, rows.Err()
 }
 
 func (s *Store) Close() error { return s.db.Close() }

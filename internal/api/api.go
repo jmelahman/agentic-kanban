@@ -60,6 +60,7 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/boards", h.createBoard)
 	mux.HandleFunc("GET /api/boards/{id}", h.getBoard)
 	mux.HandleFunc("PATCH /api/boards/{id}", h.updateBoard)
+	mux.HandleFunc("PATCH /api/boards/{id}/move", h.moveBoard)
 	mux.HandleFunc("DELETE /api/boards/{id}", h.deleteBoard)
 	mux.HandleFunc("GET /api/boards/{id}/state", h.boardState)
 	mux.HandleFunc("GET /api/boards/{id}/events", h.boardEvents)

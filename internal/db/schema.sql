@@ -9,7 +9,8 @@ CREATE TABLE IF NOT EXISTS boards (
   branch_prefix TEXT,
   git_author_name TEXT,
   git_author_email TEXT,
-  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  position INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS columns (

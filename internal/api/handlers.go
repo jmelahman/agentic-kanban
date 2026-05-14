@@ -194,6 +194,28 @@ func (h *handlers) updateBoard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, board)
 }
 
+type moveBoardReq struct {
+	Position int `json:"position"`
+}
+
+func (h *handlers) moveBoard(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	req, err := decodeBody[moveBoardReq](r)
+	if err != nil {
+		h.httpError(w, err, 400)
+		return
+	}
+	if err := h.store.MoveBoard(r.Context(), id, req.Position); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			h.httpError(w, err, 404)
+			return
+		}
+		h.httpError(w, err, 500)
+		return
+	}
+	w.WriteHeader(204)
+}
+
 func (h *handlers) deleteBoard(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
 	if _, err := h.store.GetBoard(r.Context(), id); err != nil {

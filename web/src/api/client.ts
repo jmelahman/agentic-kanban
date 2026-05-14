@@ -10,6 +10,7 @@ export type Board = {
   git_author_name: string;
   git_author_email: string;
   created_at: number;
+  position: number;
 };
 
 export type Column = { id: number; board_id: number; name: string; position: number };
@@ -217,6 +218,11 @@ export const api = {
     },
   ) => request<Board>(`/api/boards/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
   deleteBoard: (id: number) => request<void>(`/api/boards/${id}`, { method: "DELETE" }),
+  moveBoard: (id: number, position: number) =>
+    request<void>(`/api/boards/${id}/move`, {
+      method: "PATCH",
+      body: JSON.stringify({ position }),
+    }),
   boardState: (id: number) => request<BoardState>(`/api/boards/${id}/state`),
 
   createTicket: (boardId: number, input: { column_id: number; title: string; body?: string }) =>
