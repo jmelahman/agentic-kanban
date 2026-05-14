@@ -224,13 +224,11 @@ func (s *Store) FindColumnByName(ctx context.Context, boardID int64, name string
 // Tickets
 
 func (s *Store) CreateTicket(ctx context.Context, t *Ticket) error {
-	var maxPos sql.NullInt64
-	if err := s.db.QueryRowContext(ctx,
-		`SELECT MAX(position) FROM tickets WHERE column_id=? AND archived_at IS NULL`, t.ColumnID,
-	).Scan(&maxPos); err != nil {
+	maxPos, err := s.MaxTicketPosition(ctx, t.ColumnID)
+	if err != nil {
 		return err
 	}
-	t.Position = int(maxPos.Int64) + 1
+	t.Position = maxPos + 1
 
 	baseSlug := t.Slug
 	for attempt := 1; attempt <= 100; attempt++ {
