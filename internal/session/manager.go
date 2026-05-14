@@ -241,19 +241,24 @@ func resolveBranchPrefix(board *db.Board, repoPath string) string {
 // .kanban.toml (project + user) onto the parsed devcontainer.json: run_args
 // and mounts append, container_env merges with kanban values winning.
 //
-// For built-in configs the docker_socket and claude_config flags (both
-// default true) control whether the host docker socket and Claude Code
-// config get bind-mounted. Hand-written devcontainer.json files manage
-// their own mounts and ignore the flags. claudeConfigOverride, when
-// non-nil, wins over .kanban.toml — it's set by the --claude-config flag
-// / $KANBAN_CLAUDE_CONFIG env so a single server invocation can disable
-// forwarding without editing config files.
+// For built-in configs the docker_socket flag (default false) and
+// claude_config flag (default true) control whether the host docker
+// socket and Claude Code config get bind-mounted. Hand-written
+// devcontainer.json files manage their own mounts and ignore the flags.
+// claudeConfigOverride, when non-nil, wins over .kanban.toml — it's set
+// by the --claude-config flag / $KANBAN_CLAUDE_CONFIG env so a single
+// server invocation can disable forwarding without editing config files.
+//
+// The docker socket defaults off because mounting it grants the session
+// agent the equivalent of root on the host. Users who want sessions to
+// drive Docker (e.g. `docker compose up` in an agent task) can opt in
+// with `[devcontainer].docker_socket = true` in .kanban.toml.
 func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanbantoml.DevcontainerSection, claudeConfigOverride *bool) {
 	if cfg == nil {
 		return
 	}
 	if cfg.BuiltIn {
-		mountSocket := true
+		mountSocket := false
 		if dev != nil && dev.DockerSocket != nil {
 			mountSocket = *dev.DockerSocket
 		}

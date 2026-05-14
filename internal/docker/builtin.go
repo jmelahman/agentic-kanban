@@ -120,7 +120,7 @@ func builtinHomeForUser(user string) string {
 }
 
 // DockerSocketMount returns the host docker socket bind mount string applied
-// to built-in configs when DevcontainerSection.DockerSocket is unset or true.
+// to built-in configs when DevcontainerSection.DockerSocket is true.
 // It prefers $KANBAN_HOST_DOCKER_SOCK when set (for kanban-in-a-container
 // installs where the local probe would resolve a path that's invalid on the
 // host), then probes /var/run/docker.sock, then $XDG_RUNTIME_DIR/docker.sock

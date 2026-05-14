@@ -7,7 +7,6 @@
     "--network=kanban-net"
   ],
   "mounts": [
-    "source=${localEnv:XDG_RUNTIME_DIR}/docker.sock,target=/var/run/docker.sock,type=bind",
     "source=${localEnv:HOME}/.claude,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.claude,type=bind",
     "source=${localEnv:HOME}/.claude.json,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.claude.json,type=bind",
     "source=${localEnv:HOME}/.zshrc,target=${localEnv:DEVCONTAINER_REMOTE_HOME:/home/dev}/.zshrc.host,type=bind,readonly",
@@ -25,8 +24,7 @@
     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock",
     "XDG_RUNTIME_DIR": "${localEnv:XDG_RUNTIME_DIR}",
     "KANBAN_HOST_WORKSPACE": "${localWorkspaceFolder}",
-    "KANBAN_HOST_HOME": "${localEnv:HOME}",
-    "KANBAN_HOST_DOCKER_SOCK": "${localEnv:XDG_RUNTIME_DIR}/docker.sock"
+    "KANBAN_HOST_HOME": "${localEnv:HOME}"
   },
   "remoteUser": "${localEnv:DEVCONTAINER_REMOTE_USER:dev}",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",

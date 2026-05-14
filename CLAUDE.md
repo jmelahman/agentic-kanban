@@ -50,25 +50,6 @@ discards everything — including any boards or tickets the UI created.
 Frontend (`:5173`) and Playwright MCP (`browser_navigate
 http://localhost:5173/`) work as usual.
 
-## Spawning session containers from this devcontainer
-
-`.devcontainer/devcontainer.json` bakes the host-path translation env
-vars into `containerEnv`, so kanban started inside this devcontainer can
-spawn sessions against `/workspace` directly. Use `--claude-config=false`
-for unprivileged-shell tests — the in-container `~/.claude` path won't
-stat from the host's rootless dockerd.
-
-```sh
-go build -o /tmp/kanban .
-setsid /tmp/kanban serve --in-memory --claude-config=false \
-    --addr 127.0.0.1:17474 \
-    --worktrees-dir=/workspace/.tmp-worktrees \
-  >/tmp/kanban-test.log 2>&1 </dev/null & disown
-curl -sS -X POST http://127.0.0.1:17474/api/boards \
-  -H 'content-type: application/json' \
-  -d '{"name":"test","repo_path":"/workspace","default_branch":"master"}'
-```
-
 ## Tests / typecheck / lint
 
 - Go: `go test ./...`

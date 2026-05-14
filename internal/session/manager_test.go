@@ -140,21 +140,21 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInDockerSocket(t *testing.T) {
 	}
 	boolPtr := func(b bool) *bool { return &b }
 
-	t.Run("default mounts socket on built-in", func(t *testing.T) {
+	t.Run("default omits socket on built-in", func(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{BuiltIn: true}
 		applyKanbanDevcontainerOverrides(cfg, nil, nil)
-		if !hasSocket(cfg) {
-			t.Errorf("docker socket missing; mounts = %v", cfg.Mounts)
+		if hasSocket(cfg) {
+			t.Errorf("docker socket present by default; mounts = %v", cfg.Mounts)
 		}
 	})
 
-	t.Run("docker_socket=false drops the mount", func(t *testing.T) {
+	t.Run("docker_socket=true adds the mount", func(t *testing.T) {
 		cfg := &docker.DevcontainerConfig{BuiltIn: true}
 		applyKanbanDevcontainerOverrides(cfg, &kanbantoml.DevcontainerSection{
-			DockerSocket: boolPtr(false),
+			DockerSocket: boolPtr(true),
 		}, nil)
-		if hasSocket(cfg) {
-			t.Errorf("docker socket present despite docker_socket=false; mounts = %v", cfg.Mounts)
+		if !hasSocket(cfg) {
+			t.Errorf("docker socket missing despite docker_socket=true; mounts = %v", cfg.Mounts)
 		}
 	})
 

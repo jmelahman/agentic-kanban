@@ -45,16 +45,19 @@ board_name = "kanban-errors"
 # Extra knobs layered onto the worktree's devcontainer.json at session spawn.
 # `mounts` and `run_args` append to whatever the devcontainer.json declares;
 # `container_env` merges with kanban values winning. `docker_socket` and
-# `claude_config` only affect the built-in fallback devcontainer (both default
-# to true) — hand-written devcontainer.json files manage their own mounts.
-# `claude_config` can also be forced from the CLI via `--claude-config` or
-# `$KANBAN_CLAUDE_CONFIG`, which take precedence over the toml value (useful
-# when running kanban inside a devcontainer that already mounts `~/.claude`
-# at a path the host's docker daemon can't see).
+# `claude_config` only affect the built-in fallback devcontainer —
+# hand-written devcontainer.json files manage their own mounts.
+# `docker_socket` defaults to false because forwarding the host daemon
+# grants the session agent root-equivalent authority on the host; opt in
+# only when a session legitimately needs to drive Docker. `claude_config`
+# defaults to true and can also be forced from the CLI via
+# `--claude-config` or `$KANBAN_CLAUDE_CONFIG`, which take precedence over
+# the toml value (useful when running kanban inside a devcontainer that
+# already mounts `~/.claude` at a path the host's docker daemon can't see).
 [devcontainer]
 mounts        = ["type=bind,source=/tmp/ssh-agent.sock,target=/tmp/ssh-agent.sock"]
 run_args      = ["--cap-add=SYS_PTRACE"]
-docker_socket = true           # built-in only: bind /var/run/docker.sock into the container
+docker_socket = false          # built-in only: bind /var/run/docker.sock into the container
 claude_config = true           # built-in only: bind ~/.claude into the container
 
 [devcontainer.container_env]
