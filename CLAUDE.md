@@ -125,6 +125,19 @@ that fits a pattern below, extend the entry; when you fix something new and
 likely to recur, add a fresh one. Keep each entry short — state the rule,
 not the war story.
 
+### `ghostty-web` terminal dispose poisons the WASM heap
+
+`Terminal.dispose()` calls `ghostty_terminal_free`, which corrupts the
+shared WASM linear memory whenever the terminal previously wrote a
+multi-codepoint grapheme cluster (flag emoji, skin tone, ZWJ family,
+keycap). Because `init()` keeps a single page-wide Ghostty instance, the
+next terminal's first `write()` traps with "Out of bounds memory access"
+— see upstream issue coder/ghostty-web#141. `PtyTerminal.tsx` works
+around this by setting the private `wasmTerm` field to `undefined`
+before calling `dispose()`, which skips the buggy `free()` while keeping
+the rest of cleanup (DOM removal, document listeners, observers). Drop
+the workaround when coder/ghostty-web#142 lands and we bump the package.
+
 ### `sessions` row has multiple writers
 
 Two independent paths write to the `sessions` row: the session manager

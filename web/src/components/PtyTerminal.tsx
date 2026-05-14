@@ -124,6 +124,12 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
         ws.onmessage = null;
         ws.onclose = null;
         ws.close();
+        // Workaround for coder/ghostty-web#141: ghostty_terminal_free
+        // corrupts the shared WASM heap if the terminal processed a
+        // multi-codepoint grapheme cluster, breaking every later terminal on
+        // the page. Null wasmTerm so dispose() skips that call. Remove once
+        // the fix in coder/ghostty-web#142 ships.
+        (term as unknown as { wasmTerm?: unknown }).wasmTerm = undefined;
         term.dispose();
         controls.dispose();
       };
