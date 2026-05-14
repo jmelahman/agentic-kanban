@@ -1372,6 +1372,11 @@ func writeSSEHeaders(w http.ResponseWriter) {
 // ticket via the reporter (a no-op when the reporter is disabled or nil).
 // 4xx codes are user/client errors and are not reported.
 func (h *handlers) httpError(w http.ResponseWriter, err error, code int) {
+	// Client disconnected mid-request — nobody to respond to, and not a
+	// server bug worth reporting.
+	if errors.Is(err, context.Canceled) {
+		return
+	}
 	log.Printf("http %d: %v", code, err)
 	writeJSON(w, code, map[string]string{"error": err.Error()})
 	if code >= 500 && h.reporter != nil {
