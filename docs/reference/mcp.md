@@ -121,7 +121,7 @@ Patch ticket fields.
 
 All take a single `ticket` (integer) argument. `delete_ticket` requires
 the ticket to already be archived; `done_ticket` moves the ticket to the
-Done column and stops its session.
+board's rightmost column and stops its session.
 
 #### `sync_ticket`
 

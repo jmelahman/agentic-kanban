@@ -23,7 +23,7 @@ kanban
 │   ├── archive        Archive a ticket
 │   ├── unarchive      Unarchive a ticket
 │   ├── delete         Permanently delete (must be archived first)
-│   ├── done           Move a ticket to the Done column and stop its session
+│   ├── done           Move a ticket to the rightmost column and stop its session
 │   ├── sync           Sync a ticket branch from base
 │   └── merge          Merge a ticket branch into base
 ├── column             Column-level operations
@@ -180,7 +180,7 @@ Permanently deletes a ticket. The ticket must be archived first
 
 ### `ticket done <id>`
 
-Moves the ticket to the Done column and stops its session.
+Moves the ticket to the board's rightmost column and stops its session.
 
 ### `ticket sync <id> [--strategy rebase|merge]`
 

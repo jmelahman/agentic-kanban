@@ -392,7 +392,7 @@ func ticketCmd() *cobra.Command {
 		func(c *client.Client, ctx context.Context, id int64) error { return c.UnarchiveTicket(ctx, id) })
 	delTicket := simpleTicketCmd("delete", "Permanently delete a ticket (must be archived first)", &serverURL,
 		func(c *client.Client, ctx context.Context, id int64) error { return c.DeleteTicket(ctx, id) })
-	doneCmd := simpleTicketCmd("done", "Move a ticket to the Done column and stop its session", &serverURL,
+	doneCmd := simpleTicketCmd("done", "Move a ticket to the rightmost column and stop its session", &serverURL,
 		func(c *client.Client, ctx context.Context, id int64) error { return c.DoneTicket(ctx, id) })
 
 	var syncStrategy string

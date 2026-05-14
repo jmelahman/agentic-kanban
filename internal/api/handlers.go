@@ -662,15 +662,16 @@ func (h *handlers) doneTicket(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	doneCol, err := h.store.FindColumnByName(r.Context(), t.BoardID, "Done")
+	cols, err := h.store.ListColumns(r.Context(), t.BoardID)
 	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			h.httpError(w, fmt.Errorf("board has no Done column"), 409)
-			return
-		}
 		h.httpError(w, err, 500)
 		return
 	}
+	if len(cols) == 0 {
+		h.httpError(w, fmt.Errorf("board has no columns"), 409)
+		return
+	}
+	doneCol := cols[len(cols)-1]
 	if sess, err := h.store.GetSessionByTicket(r.Context(), id); err == nil && sess != nil {
 		if err := h.sessions.Stop(r.Context(), sess.ID); err != nil {
 			log.Printf("done: stop session %d: %v", sess.ID, err)

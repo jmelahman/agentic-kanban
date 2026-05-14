@@ -352,7 +352,7 @@ func toolDefinitions() []map[string]any {
 		},
 		{
 			"name":        "done_ticket",
-			"description": "Move a ticket to the Done column (last position) and stop its session.",
+			"description": "Move a ticket to the board's rightmost column (last position) and stop its session.",
 			"inputSchema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
