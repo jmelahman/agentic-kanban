@@ -289,10 +289,12 @@ export function SessionView({
     },
   });
   const archiveMut = useMutation({
-    mutationFn: () => api.archiveTicket(ticketId),
-    onSuccess: () => {
+    mutationFn: (id: number) => api.archiveTicket(id),
+    onSuccess: (_data, archivedId) => {
       qc.invalidateQueries({ queryKey: boardKey });
-      onClose();
+      // The pane may have switched to a different ticket while the request was
+      // in flight; only close if we're still viewing the ticket that was archived.
+      if (archivedId === ticketId) onClose();
     },
   });
   const syncMut = useMutation({
@@ -318,10 +320,12 @@ export function SessionView({
     },
   });
   const doneMut = useMutation({
-    mutationFn: () => api.doneTicket(ticketId),
-    onSuccess: () => {
+    mutationFn: (id: number) => api.doneTicket(id),
+    onSuccess: (_data, doneId) => {
       qc.invalidateQueries({ queryKey: boardKey });
-      onClose();
+      // The pane may have switched to a different ticket while the request was
+      // in flight; only close if we're still viewing the ticket that was finished.
+      if (doneId === ticketId) onClose();
     },
   });
 
@@ -564,7 +568,7 @@ export function SessionView({
           compact={compact}
           variant="neutral"
           pending={archiveMut.isPending}
-          onClick={() => archiveMut.mutate()}
+          onClick={() => archiveMut.mutate(ticketId)}
           icon={<ArchiveIcon />}
           idleLabel="archive"
           pendingLabel="archiving…"
@@ -574,7 +578,7 @@ export function SessionView({
           compact={compact}
           variant="primary"
           pending={doneMut.isPending}
-          onClick={() => doneMut.mutate()}
+          onClick={() => doneMut.mutate(ticketId)}
           icon={<CheckIcon />}
           idleLabel="done"
           pendingLabel="finishing…"
