@@ -21,10 +21,15 @@ export function InfoPanel({ session }: { session: Session }) {
   });
   const ports = portsQ.data ?? [];
 
+  const body = ticket?.body ?? "";
+
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-3 text-sm [scrollbar-gutter:stable]">
-      <Section title="Description">
-        <DescriptionEditor ticketId={session.ticket_id} body={ticket?.body ?? ""} />
+      <Section
+        title="Description"
+        action={body ? <CopyButton text={body} label="copy description" /> : null}
+      >
+        <DescriptionEditor ticketId={session.ticket_id} body={body} />
       </Section>
 
       <Section title="Session">
@@ -189,12 +194,41 @@ function autosize(el: HTMLTextAreaElement) {
   el.style.height = `${el.scrollHeight}px`;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({
+  title,
+  children,
+  action,
+}: {
+  title: string;
+  children: ReactNode;
+  action?: ReactNode;
+}) {
   return (
     <section>
-      <h3 className="mb-2 text-xs uppercase tracking-wide text-fg-muted">{title}</h3>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-xs uppercase tracking-wide text-fg-muted">{title}</h3>
+        {action}
+      </div>
       <div className="flex flex-col gap-1">{children}</div>
     </section>
+  );
+}
+
+function CopyButton({ text, label }: { text: string; label: string }) {
+  const { copied, markCopied } = useCopyFeedback(1200);
+  const onCopy = () => {
+    navigator.clipboard.writeText(text);
+    markCopied();
+  };
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      title={copied ? "copied" : label}
+      className="shrink-0 text-xs text-fg-muted hover:text-accent-500"
+    >
+      {copied ? "✓" : "⧉"}
+    </button>
   );
 }
 
