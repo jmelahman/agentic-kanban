@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   api,
   PR_STATE_COLOR,
@@ -11,6 +13,7 @@ import {
 import { queryKeys } from "@/api/keys";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { ticketStore, useTicket } from "@/store";
+import { MARKDOWN_COMPONENTS } from "./markdownComponents";
 
 export function InfoPanel({ session }: { session: Session }) {
   const ticket = useTicket(session.ticket_id);
@@ -25,12 +28,7 @@ export function InfoPanel({ session }: { session: Session }) {
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-3 text-sm [scrollbar-gutter:stable]">
-      <Section
-        title="Description"
-        action={body ? <CopyButton text={body} label="copy description" /> : null}
-      >
-        <DescriptionEditor ticketId={session.ticket_id} body={body} />
-      </Section>
+      <DescriptionSection ticketId={session.ticket_id} body={body} />
 
       <Section title="Session">
         <Row label="Status" value={<StatusValue status={session.status} />} />
@@ -111,7 +109,7 @@ export function InfoPanel({ session }: { session: Session }) {
   );
 }
 
-function DescriptionEditor({ ticketId, body }: { ticketId: number; body: string }) {
+function DescriptionSection({ ticketId, body }: { ticketId: number; body: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(body);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -136,23 +134,6 @@ function DescriptionEditor({ ticketId, body }: { ticketId: number; body: string 
     });
   }, [editing, body]);
 
-  if (!editing) {
-    return (
-      <button
-        type="button"
-        onClick={() => setEditing(true)}
-        className="-mx-1 rounded px-1 py-0.5 text-left hover:bg-surface"
-        title="Click to edit"
-      >
-        {body ? (
-          <p className="whitespace-pre-wrap break-words">{body}</p>
-        ) : (
-          <Muted>No description. Click to add.</Muted>
-        )}
-      </button>
-    );
-  }
-
   const submit = () => {
     if (draft === body) {
       setEditing(false);
@@ -162,30 +143,59 @@ function DescriptionEditor({ ticketId, body }: { ticketId: number; body: string 
   };
 
   return (
-    <div className="flex flex-col gap-1">
-      <textarea
-        ref={textareaRef}
-        value={draft}
-        onChange={(e) => {
-          setDraft(e.target.value);
-          autosize(e.currentTarget);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            setEditing(false);
-          } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        onBlur={submit}
-        disabled={saveMut.isPending}
-        placeholder="Add a description…"
-        className="min-h-[6rem] w-full resize-none rounded bg-surface px-2 py-1 outline-none ring-1 ring-border focus:ring-accent-500"
-      />
-      <p className="text-xs text-fg-muted">⌘/Ctrl + Enter to save · Esc to cancel</p>
-    </div>
+    <Section
+      title="Description"
+      action={
+        <div className="flex items-center gap-2">
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              title="edit description"
+              className="shrink-0 text-xs text-fg-muted hover:text-accent-500"
+            >
+              ✎
+            </button>
+          )}
+          {body && <CopyButton text={body} label="copy description" />}
+        </div>
+      }
+    >
+      {editing ? (
+        <div className="flex flex-col gap-1">
+          <textarea
+            ref={textareaRef}
+            value={draft}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              autosize(e.currentTarget);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              } else if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            onBlur={submit}
+            disabled={saveMut.isPending}
+            placeholder="Add a description…"
+            className="min-h-[6rem] w-full resize-none rounded bg-surface px-2 py-1 outline-none ring-1 ring-border focus:ring-accent-500"
+          />
+          <p className="text-xs text-fg-muted">⌘/Ctrl + Enter to save · Esc to cancel</p>
+        </div>
+      ) : body ? (
+        <div className="break-words leading-relaxed">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+            {body}
+          </ReactMarkdown>
+        </div>
+      ) : (
+        <Muted>No description. Click ✎ to add.</Muted>
+      )}
+    </Section>
   );
 }
 
