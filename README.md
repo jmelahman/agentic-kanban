@@ -24,7 +24,8 @@ Each ticket is bound to an agent session (Claude Code, pi.dev) running inside it
 uv tool install agentic-kanban
 ```
 
-Docker images and prebuilt binaries are also available — see the [install guide](https://jmelahman.github.io/agentic-kanban/guide/install).
+This installs the binary to `~/.local/bin/kanban`.
+Make sure to have that on your `PATH`.
 
 ## Run
 
