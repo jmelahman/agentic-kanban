@@ -33,6 +33,8 @@ ENV PATH="/usr/local/go/bin:/home/dev/go/bin:${PATH}" \
 
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@latest
 
+COPY --from=ghcr.io/astral-sh/uv@sha256:440fd6477af86a2f1b38080c539f1672cd22acb1b1a47e321dba5158ab08864d /uv /uvx /usr/local/bin/
+
 ARG PREK_VERSION=0.3.13
 RUN ARCH="$(dpkg --print-architecture)" \
  && case "$ARCH" in \
