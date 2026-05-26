@@ -76,6 +76,7 @@ services:
       - --web.external-url=http://localhost:7474/prometheus
     volumes:
       - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/recording_rules.yml:/etc/prometheus/rules/recording_rules.yml:ro
       - prometheus-data:/prometheus
     networks:
       - kanban-net

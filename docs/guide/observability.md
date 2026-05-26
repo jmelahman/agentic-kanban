@@ -84,6 +84,33 @@ If the poll cadence is too aggressive for the install:
 - **PR poller** ticks every 30s and is bounded to 2 pages of 100 PRs per
   repo per tick.
 
+## Recording rules
+
+`deploy/recording_rules.yml` pre-computes the audit-friendly expressions
+every `evaluation_interval` (15s) and stores the result as a new metric,
+so dashboards and ad-hoc queries don't have to re-derive histograms each
+time. The shipped rules:
+
+| Recorded metric | Expression |
+| --- | --- |
+| `kanban:db_query_duration_seconds:p99_5m` | `histogram_quantile(0.99, … kanban_db_query_duration_seconds_bucket …)` by `op,target` |
+| `kanban:db_query_duration_seconds:mean_5m` | mean over `op,target` |
+| `kanban:http_request_duration_seconds:p95_5m` | `histogram_quantile(0.95, …)` by `method,route` |
+| `kanban:http_request_duration_seconds:mean_5m` | mean over `method,route` |
+| `kanban:github_api_request_duration_seconds:mean_5m` | mean over `method,endpoint` |
+| `kanban:github_api_requests:rate_5m` | request rate by `method,endpoint` |
+
+Each is queryable directly. For example, the slowest DB ops by tail
+latency:
+
+```promql
+topk(10, kanban:db_query_duration_seconds:p99_5m)
+```
+
+The rules file is mounted into the Prometheus container at
+`/etc/prometheus/rules/recording_rules.yml`; edit on disk and
+`docker compose restart prometheus` to reload.
+
 ## Customising the scrape config
 
 `deploy/prometheus.yml` defines a single static job that scrapes the kanban
