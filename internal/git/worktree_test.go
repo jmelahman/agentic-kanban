@@ -80,7 +80,108 @@ func TestIdentity_ConfigArgs(t *testing.T) {
 	}
 }
 
+func TestResolveLatestBase(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
+	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+	t.Setenv("HOME", t.TempDir())
+
+	t.Run("origin_strictly_ahead", func(t *testing.T) {
+		remote, local := seedRemoteAndClone(t)
+		// Push a newer commit to the bare remote via a second clone.
+		other := filepath.Join(t.TempDir(), "other")
+		mustGit(t, "", "clone", "-q", remote, other)
+		mustGit(t, other, "config", "user.name", "Other")
+		mustGit(t, other, "config", "user.email", "other@example.com")
+		writeAndCommit(t, other, "main", "new.txt", "new", "newer")
+		mustGit(t, other, "push", "-q", "origin", "main")
+
+		got := ResolveLatestBase(local, "main")
+		if got != "origin/main" {
+			t.Fatalf("got %q, want %q", got, "origin/main")
+		}
+		// Sanity: the fetch actually happened — origin/main now matches the new commit.
+		remoteSha := strings.TrimSpace(mustGitOut(t, local, "rev-parse", "refs/remotes/origin/main"))
+		otherSha := strings.TrimSpace(mustGitOut(t, other, "rev-parse", "HEAD"))
+		if remoteSha != otherSha {
+			t.Fatalf("origin/main = %q, want %q (fetch didn't run)", remoteSha, otherSha)
+		}
+	})
+
+	t.Run("local_strictly_ahead", func(t *testing.T) {
+		_, local := seedRemoteAndClone(t)
+		writeAndCommit(t, local, "main", "unpushed.txt", "x", "unpushed")
+		if got := ResolveLatestBase(local, "main"); got != "main" {
+			t.Fatalf("got %q, want %q (must preserve unpushed work)", got, "main")
+		}
+	})
+
+	t.Run("equal_tips", func(t *testing.T) {
+		_, local := seedRemoteAndClone(t)
+		if got := ResolveLatestBase(local, "main"); got != "main" {
+			t.Fatalf("got %q, want %q", got, "main")
+		}
+	})
+
+	t.Run("diverged", func(t *testing.T) {
+		remote, local := seedRemoteAndClone(t)
+		// Local commits one thing on main.
+		writeAndCommit(t, local, "main", "local.txt", "L", "local-only")
+		// Remote (via second clone) commits a different thing on main and pushes.
+		other := filepath.Join(t.TempDir(), "other")
+		mustGit(t, "", "clone", "-q", remote, other)
+		mustGit(t, other, "config", "user.name", "Other")
+		mustGit(t, other, "config", "user.email", "other@example.com")
+		writeAndCommit(t, other, "main", "remote.txt", "R", "remote-only")
+		mustGit(t, other, "push", "-q", "origin", "main")
+
+		if got := ResolveLatestBase(local, "main"); got != "main" {
+			t.Fatalf("got %q, want %q (diverged: prefer local)", got, "main")
+		}
+	})
+
+	t.Run("no_remote", func(t *testing.T) {
+		repo := initBareishRepo(t)
+		mustGit(t, repo, "config", "user.name", "Solo")
+		mustGit(t, repo, "config", "user.email", "solo@example.com")
+		writeAndCommit(t, repo, "main", "seed.txt", "s", "seed")
+		if got := ResolveLatestBase(repo, "main"); got != "main" {
+			t.Fatalf("got %q, want %q", got, "main")
+		}
+	})
+
+	t.Run("empty_base", func(t *testing.T) {
+		repo := initBareishRepo(t)
+		if got := ResolveLatestBase(repo, ""); got != "" {
+			t.Fatalf("got %q, want empty", got)
+		}
+	})
+}
+
 // --- test helpers ---
+
+// seedRemoteAndClone creates a bare "remote" with one commit on main, then
+// clones it into a "local" working repo. Returns absolute paths to both.
+func seedRemoteAndClone(t *testing.T) (remote, local string) {
+	t.Helper()
+	root := t.TempDir()
+	remote = filepath.Join(root, "remote.git")
+	mustGit(t, "", "init", "-q", "--bare", "-b", "main", remote)
+
+	// Seed via a temporary clone so the bare repo gets an initial main branch.
+	seed := filepath.Join(root, "seed")
+	mustGit(t, "", "clone", "-q", remote, seed)
+	mustGit(t, seed, "config", "user.name", "Seed")
+	mustGit(t, seed, "config", "user.email", "seed@example.com")
+	mustGit(t, seed, "checkout", "-q", "-b", "main")
+	writeAndCommit(t, seed, "main", "seed.txt", "seed", "seed")
+	mustGit(t, seed, "push", "-q", "-u", "origin", "main")
+
+	local = filepath.Join(root, "local")
+	mustGit(t, "", "clone", "-q", remote, local)
+	mustGit(t, local, "config", "user.name", "Local")
+	mustGit(t, local, "config", "user.email", "local@example.com")
+	return remote, local
+}
 
 func initBareishRepo(t *testing.T) string {
 	t.Helper()

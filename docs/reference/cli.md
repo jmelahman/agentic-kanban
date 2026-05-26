@@ -105,7 +105,7 @@ kanban board create --name <name> --repo-path <path> [flags]
 | `--repo-path`     | one of   | Path to the host git repo. Required if `--mount-path` is not set.   |
 | `--mount-path`    | one of   | Mount path inside session containers. Alternative to `--repo-path`. |
 | `--worktree-root` | no       | Override the parent directory for new session worktrees.            |
-| `--base-branch`   | no       | Branch new session worktrees fork from. Defaults to `main`.         |
+| `--base-branch`   | no       | Branch new session worktrees fork from. Defaults to `main`. Before creating each worktree, kanban best-effort runs `git fetch origin <base-branch>` (10s timeout) and uses `origin/<base-branch>` as the start-point if it ends up strictly ahead of local; otherwise it falls back to local. |
 | `--branch-prefix` | no       | Optional prefix prepended to session branch names.                  |
 | `--json`          | no       | Print the full board JSON instead of a one-line summary.            |
 

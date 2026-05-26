@@ -2,10 +2,19 @@ package git
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"log"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+// fetchTimeout caps best-effort `git fetch origin <base>` calls done while
+// resolving the start-point for a new worktree. Short enough that an
+// unreachable remote doesn't block session creation; long enough for a
+// normal small fetch over commercial broadband.
+const fetchTimeout = 10 * time.Second
 
 // Identity is an optional commit author/committer override. When both fields
 // are non-empty, callers can pass it to commit-creating helpers to inject
@@ -24,12 +33,57 @@ func (i Identity) configArgs() []string {
 }
 
 // AddWorktree creates a new worktree at path, creating a new branch from base.
+// Passes --no-track so the new branch never inherits a remote upstream when
+// base is a remote-tracking ref (e.g. "origin/main"); session branches aren't
+// meant to push back to the base.
 func AddWorktree(repoPath, branch, worktreePath, base string) error {
-	args := []string{"-C", repoPath, "worktree", "add", "-b", branch, worktreePath}
+	args := []string{"-C", repoPath, "worktree", "add", "--no-track", "-b", branch, worktreePath}
 	if base != "" {
 		args = append(args, base)
 	}
 	return run("git", args...)
+}
+
+// ResolveLatestBase returns the ref to use as the start-point for a new
+// worktree based on `base`. It best-effort fetches `origin/<base>` with a
+// short timeout, then returns "origin/<base>" iff that remote-tracking ref
+// is strictly ahead of local `<base>`. In every other case — no remote,
+// fetch failure, ref missing, equal tips, local ahead, or diverged — it
+// returns `<base>` unchanged. Returns "" when base is "" so callers preserve
+// the no-start-point `git worktree add` behavior.
+func ResolveLatestBase(repoPath, base string) string {
+	if base == "" {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
+	defer cancel()
+	if err := exec.CommandContext(ctx, "git", "-C", repoPath, "fetch", "--quiet", "origin", base).Run(); err != nil {
+		log.Printf("git fetch origin %s in %s: %v (falling back to local %s)", base, repoPath, err, base)
+	}
+	remote := "refs/remotes/origin/" + base
+	if exec.Command("git", "-C", repoPath, "rev-parse", "--verify", "--quiet", remote).Run() != nil {
+		return base
+	}
+	localSha, err1 := revParse(repoPath, base)
+	remoteSha, err2 := revParse(repoPath, remote)
+	if err1 != nil || err2 != nil || localSha == remoteSha {
+		return base
+	}
+	// origin strictly ahead iff local is an ancestor of origin AND they differ.
+	if exec.Command("git", "-C", repoPath, "merge-base", "--is-ancestor", base, remote).Run() == nil {
+		return "origin/" + base
+	}
+	return base
+}
+
+func revParse(repoPath, ref string) (string, error) {
+	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--verify", "--quiet", ref)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	if err := cmd.Run(); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out.String()), nil
 }
 
 // AddWorktreeFromExisting checks out an existing branch into a new worktree.

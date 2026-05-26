@@ -80,10 +80,13 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 			if !isGitRepo(worktreePath) {
 				return nil, fmt.Errorf("worktree path %q exists but is not a git worktree (likely a stale empty directory from a prior failed start); remove it and try again", worktreePath)
 			}
-		} else if err := git.AddWorktree(paths.RepoPath, branch, worktreePath, board.BaseBranch); err != nil {
-			// Branch may already exist (orphaned). Try attaching it to a fresh worktree.
-			if err2 := git.AddWorktreeFromExisting(paths.RepoPath, branch, worktreePath); err2 != nil {
-				return nil, fmt.Errorf("create worktree at %s from %s base %q: %w", worktreePath, paths.RepoPath, board.BaseBranch, err)
+		} else {
+			base := git.ResolveLatestBase(paths.RepoPath, board.BaseBranch)
+			if err := git.AddWorktree(paths.RepoPath, branch, worktreePath, base); err != nil {
+				// Branch may already exist (orphaned). Try attaching it to a fresh worktree.
+				if err2 := git.AddWorktreeFromExisting(paths.RepoPath, branch, worktreePath); err2 != nil {
+					return nil, fmt.Errorf("create worktree at %s from %s base %q: %w", worktreePath, paths.RepoPath, base, err)
+				}
 			}
 		}
 	} else if board.RepoPath != "" {
