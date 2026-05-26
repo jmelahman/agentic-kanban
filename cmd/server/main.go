@@ -29,6 +29,7 @@ import (
 	"github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/mcp"
+	"github.com/jmelahman/kanban/internal/metrics"
 	"github.com/jmelahman/kanban/internal/session"
 )
 
@@ -259,7 +260,7 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 	h2s := &http2.Server{}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           h2c.NewHandler(recoverPanics(reporter, logRequests(compressResponses(mux))), h2s),
+		Handler:           h2c.NewHandler(recoverPanics(reporter, metrics.HTTPMiddleware(logRequests(compressResponses(mux)))), h2s),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

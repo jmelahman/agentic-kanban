@@ -77,6 +77,28 @@ Use it to validate future schema/query changes — a regression on the
 `MaxPosition` or `ListArchived` rows is the canary (those are 30–95×
 faster with indexes at n≥1000; everything else is a wash on small tables).
 
+## Metrics
+
+`internal/metrics` exposes a shared Prometheus registry served at
+`GET /metrics`. Four signals are wired:
+
+- HTTP server (middleware in `cmd/server/main.go`, labelled by ServeMux
+  pattern).
+- GitHub REST API (RoundTripper installed on both `internal/github` and
+  `internal/buildcop` clients; records counters, latency, and
+  `X-RateLimit-*` headers).
+- SQLite queries (driver wrapper registered as `sqlite-instrumented`; used
+  by `internal/db.Open`).
+- Go runtime / process collectors.
+
+When adding a new HTTP client that calls GitHub, wrap its `Transport` with
+`metrics.WrapGitHubTransport(nil)` — otherwise it won't show up in the
+rate-limit gauges.
+
+`compose.yaml` bundles a Prometheus service; the UI is exposed under
+`/prometheus/` via a reverse-proxy on the kanban backend (driven by
+`$KANBAN_PROMETHEUS_URL`). See `docs/guide/observability.md`.
+
 ## Driving the UI with Playwright MCP
 
 `.mcp.json` registers `@playwright/mcp --headless --isolated`. Use the

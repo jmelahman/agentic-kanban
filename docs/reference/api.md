@@ -134,6 +134,8 @@ Sessions are the running container + worktree + harness for a ticket. The most u
 
 - `GET /api/health` — returns `200 OK` with `{"status":"ok"}` when both the SQLite database and the Docker daemon are reachable. Returns `503 Service Unavailable` with `{"db":"..."}` or `{"docker":"..."}` otherwise. Used by the container `HEALTHCHECK` directive in the published image so orchestrators can detect a wedged process.
 - `GET /api/version` — returns `{ "version": "<semver-or-sha>" }`.
+- `GET /metrics` — Prometheus exposition format. Lists Go runtime/process metrics plus kanban-specific series: `kanban_http_requests_total`, `kanban_http_request_duration_seconds`, `kanban_db_query_duration_seconds`, `kanban_db_query_errors_total`, `kanban_github_api_requests_total`, `kanban_github_api_request_duration_seconds`, `kanban_github_rate_limit_remaining`, `kanban_github_rate_limit_limit`, and `kanban_github_rate_limit_reset_timestamp_seconds`. See [observability](../guide/observability) for the bundled Prometheus service that scrapes this endpoint.
+- `GET /prometheus/...` — reverse-proxy to the Prometheus UI when `KANBAN_PROMETHEUS_URL` is set. Used by the bundled `prometheus` compose service; returns 503 in dev runs without Prometheus.
 
 ## Frontend error reporting
 

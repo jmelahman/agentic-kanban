@@ -6,9 +6,8 @@ import (
 
 	"database/sql"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/jmelahman/kanban/internal/config"
+	"github.com/jmelahman/kanban/internal/metrics"
 )
 
 //go:embed schema.sql
@@ -46,7 +45,7 @@ func Open(path string) (*Store, error) {
 		}
 		dsn = fmt.Sprintf("file:%s?%s", path, onDiskPragmas)
 	}
-	db, err := sql.Open("sqlite", dsn)
+	db, err := sql.Open(metrics.InstrumentedDriverName, dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}

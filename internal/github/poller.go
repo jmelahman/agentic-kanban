@@ -19,6 +19,7 @@ import (
 
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
+	"github.com/jmelahman/kanban/internal/metrics"
 )
 
 const (
@@ -110,7 +111,10 @@ func NewPoller(store *db.Store, bus Publisher, sessions SessionStopper, interval
 		bus:      bus,
 		sessions: sessions,
 		interval: interval,
-		http:     &http.Client{Timeout: 20 * time.Second},
+		http: &http.Client{
+			Timeout:   20 * time.Second,
+			Transport: metrics.WrapGitHubTransport(nil),
+		},
 	}
 }
 

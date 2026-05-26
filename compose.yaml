@@ -43,6 +43,10 @@ services:
       # container but not on a rootless-docker host. Tracks the volume
       # source below so the two can't drift.
       KANBAN_HOST_DOCKER_SOCK: ${DOCKER_SOCK_PATH:-/var/run/docker.sock}
+      # Where the kanban backend can reach the in-cluster Prometheus so its
+      # /prometheus/ route can reverse-proxy the UI. Only set when the
+      # prometheus service is in the compose project.
+      KANBAN_PROMETHEUS_URL: http://prometheus:9090
     volumes:
       - ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock
       # Agent config dir. Claude Code reads ~/.claude; for other
@@ -55,6 +59,30 @@ services:
     networks:
       - kanban-net
 
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: kanban-prometheus
+    restart: unless-stopped
+    # No host ports published — reach the UI via the kanban backend at
+    # http://localhost:7474/prometheus/, which reverse-proxies to this
+    # container over kanban-net. --web.external-url + --web.route-prefix
+    # tell Prometheus to generate UI links under that prefix.
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # External URL determines the path prefix Prometheus listens on
+      # (route-prefix defaults to its path component). The reverse-proxy in
+      # the kanban backend forwards /prometheus/* as-is, so both sides agree.
+      - --web.external-url=http://localhost:7474/prometheus
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - kanban-net
+
 networks:
   kanban-net:
     name: kanban-net
+
+volumes:
+  prometheus-data:

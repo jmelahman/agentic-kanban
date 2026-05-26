@@ -8,6 +8,7 @@ import (
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/errreport"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/metrics"
 	"github.com/jmelahman/kanban/internal/session"
 	"github.com/jmelahman/kanban/internal/tasks"
 	"github.com/jmelahman/kanban/web"
@@ -110,6 +111,9 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/harnesses", h.listHarnesses)
 
 	mux.HandleFunc("GET /api/fs/check", h.fsCheck)
+
+	mux.Handle("GET /metrics", metrics.Handler())
+	mux.Handle("/prometheus/", metrics.PrometheusProxyHandler())
 
 	mux.Handle("/", web.Handler())
 	return mux

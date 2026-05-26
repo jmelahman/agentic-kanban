@@ -29,6 +29,7 @@ import (
 
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/github"
+	"github.com/jmelahman/kanban/internal/metrics"
 )
 
 const (
@@ -72,7 +73,10 @@ func NewPoller(store *db.Store, bus Publisher, cfg Config, interval time.Duratio
 		bus:      bus,
 		cfg:      cfg,
 		interval: interval,
-		http:     &http.Client{Timeout: 30 * time.Second},
+		http: &http.Client{
+			Timeout:   30 * time.Second,
+			Transport: metrics.WrapGitHubTransport(nil),
+		},
 		boards:   make(map[string]boardCache),
 	}
 }
