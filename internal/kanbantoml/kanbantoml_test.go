@@ -83,6 +83,26 @@ board_name = "ProjectErrors"
 	}
 }
 
+func TestLoad_BuildCopIntervalUserOverridesProject(t *testing.T) {
+	withUserConfig(t, `[buildcop]
+interval = "10m"
+`)
+	repo := writeProject(t, `[buildcop]
+enabled = true
+interval = "2m"
+`)
+	f := Load(repo)
+	if f.BuildCop == nil {
+		t.Fatal("buildcop section missing")
+	}
+	if f.BuildCop.Enabled == nil || !*f.BuildCop.Enabled {
+		t.Errorf("enabled = %v; want true (project preserved)", f.BuildCop.Enabled)
+	}
+	if f.BuildCop.Interval == nil || *f.BuildCop.Interval != "10m" {
+		t.Errorf("interval = %v; want \"10m\" (user override)", f.BuildCop.Interval)
+	}
+}
+
 func TestLoad_UserOverridesProject_Sync(t *testing.T) {
 	withUserConfig(t, `[sync]
 allow_rebase = false

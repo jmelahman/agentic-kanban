@@ -85,6 +85,20 @@ func normalizeGitHubPath(p string) string {
 			}
 		}
 		return strings.Join(out, "/")
+	case len(segs) >= 2 && segs[0] == "repositories" && isNumeric(segs[1]):
+		// GitHub's pagination `Link` headers come back as
+		// /repositories/{numeric_id}/... even though the first-page request
+		// used /repos/{owner}/{repo}/.... Collapse onto the same label so
+		// /repos/:owner/:repo/pulls and its paginated follow-ups share one
+		// series in the counter — otherwise we'd grow one label per repo.
+		out := []string{"", "repos", ":owner", ":repo"}
+		out = append(out, segs[2:]...)
+		for i := 4; i < len(out); i++ {
+			if isNumeric(out[i]) {
+				out[i] = ":id"
+			}
+		}
+		return strings.Join(out, "/")
 	case len(segs) >= 2 && segs[0] == "search":
 		return "/search/" + segs[1]
 	case len(segs) >= 1 && segs[0] == "rate_limit":

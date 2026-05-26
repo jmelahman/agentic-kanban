@@ -69,8 +69,9 @@ type ErrorsSection struct {
 // branch filter; the poller files a ticket when a job's failure rate over
 // the rolling window exceeds the threshold.
 type BuildCopSection struct {
-	Enabled *bool           `toml:"enabled"`
-	Boards  []BuildCopBoard `toml:"boards"`
+	Enabled  *bool           `toml:"enabled"`
+	Interval *string         `toml:"interval"`
+	Boards   []BuildCopBoard `toml:"boards"`
 }
 
 // BuildCopBoard configures a single Build Cop board. RepoPath is the only
@@ -278,11 +279,15 @@ func mergeBuildCop(p, u *BuildCopSection) *BuildCopSection {
 	out := BuildCopSection{}
 	if p != nil {
 		out.Enabled = p.Enabled
+		out.Interval = p.Interval
 		out.Boards = p.Boards
 	}
 	if u != nil {
 		if u.Enabled != nil {
 			out.Enabled = u.Enabled
+		}
+		if u.Interval != nil {
+			out.Interval = u.Interval
 		}
 		if len(u.Boards) > 0 {
 			out.Boards = u.Boards

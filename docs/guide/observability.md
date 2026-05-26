@@ -55,9 +55,17 @@ shows which endpoint is burning budget, and:
 kanban_github_rate_limit_remaining{resource="core"}
 ```
 
-surfaces the absolute remaining budget against the per-hour cap. If the
-poll cadence is too aggressive for the install, lower the interval in
-`NewPoller(...)` or filter boards in `.kanban.toml`.
+surfaces the absolute remaining budget against the per-hour cap.
+
+If the poll cadence is too aggressive for the install:
+
+- **Build-cop** (the heavier of the two pollers) accepts
+  `[buildcop].interval` in `.kanban.toml` (default `2m`). The jobs-per-run
+  endpoint is the main offender on this poller — completed workflow runs
+  are immutable, so they're cached in memory after the first fetch and
+  re-used until they age out of the rolling window.
+- **PR poller** ticks every 30s and is bounded to 2 pages of 100 PRs per
+  repo per tick.
 
 ## Customising the scrape config
 

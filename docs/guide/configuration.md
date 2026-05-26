@@ -57,7 +57,12 @@ board_name = "kanban-errors"
 # A job auto-moves to "Fixed" once it has `green_streak_required` consecutive
 # successful runs.
 [buildcop]
-enabled = false
+enabled  = false
+interval = "2m"  # poll cadence; default 2m. Each tick lists completed runs
+                 # in `window_days`, then fetches jobs for any uncached run
+                 # (a `/repos/.../actions/runs/{id}/jobs` call per new run).
+                 # Bump this if you're hitting GitHub's 5000/hr REST rate
+                 # limit — observability metrics live at `/metrics`.
 
 [[buildcop.boards]]
 name                  = "Build Cop: master"  # optional — defaults to "Build Cop: <branch>"

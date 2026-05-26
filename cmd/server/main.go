@@ -249,8 +249,8 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 
 	buildCopCfg := buildcop.ResolveConfig("")
 	if buildCopCfg.Enabled && len(buildCopCfg.Boards) > 0 {
-		log.Printf("buildcop enabled, %d board(s)", len(buildCopCfg.Boards))
-		go buildcop.NewPoller(store, bus, buildCopCfg, 2*time.Minute).Start(pollerCtx)
+		log.Printf("buildcop enabled, %d board(s), interval=%s", len(buildCopCfg.Boards), buildCopCfg.Interval)
+		go buildcop.NewPoller(store, bus, buildCopCfg, buildCopCfg.Interval).Start(pollerCtx)
 	}
 
 	// h2c lets clients that opt in (curl --http2-prior-knowledge, Go's

@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -53,6 +54,14 @@ type Poller struct {
 
 	mu     sync.Mutex
 	boards map[string]boardCache // slug -> {boardID, columnIDs}
+
+	// jobsCache memoizes /actions/runs/:id/jobs responses. Completed workflow
+	// runs are immutable, so once cached we never refetch. Key is
+	// "<repo_path>|<run_id>"; evictRun is called at the end of each tick to
+	// drop entries that fell out of the rolling window so memory stays
+	// proportional to the active window, not the lifetime of the process.
+	jobsMu    sync.Mutex
+	jobsCache map[string][]ghJob
 }
 
 type boardCache struct {
@@ -77,7 +86,51 @@ func NewPoller(store *db.Store, bus Publisher, cfg Config, interval time.Duratio
 			Timeout:   30 * time.Second,
 			Transport: metrics.WrapGitHubTransport(nil),
 		},
-		boards:   make(map[string]boardCache),
+		boards:    make(map[string]boardCache),
+		jobsCache: make(map[string][]ghJob),
+	}
+}
+
+// jobsCacheKey is the lookup key for a (repo, run_id) pair. Workflow runs
+// have repo-scoped numeric IDs, so the repo prefix prevents collisions when
+// two boards poll different repos.
+func jobsCacheKey(repoPath string, runID int64) string {
+	return repoPath + "|" + strconv.FormatInt(runID, 10)
+}
+
+// getCachedJobs returns the cached jobs for a run, or false if not cached.
+func (p *Poller) getCachedJobs(repoPath string, runID int64) ([]ghJob, bool) {
+	p.jobsMu.Lock()
+	defer p.jobsMu.Unlock()
+	v, ok := p.jobsCache[jobsCacheKey(repoPath, runID)]
+	return v, ok
+}
+
+func (p *Poller) putCachedJobs(repoPath string, runID int64, jobs []ghJob) {
+	p.jobsMu.Lock()
+	defer p.jobsMu.Unlock()
+	p.jobsCache[jobsCacheKey(repoPath, runID)] = jobs
+}
+
+// retainJobs drops any cached jobs whose (repoPath, runID) is not in keep.
+// Called at the end of each syncBoard so the cache stays sized to the window.
+func (p *Poller) retainJobs(repoPath string, keep map[int64]struct{}) {
+	p.jobsMu.Lock()
+	defer p.jobsMu.Unlock()
+	prefix := repoPath + "|"
+	for k := range p.jobsCache {
+		if !strings.HasPrefix(k, prefix) {
+			continue
+		}
+		idStr := k[len(prefix):]
+		id, err := strconv.ParseInt(idStr, 10, 64)
+		if err != nil {
+			delete(p.jobsCache, k)
+			continue
+		}
+		if _, ok := keep[id]; !ok {
+			delete(p.jobsCache, k)
+		}
 	}
 }
 
@@ -138,14 +191,22 @@ func (p *Poller) syncBoard(ctx context.Context, cfg BoardConfig) error {
 	runs = filtered
 
 	jobsByRun := make(map[int64][]ghJob, len(runs))
+	keep := make(map[int64]struct{}, len(runs))
 	for _, r := range runs {
+		keep[r.ID] = struct{}{}
+		if cached, ok := p.getCachedJobs(cfg.RepoPath, r.ID); ok {
+			jobsByRun[r.ID] = cached
+			continue
+		}
 		jobs, err := p.listJobs(ctx, cfg.RepoPath, r.ID)
 		if err != nil {
 			log.Printf("buildcop: board %q: jobs for run %d: %v", cfg.Name, r.ID, err)
 			continue
 		}
 		jobsByRun[r.ID] = jobs
+		p.putCachedJobs(cfg.RepoPath, r.ID, jobs)
 	}
+	p.retainJobs(cfg.RepoPath, keep)
 
 	stats := aggregate(runs, jobsByRun)
 	return p.reconcile(ctx, cfg, cache, stats)

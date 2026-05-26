@@ -2,16 +2,24 @@ package buildcop
 
 import (
 	"fmt"
+	"log"
+	"time"
 
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 )
+
+// DefaultInterval is the poll cadence applied when [buildcop].interval is
+// unset. Two minutes balances detection latency against GitHub rate budget;
+// see docs/guide/observability.md for the math on the jobs-endpoint fanout.
+const DefaultInterval = 2 * time.Minute
 
 // Config is the resolved [buildcop] section: a list of board configurations
 // to poll. Enabled is the master switch; even when true, an empty Boards
 // slice means the poller is a no-op.
 type Config struct {
-	Enabled bool
-	Boards  []BoardConfig
+	Enabled  bool
+	Interval time.Duration
+	Boards   []BoardConfig
 }
 
 // BoardConfig is one Build Cop board's full set of knobs after defaults
@@ -36,13 +44,27 @@ func (b BoardConfig) MatchesAllBranches() bool {
 // Config with defaults applied per board. Disabled when the [buildcop]
 // section is absent or `enabled = false`.
 func ResolveConfig(repoPath string) Config {
-	cfg := Config{Enabled: false}
+	cfg := Config{Enabled: false, Interval: DefaultInterval}
 	f := kanbantoml.Load(repoPath)
 	if f.BuildCop == nil {
 		return cfg
 	}
 	if f.BuildCop.Enabled != nil {
 		cfg.Enabled = *f.BuildCop.Enabled
+	}
+	if f.BuildCop.Interval != nil && *f.BuildCop.Interval != "" {
+		d, err := time.ParseDuration(*f.BuildCop.Interval)
+		switch {
+		case err != nil:
+			log.Printf("buildcop: ignoring invalid interval %q: %v (using default %s)", *f.BuildCop.Interval, err, DefaultInterval)
+		case d < time.Second:
+			// Guard against a user typo like "5" (parsed as 5ns) or "100ms"
+			// that would hammer the API. Sub-second polling makes no sense
+			// for workflow runs which complete on the order of minutes.
+			log.Printf("buildcop: interval %s is below 1s minimum; using default %s", d, DefaultInterval)
+		default:
+			cfg.Interval = d
+		}
 	}
 	for _, b := range f.BuildCop.Boards {
 		cfg.Boards = append(cfg.Boards, resolveBoard(b))
