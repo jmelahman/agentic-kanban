@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/jmelahman/kanban/internal/api"
@@ -18,6 +20,18 @@ import (
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/session"
 )
+
+// captureLog redirects the default logger to an in-memory buffer for the
+// duration of the test. The default Go test runner doesn't run tests in
+// parallel by default, so a global swap is safe here.
+func captureLog(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	prev := log.Writer()
+	log.SetOutput(buf)
+	t.Cleanup(func() { log.SetOutput(prev) })
+	return buf
+}
 
 // reportEnv stands up a minimal HTTP server with a real reporter wired in.
 // Skips the git/repo seeding that newEnv does — these tests don't touch
@@ -113,6 +127,77 @@ func TestPostErrors_EnabledReporter_FilesTicket(t *testing.T) {
 	}
 	if tickets[0].Title != "TypeError: x is undefined" {
 		t.Fatalf("title = %q", tickets[0].Title)
+	}
+}
+
+func TestPostErrors_LogsToStdoutEvenWhenReporterDisabled(t *testing.T) {
+	logBuf := captureLog(t)
+	env := newReportEnv(t, false)
+	resp := postJSON(t, env.srv.URL+"/api/errors", map[string]string{
+		"message":    "TypeError: x is undefined",
+		"stack":      "at App.tsx:1\n at index.tsx:5",
+		"source":     "boundary",
+		"url":        "http://localhost:5173/",
+		"user_agent": "Mozilla/5.0",
+	})
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d; want 204", resp.StatusCode)
+	}
+	io.Copy(io.Discard, resp.Body)
+
+	out := logBuf.String()
+	wantSubstrings := []string{
+		"client error",
+		"source=boundary",
+		`message="TypeError: x is undefined"`,
+		"url=http://localhost:5173/",
+		"at App.tsx:1",
+		"at index.tsx:5",
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(out, want) {
+			t.Errorf("log output missing %q\n--- log ---\n%s", want, out)
+		}
+	}
+}
+
+func TestPostErrors_LogLineSurvivesEmbeddedNewline(t *testing.T) {
+	logBuf := captureLog(t)
+	env := newReportEnv(t, false)
+	// A naive %s would split the summary line across two log records.
+	// %q on the message keeps it on one greppable line.
+	resp := postJSON(t, env.srv.URL+"/api/errors", map[string]string{
+		"message": "first line\nsecond line",
+		"source":  "window",
+	})
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	for _, line := range strings.Split(strings.TrimSpace(logBuf.String()), "\n") {
+		if strings.Contains(line, "client error") && !strings.Contains(line, `"first line\nsecond line"`) {
+			t.Fatalf("summary line did not %%q-escape embedded newline:\n%s", line)
+		}
+	}
+}
+
+func TestPostErrors_TruncatesOversizeMessage(t *testing.T) {
+	logBuf := captureLog(t)
+	env := newReportEnv(t, false)
+	huge := strings.Repeat("A", 4096)
+	resp := postJSON(t, env.srv.URL+"/api/errors", map[string]string{
+		"message": huge,
+		"source":  "window",
+	})
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+
+	out := logBuf.String()
+	if !strings.Contains(out, "...[truncated]") {
+		t.Errorf("expected truncation marker in log output, got:\n%s", out)
+	}
+	if strings.Count(out, "A") > 2048 {
+		t.Errorf("oversize message not truncated (%d A's in log)", strings.Count(out, "A"))
 	}
 }
 

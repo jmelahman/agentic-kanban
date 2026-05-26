@@ -147,5 +147,8 @@ Sessions are the running container + worktree + harness for a ticket. The most u
   `window` (uncaught exceptions), `unhandledrejection` (rejected promises with
   no `.catch`), and `longtask` (main-thread blocks ≥2s reported by the
   PerformanceObserver — useful for catching UI freezes that throw nothing).
-  Always returns 204; reports are silently dropped when `[errors] enabled` is
-  false.
+  Always returns 204. Every accepted report is also written to the server's
+  stdout logger (one `client error: source=… url=… message=…` line plus the
+  stack), so frontend errors show up in `docker logs` even when
+  `[errors] enabled` is false; ticket creation is the only path gated by that
+  flag.

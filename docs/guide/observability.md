@@ -20,6 +20,23 @@ covering four signals:
   pragma name for `PRAGMA`, etc.).
 - **Go runtime / process** — standard collectors from `prometheus/client_golang`.
 
+## Frontend errors in `docker logs`
+
+The web UI reports uncaught exceptions, unhandled promise rejections, React
+render errors, React Query 5xx responses, and `≥2s` long tasks to
+`POST /api/errors`. The handler writes a one-line summary plus the (truncated)
+stack to the server's default logger, so a deployment running under
+`docker compose` surfaces them via:
+
+```
+docker compose logs kanban | grep "client error"
+```
+
+This is independent of the [`[errors]` ticket reporter](./configuration);
+even with `[errors] enabled = false` (the default), the log line is still
+emitted. Enable the ticket reporter when you want the same events filed onto
+a dedicated kanban board for triage in addition to the log stream.
+
 ## Bundled Prometheus service
 
 `compose.yaml` includes a `prometheus` service on `kanban-net` that scrapes

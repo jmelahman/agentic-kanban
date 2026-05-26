@@ -1396,32 +1396,69 @@ type reportFrontendErrorReq struct {
 
 // reportFrontendError accepts error reports from the React app's
 // ErrorBoundary, global React Query onError, window error/unhandledrejection
-// listeners, and the long-task observer. Always returns 204; when the reporter
-// is disabled (the default), this endpoint silently absorbs reports.
+// listeners, and the long-task observer. Always returns 204.
+//
+// Every accepted report is also logged to the server's default logger so it
+// shows up in `docker logs` regardless of whether the errreport ticket
+// reporter is enabled — that's the path operators rely on to see UI errors
+// without having to ask the user to open DevTools.
 func (h *handlers) reportFrontendError(w http.ResponseWriter, r *http.Request) {
 	req, err := decodeBody[reportFrontendErrorReq](r)
 	if err != nil {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if h.reporter != nil && req.Message != "" {
+	if req.Message != "" {
 		source := strings.TrimSpace(req.Source)
 		if source == "" {
 			source = "frontend"
 		}
-		meta := map[string]string{
-			"url":        req.URL,
-			"user_agent": req.UserAgent,
-		}
-		for k, v := range req.Meta {
-			if _, taken := meta[k]; taken {
-				continue
+		logClientError(source, req)
+		if h.reporter != nil {
+			meta := map[string]string{
+				"url":        req.URL,
+				"user_agent": req.UserAgent,
 			}
-			meta[k] = v
+			for k, v := range req.Meta {
+				if _, taken := meta[k]; taken {
+					continue
+				}
+				meta[k] = v
+			}
+			h.reporter.Report(r.Context(), source, req.Message, req.Stack, meta)
 		}
-		h.reporter.Report(r.Context(), source, req.Message, req.Stack, meta)
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Caps applied before logging so a malicious or runaway client can't fill the
+// container's log volume with a single multi-megabyte payload.
+const (
+	clientLogMessageMax = 1024
+	clientLogStackMax   = 8192
+	clientLogFieldMax   = 512
+)
+
+// logClientError writes a single-line summary plus the (truncated) stack to
+// the default logger. Free-text fields are emitted via %q so embedded
+// newlines/quotes can't break the one-line-per-event grep contract.
+func logClientError(source string, req reportFrontendErrorReq) {
+	msg := truncate(req.Message, clientLogMessageMax)
+	url := truncate(req.URL, clientLogFieldMax)
+	ua := truncate(req.UserAgent, clientLogFieldMax)
+	stack := truncate(req.Stack, clientLogStackMax)
+	if stack == "" {
+		log.Printf("client error: source=%s url=%s ua=%q message=%q", source, url, ua, msg)
+		return
+	}
+	log.Printf("client error: source=%s url=%s ua=%q message=%q\n%s", source, url, ua, msg, stack)
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "...[truncated]"
 }
 
 // fsCheck reports whether a host path is visible to the kanban server and, if
