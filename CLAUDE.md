@@ -99,6 +99,24 @@ rate-limit gauges.
 `/prometheus/` via a reverse-proxy on the kanban backend (driven by
 `$KANBAN_PROMETHEUS_URL`). See `docs/guide/observability.md`.
 
+From inside this devcontainer (attached to `kanban-net`), Prometheus is
+reachable directly at `http://prometheus:9090/prometheus/` — the server
+is configured with `--web.external-url=/prometheus`, so the API lives
+under `/prometheus/api/v1/...` (a bare `/api/v1/...` returns 404). Useful
+probes:
+
+```bash
+# Build / version
+curl -sf http://prometheus:9090/prometheus/api/v1/status/buildinfo
+
+# Active scrape targets (expect kanban:7474 -> up)
+curl -sf 'http://prometheus:9090/prometheus/api/v1/targets?state=active'
+
+# Instant query
+curl -sf --data-urlencode 'query=up' \
+  http://prometheus:9090/prometheus/api/v1/query
+```
+
 ## Driving the UI with Playwright MCP
 
 `.mcp.json` registers `@playwright/mcp --headless --isolated`. Use the
