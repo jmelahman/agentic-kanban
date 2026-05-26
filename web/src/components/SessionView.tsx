@@ -297,6 +297,7 @@ export function SessionView({
       if (archivedId === ticketId) onClose();
     },
   });
+  useShortcut("ticket.archive", () => archiveMut.mutate(ticketId), { enabled: shortcutsEnabled });
   const syncMut = useMutation({
     mutationFn: (strategy: SyncStrategy) => api.syncTicket(ticketId, strategy),
     onSuccess: (_data, strategy) => {

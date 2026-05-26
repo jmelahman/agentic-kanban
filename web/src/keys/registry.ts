@@ -67,6 +67,12 @@ export const ACTIONS: Action[] = [
     group: "Ticket",
     defaultBinding: { ctrl: false, alt: false, shift: false, meta: false, key: "N" },
   },
+  {
+    id: "ticket.archive",
+    label: "Archive ticket",
+    group: "Ticket",
+    defaultBinding: { ctrl: false, alt: false, shift: false, meta: false, key: "A" },
+  },
 ];
 
 export const ACTIONS_BY_ID: Record<string, Action> = Object.fromEntries(
