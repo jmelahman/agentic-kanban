@@ -115,6 +115,22 @@ Server-Sent Events stream of board changes. Events include:
 
 Useful for keeping a dashboard or another integration in sync without polling.
 
+### `GET /api/events?boards=<id>[,<id>…]`
+
+Multiplexed SSE stream that fans in events from N boards over a single
+HTTP/1.1 connection. Each event is the same JSON envelope as the per-board
+endpoint plus a `board_id` field so the client can demultiplex:
+
+```
+event: ticket_updated
+data: {"type":"ticket_updated","data":{...},"board_id":42}
+```
+
+Prefer this endpoint when subscribing to more than one board — browsers cap
+HTTP/1.1 connections at 6 per origin (and route WebSocket upgrades through
+the same pool), so one EventSource per board can stall the next WebSocket
+handshake. The web UI uses this for every board subscription.
+
 ## Sessions
 
 Sessions are the running container + worktree + harness for a ticket. The most useful endpoints:

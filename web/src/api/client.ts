@@ -372,39 +372,114 @@ export async function postError(p: {
   }
 }
 
-export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => void {
-  const es = new EventSource(`/api/boards/${boardId}/events`);
-  // The backend wraps each event as {type, data}; unwrap so consumers see the
-  // raw entity (Ticket / Session / …). Without this, `data.id` is undefined
-  // and per-id stores never update — selections appear stuck (e.g. a session
-  // pinned at "starting" forever).
-  const handler = (e: MessageEvent) => {
-    try {
-      const parsed = JSON.parse(e.data);
-      const payload =
-        parsed && typeof parsed === "object" && "data" in parsed ? parsed.data : parsed;
-      opts.onEvent(e.type, payload);
-    } catch {
-      opts.onEvent(e.type, null);
-    }
-  };
-  for (const t of [
-    "ticket_created",
-    "ticket_updated",
-    "ticket_moved",
-    "ticket_archived",
-    "ticket_unarchived",
-    "ticket_deleted",
-    "session_updated",
-    "session_pull_progress",
-    "ready",
-  ]) {
-    es.addEventListener(t, handler as EventListener);
+// Event types fanned out from the backend bus. Kept in sync with the
+// handlers in internal/api/handlers.go that call h.bus.Publish.
+const BOARD_EVENT_TYPES = [
+  "ticket_created",
+  "ticket_updated",
+  "ticket_moved",
+  "ticket_archived",
+  "ticket_unarchived",
+  "ticket_deleted",
+  "session_updated",
+  "session_pull_progress",
+  "ready",
+] as const;
+
+type MultiplexListener = {
+  boardID: number;
+  onEvent: (type: string, data: unknown) => void;
+  onStatus?: (status: "open" | "error" | "closed") => void;
+};
+
+// boardEventManager keeps a single EventSource open for the union of board
+// ids any consumer is currently listening on, and demultiplexes incoming
+// events by board_id. The dedicated /api/boards/{id}/events endpoint still
+// works for one-off callers, but the multiplexed /api/events?boards=… stream
+// avoids saturating the browser's HTTP/1.1 per-origin connection pool (6
+// connections on Chrome/Firefox) when Overview subscribes to many boards at
+// once. Without this, a freshly-started session's WebSocket handshake gets
+// queued behind the SSE streams and never opens — the terminal hangs on a
+// blank cursor until the user refreshes.
+class BoardEventManager {
+  private listeners = new Set<MultiplexListener>();
+  private es: EventSource | null = null;
+  private currentKey = "";
+  private syncQueued = false;
+
+  subscribe(l: MultiplexListener): () => void {
+    this.listeners.add(l);
+    this.scheduleSync();
+    return () => {
+      this.listeners.delete(l);
+      this.scheduleSync();
+    };
   }
-  es.onopen = () => opts.onStatus?.("open");
-  es.onerror = () => opts.onStatus?.("error");
+
+  // Coalesces rapid add/remove sequences (e.g. BoardTree mounting subscribers
+  // for N boards in one render) into one EventSource open instead of N.
+  private scheduleSync(): void {
+    if (this.syncQueued) return;
+    this.syncQueued = true;
+    queueMicrotask(() => {
+      this.syncQueued = false;
+      this.sync();
+    });
+  }
+
+  private sync(): void {
+    const ids = Array.from(new Set(Array.from(this.listeners, (l) => l.boardID))).sort(
+      (a, b) => a - b,
+    );
+    const key = ids.join(",");
+    if (key === this.currentKey) return;
+    if (this.es) {
+      this.es.close();
+      this.es = null;
+    }
+    this.currentKey = key;
+    if (ids.length === 0) return;
+
+    const es = new EventSource(`/api/events?boards=${key}`);
+    const handler = (e: MessageEvent) => {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (!parsed || typeof parsed !== "object") return;
+      const obj = parsed as { board_id?: unknown; data?: unknown };
+      const boardID = typeof obj.board_id === "number" ? obj.board_id : null;
+      if (boardID == null) return;
+      const data = obj.data;
+      for (const l of this.listeners) {
+        if (l.boardID === boardID) l.onEvent(e.type, data);
+      }
+    };
+    for (const t of BOARD_EVENT_TYPES) {
+      es.addEventListener(t, handler as EventListener);
+    }
+    es.onopen = () => {
+      for (const l of this.listeners) l.onStatus?.("open");
+    };
+    es.onerror = () => {
+      for (const l of this.listeners) l.onStatus?.("error");
+    };
+    this.es = es;
+  }
+}
+
+const boardEventManager = new BoardEventManager();
+
+export function subscribeBoard(boardId: number, opts: SubscribeOptions): () => void {
+  const cleanup = boardEventManager.subscribe({
+    boardID: boardId,
+    onEvent: opts.onEvent,
+    onStatus: opts.onStatus,
+  });
   return () => {
-    es.close();
+    cleanup();
     opts.onStatus?.("closed");
   };
 }

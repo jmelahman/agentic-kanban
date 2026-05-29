@@ -65,9 +65,8 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
 
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
       const path = kind === "shell" ? "shell" : "pty";
-      const ws = new WebSocket(
-        `${proto}//${window.location.host}/ws/sessions/${sessionId}/${path}`,
-      );
+      const wsUrl = `${proto}//${window.location.host}/ws/sessions/${sessionId}/${path}`;
+      const ws = new WebSocket(wsUrl);
       ws.binaryType = "arraybuffer";
 
       const controls = createTerminalControls(term, () => {
@@ -79,7 +78,9 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
         ws.send(JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }));
       };
 
-      ws.onopen = () => sendResize();
+      ws.onopen = () => {
+        sendResize();
+      };
       ws.onmessage = (e) => {
         if (typeof e.data === "string") {
           term.write(e.data);
@@ -87,7 +88,9 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
           term.write(new Uint8Array(e.data));
         }
       };
-      ws.onclose = () => term.write("\r\n[disconnected]\r\n");
+      ws.onclose = () => {
+        term.write("\r\n[disconnected]\r\n");
+      };
 
       const dataDisp = term.onData((data) => {
         if (ws.readyState === WebSocket.OPEN) ws.send(data);
@@ -150,11 +153,10 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
     const target = mountTarget ?? getOffscreenContainer();
-    if (wrapper.parentElement !== target) {
-      target.appendChild(wrapper);
-      fitRef.current?.fit();
-      if (mountTarget) hostRef.current?.focus({ preventScroll: true });
-    }
+    if (wrapper.parentElement === target) return;
+    target.appendChild(wrapper);
+    fitRef.current?.fit();
+    if (mountTarget) hostRef.current?.focus({ preventScroll: true });
   }, [mountTarget]);
 
   return null;

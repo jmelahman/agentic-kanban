@@ -7,11 +7,11 @@ import { activeTicketStore, pullProgressStore, sessionStore, ticketStore } from 
 export type StreamStatus = "open" | "error" | "closed";
 
 // Subscribes to one board's SSE stream and routes events into the relevant
-// caches. Safe to call from multiple components for the same board id —
-// each call opens its own EventSource, so prefer mounting per *view*, not
-// per *consumer*. Browsers cap HTTP/1.1 EventSource connections at 6 per
-// origin; HTTP/2 lifts that. If board counts grow, plumb a multiplexed
-// /api/events?boards=… endpoint and switch this hook to drive it.
+// caches. Safe to call from multiple components and across many board ids:
+// all subscribers share a single underlying EventSource via the multiplexed
+// /api/events?boards=… endpoint, so the browser's HTTP/1.1 per-origin
+// connection pool (6 connections on Chrome/Firefox) never saturates — even
+// when Overview is showing dozens of boards at once.
 export function useBoardSubscription(
   boardId: number | null,
   onStatus?: (s: StreamStatus) => void,

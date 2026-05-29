@@ -175,6 +175,19 @@ Rules:
   `publishSessionUpdated(ctx, sessionID)` which refetches; the poller
   refetches in `applyTransition`'s defer.
 
+### Per-origin SSE streams starve the WebSocket pool
+
+Browsers cap HTTP/1.1 connections at 6 per origin and route the initial
+WebSocket upgrade request through the same pool. One `EventSource` per
+board (Overview subscribes to *every* loaded board) saturates the pool
+once you have ~6 boards open; the next PTY WebSocket handshake then sits
+queued in `readyState: CONNECTING` indefinitely — the terminal panel
+shows a cursor but never receives output until the user refreshes. All
+SSE subscribers funnel through a singleton `BoardEventManager` in
+`web/src/api/client.ts` that keeps one stream open against
+`GET /api/events?boards=…`. Don't add new code paths that open per-board
+EventSources; route them through `subscribeBoard` / `useBoardSubscription`.
+
 ## Documentation upkeep
 
 User-facing changes need a docs update in the same PR. Match the change to
