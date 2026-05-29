@@ -99,7 +99,10 @@ jobs:
           fi
       - name: boot image and hit API
         run: |
+          docker_gid="$(stat -c '%g' /var/run/docker.sock)"
           docker run -d --name kanban-smoke -p 127.0.0.1:7474:7474 \
+            --group-add "$docker_gid" \
+            -v /var/run/docker.sock:/var/run/docker.sock \
             kanban:smoke --in-memory
           for _ in $(seq 1 30); do
             if curl -sf -m 1 http://127.0.0.1:7474/api/health >/dev/null; then
