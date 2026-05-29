@@ -188,6 +188,23 @@ SSE subscribers funnel through a singleton `BoardEventManager` in
 `GET /api/events?boards=…`. Don't add new code paths that open per-board
 EventSources; route them through `subscribeBoard` / `useBoardSubscription`.
 
+### A deleted board can refetch its `/state` on a loop
+
+There is no board-level SSE (no `board_created`/`board_deleted`), so the
+boards list is only refreshed by *this* client's own mutations. A long-lived
+tab that loaded while board N existed keeps board N mounted in Overview after
+someone else deletes it — still observing `["board", N]` and still subscribed
+via the multiplexed stream. Once we moved to one shared connection
+(`26713ba`), every subscribed board's events arrive reliably (the old
+per-board EventSources were starved by the 6-connection cap and silently
+dropped these), so each event for the dead board re-invalidates and refetches
+its 404ing `GET /api/boards/N/state` — amplified ×4 by react-query retries,
+each a toast + `reportRuntimeError`. The `QueryClient` in `web/src/main.tsx`
+breaks the loop: 4xx responses are never retried, and a 404 on a `["board",
+…]` query refetches the boards list (dropping the dead board so its Overview
+node unmounts) instead of toasting. If you ever add a board-level SSE event,
+prefer evicting proactively over relying on this 404 fallback.
+
 ## Documentation upkeep
 
 User-facing changes need a docs update in the same PR. Match the change to

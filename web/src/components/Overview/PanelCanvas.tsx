@@ -1,7 +1,7 @@
 // biome-ignore-all lint/a11y/useSemanticElements: no native semantic for focus-tracked draggable panels and their drag handles.
 // biome-ignore-all lint/a11y/noNoninteractiveTabindex: panels capture focus to track the active panel among siblings.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DraggableEvent } from "react-draggable";
 import { Rnd } from "react-rnd";
 import { queryKeys } from "@/api/keys";
@@ -71,8 +71,11 @@ export function PanelCanvas({
 
   // Track canvas size so tile rects follow viewport changes (sidebar resize,
   // window resize). ResizeObserver fires synchronously on layout, so tiled
-  // panels reposition without a frame of stale geometry.
-  useEffect(() => {
+  // panels reposition without a frame of stale geometry. Measure in a layout
+  // effect (before paint) so a restored maximized/tiled panel fills the canvas
+  // on its first painted frame instead of briefly rendering at its stored
+  // float rect while canvasSize is still {0,0}.
+  useLayoutEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const update = () => {
