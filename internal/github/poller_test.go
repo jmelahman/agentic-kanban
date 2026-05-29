@@ -1,6 +1,16 @@
 package github
 
-import "testing"
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os/exec"
+	"testing"
+	"time"
+
+	"github.com/jmelahman/kanban/internal/metrics"
+)
 
 func TestParseRemoteURL(t *testing.T) {
 	cases := []struct {
@@ -156,6 +166,84 @@ func TestTokenFallsBackToGHCLI(t *testing.T) {
 		if lastArgs[i] != want[i] {
 			t.Fatalf("ghe args: got %v, want %v", lastArgs, want)
 		}
+	}
+}
+
+func TestListPRsUsesETagOn304(t *testing.T) {
+	const etag = `W/"pr-page-1"`
+	var (
+		hits        int
+		gotIfNone   string
+		modifyAfter int // after this many hits, start returning 200 again
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		gotIfNone = r.Header.Get("If-None-Match")
+		w.Header().Set("ETag", etag)
+		// No Link header → single-page response, so prCache caches one URL.
+		if gotIfNone == etag && hits != modifyAfter {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintln(w, `[{"number":1,"html_url":"https://x/1","title":"t","state":"open","head":{"ref":"feature/x"}}]`)
+	}))
+	t.Cleanup(srv.Close)
+
+	repoDir := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"remote", "add", "origin", "git@github.com:owner/repo.git"},
+	} {
+		cmd := exec.Command("git", append([]string{"-C", repoDir}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	t.Setenv("GITHUB_API_URL", srv.URL)
+	t.Setenv("GH_TOKEN", "dummy")
+
+	p := &Poller{http: &http.Client{Timeout: 5 * time.Second, Transport: metrics.WrapGitHubTransport(nil)}}
+	ctx := context.Background()
+
+	// First poll populates the cache.
+	prs, err := p.listPRs(ctx, repoDir)
+	if err != nil {
+		t.Fatalf("first listPRs: %v", err)
+	}
+	if len(prs) != 1 || prs[0].Number != 1 {
+		t.Fatalf("first listPRs: got %+v", prs)
+	}
+	if gotIfNone != "" {
+		t.Errorf("first request sent If-None-Match=%q, want empty", gotIfNone)
+	}
+
+	// Second poll should send the ETag and reuse the cached body on 304.
+	prs, err = p.listPRs(ctx, repoDir)
+	if err != nil {
+		t.Fatalf("second listPRs: %v", err)
+	}
+	if len(prs) != 1 || prs[0].Number != 1 {
+		t.Fatalf("cached listPRs: got %+v", prs)
+	}
+	if gotIfNone != etag {
+		t.Errorf("second request If-None-Match=%q, want %q", gotIfNone, etag)
+	}
+	if hits != 2 {
+		t.Errorf("hits=%d, want 2 (one fresh + one revalidate)", hits)
+	}
+
+	// Force a 200 so the cache refreshes; subsequent revalidate should still 304.
+	modifyAfter = 3
+	if _, err := p.listPRs(ctx, repoDir); err != nil {
+		t.Fatalf("refresh listPRs: %v", err)
+	}
+	if _, err := p.listPRs(ctx, repoDir); err != nil {
+		t.Fatalf("post-refresh listPRs: %v", err)
+	}
+	if hits != 4 {
+		t.Errorf("hits=%d, want 4", hits)
 	}
 }
 

@@ -99,6 +99,17 @@ type Poller struct {
 	sessions SessionStopper
 	interval time.Duration
 	http     *http.Client
+	// prCache memoises each `/pulls` page response keyed by request URL.
+	// GitHub returns 304 Not Modified when If-None-Match matches, and 304s
+	// don't count against the core rate limit — so a warm cache turns a
+	// no-change poll into a free request.
+	prCache sync.Map // url string -> prCacheEntry
+}
+
+type prCacheEntry struct {
+	etag string
+	data []ghPR
+	next string // rel="next" Link from the cached response, or ""
 }
 
 // NewPoller constructs a poller. interval is the global tick rate.
@@ -343,7 +354,13 @@ func (p *Poller) listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
 
 	var all []ghPR
 	for page := 0; page < prMaxPages && next != ""; page++ {
-		req, err := http.NewRequestWithContext(cctx, http.MethodGet, next, nil)
+		pageURL := next
+		var cached prCacheEntry
+		if v, ok := p.prCache.Load(pageURL); ok {
+			cached = v.(prCacheEntry)
+		}
+
+		req, err := http.NewRequestWithContext(cctx, http.MethodGet, pageURL, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -351,6 +368,9 @@ func (p *Poller) listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
 		req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 		if tok != "" {
 			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		if cached.etag != "" {
+			req.Header.Set("If-None-Match", cached.etag)
 		}
 		resp, err := p.http.Do(req)
 		if err != nil {
@@ -361,16 +381,31 @@ func (p *Poller) listPRs(ctx context.Context, repoPath string) ([]ghPR, error) {
 		if err != nil {
 			return nil, fmt.Errorf("github api: read body: %w", err)
 		}
-		if resp.StatusCode/100 != 2 {
+		switch {
+		case resp.StatusCode == http.StatusNotModified:
+			all = append(all, cached.data...)
+			next = cached.next
+		case resp.StatusCode/100 == 2:
+			var pageData []ghPR
+			if err := json.Unmarshal(body, &pageData); err != nil {
+				return nil, fmt.Errorf("github api: parse: %w", err)
+			}
+			all = append(all, pageData...)
+			nextLink := ParseNextLink(resp.Header.Get("Link"))
+			if etag := resp.Header.Get("ETag"); etag != "" {
+				p.prCache.Store(pageURL, prCacheEntry{
+					etag: etag,
+					data: pageData,
+					next: nextLink,
+				})
+			} else {
+				p.prCache.Delete(pageURL)
+			}
+			next = nextLink
+		default:
 			return nil, fmt.Errorf("github api %s: %s: %s",
-				next, resp.Status, strings.TrimSpace(string(body)))
+				pageURL, resp.Status, strings.TrimSpace(string(body)))
 		}
-		var pageData []ghPR
-		if err := json.Unmarshal(body, &pageData); err != nil {
-			return nil, fmt.Errorf("github api: parse: %w", err)
-		}
-		all = append(all, pageData...)
-		next = ParseNextLink(resp.Header.Get("Link"))
 	}
 	return all, nil
 }
