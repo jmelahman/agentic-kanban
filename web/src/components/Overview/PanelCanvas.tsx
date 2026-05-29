@@ -406,6 +406,7 @@ export function PanelCanvas({
             key={p.ticketId}
             panel={p}
             rect={dr}
+            canvasSize={canvasSize}
             focused={p.ticketId === focusedTicketId}
             onClose={() => close(p.ticketId)}
             onResizeStop={(r) => handleResizeStop(p.ticketId, r)}
@@ -493,6 +494,7 @@ function clampY(y: number, h: number, canvasH: number): number {
 function Panel({
   panel,
   rect,
+  canvasSize,
   focused,
   onClose,
   onResizeStop,
@@ -505,6 +507,7 @@ function Panel({
 }: {
   panel: PersistedPanel;
   rect: Rect;
+  canvasSize: { w: number; h: number };
   focused: boolean;
   onClose: () => void;
   onResizeStop: (r: Rect) => void;
@@ -548,12 +551,18 @@ function Panel({
   };
 
   if (!structure) {
+    // While the board structure loads, fill the canvas with the plain bg
+    // color (darker than the surface canvas behind it). Override position/size
+    // after the spread (which carries bounds, min sizes, and the drag/resize
+    // handlers); once the structure resolves the panel snaps back to its real
+    // rect below.
     return (
-      <Rnd {...rndProps} className="rounded border border-border bg-bg shadow-lg">
-        <div className="flex h-full items-center justify-center text-sm text-fg-muted">
-          Loading board…
-        </div>
-      </Rnd>
+      <Rnd
+        {...rndProps}
+        position={{ x: 0, y: 0 }}
+        size={{ width: canvasSize.w, height: canvasSize.h }}
+        className="bg-bg"
+      />
     );
   }
 
