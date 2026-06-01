@@ -340,6 +340,27 @@ func TestWriteUserHarness_RoundTrip(t *testing.T) {
 	}
 }
 
+func TestWriteUserSignCommits_RoundTrip(t *testing.T) {
+	withUserConfig(t, "")
+
+	if err := WriteUserSignCommits(true); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	f := Load("")
+	if f.Git == nil || f.Git.SignCommits == nil || !*f.Git.SignCommits {
+		t.Fatalf("after write, git.sign_commits = %v; want true", f.Git)
+	}
+
+	// Disabling (the default) clears the [git] section; with nothing else in
+	// the file, the file is removed.
+	if err := WriteUserSignCommits(false); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if f := Load(""); f.Git != nil {
+		t.Errorf("git section still present after disable: %v", f.Git)
+	}
+}
+
 func TestWriteUserHarness_PreservesOtherKeys(t *testing.T) {
 	withUserConfig(t, `[sync]
 allow_rebase = false

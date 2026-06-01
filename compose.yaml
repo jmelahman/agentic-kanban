@@ -56,6 +56,17 @@ services:
       - ${HOME}/code:${HOME}/code
       - ${HOME}/.local/share/kanban:${HOME}/.local/share/kanban
       - ${HOME}/.config/kanban:${HOME}/.config/kanban
+      # Your git config + global excludes, so the session diff view honors the
+      # files you ignore "in all situations". ~/.gitconfig carries
+      # core.excludesFile; ~/.config/git is its default target
+      # (~/.config/git/ignore). Put e.g. .claude/settings.local.json in your
+      # global excludes to keep it out of every board's diff. Read-only — git
+      # only reads them; kanban runs its own merge/squash commits with signing
+      # disabled, so a commit.gpgsign here won't break merges (and your signing
+      # key is never mounted). If core.excludesFile points at a non-default path
+      # (e.g. ~/.gitignore), mount that file too.
+      - ${HOME}/.gitconfig:${HOME}/.gitconfig:ro
+      - ${HOME}/.config/git:${HOME}/.config/git:ro
     networks:
       - kanban-net
 

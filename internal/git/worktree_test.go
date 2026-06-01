@@ -183,6 +183,116 @@ func seedRemoteAndClone(t *testing.T) (remote, local string) {
 	return remote, local
 }
 
+// TestDiffAgainstBase checks that the patch spans committed-on-branch changes,
+// uncommitted edits to tracked files, and brand-new untracked files (merge-base
+// → working tree), while excluding commits made on base after the branch
+// diverged — and that computing it never mutates the real index.
+func TestDiffAgainstBase(t *testing.T) {
+	repo := initBareishRepo(t)
+	mustGit(t, repo, "config", "user.name", "Seed")
+	mustGit(t, repo, "config", "user.email", "seed@example.com")
+	if err := os.WriteFile(filepath.Join(repo, ".gitignore"), []byte("ignored.txt\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "add", ".gitignore")
+	writeAndCommit(t, repo, "main", "seed.txt", "seed\n", "init")
+
+	// Branch off and commit a change on the branch.
+	mustGit(t, repo, "checkout", "-q", "-b", "feature")
+	writeAndCommit(t, repo, "feature", "committed.txt", "committed change\n", "add committed")
+
+	// Advance base after divergence — must not leak into the branch diff.
+	mustGit(t, repo, "checkout", "-q", "main")
+	writeAndCommit(t, repo, "main", "main-only.txt", "main only\n", "main moves on")
+	mustGit(t, repo, "checkout", "-q", "feature")
+
+	// Leave an uncommitted edit to a tracked file, a brand-new untracked file,
+	// and an ignored file (which must not appear).
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("seed edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "untracked.txt"), []byte("brand new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "ignored.txt"), []byte("noise\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	statusBefore := mustGitOut(t, repo, "status", "--porcelain")
+
+	patch, err := DiffAgainstBase(repo, "main")
+	if err != nil {
+		t.Fatalf("DiffAgainstBase: %v", err)
+	}
+	for _, want := range []string{
+		"committed.txt", "committed change",
+		"seed.txt", "seed edited",
+		"untracked.txt", "brand new",
+	} {
+		if !strings.Contains(patch, want) {
+			t.Errorf("patch missing %q\n---\n%s", want, patch)
+		}
+	}
+	if strings.Contains(patch, "main-only.txt") {
+		t.Errorf("patch should exclude post-divergence base changes:\n%s", patch)
+	}
+	if strings.Contains(patch, "ignored.txt") {
+		t.Errorf("patch should exclude gitignored files:\n%s", patch)
+	}
+
+	// The throwaway index must not have leaked into the real one: untracked.txt
+	// stays untracked, and nothing new is staged.
+	if statusAfter := mustGitOut(t, repo, "status", "--porcelain"); statusAfter != statusBefore {
+		t.Errorf("real index mutated by diff:\nbefore:\n%s\nafter:\n%s", statusBefore, statusAfter)
+	}
+}
+
+// signingRepo seeds a repo whose config enables signing with a key that does
+// not exist, so a commit attempt fails unless signing is suppressed.
+func signingRepo(t *testing.T) string {
+	t.Helper()
+	repo := initBareishRepo(t)
+	mustGit(t, repo, "config", "user.name", "Seed")
+	mustGit(t, repo, "config", "user.email", "seed@example.com")
+	mustGit(t, repo, "config", "commit.gpgsign", "true")
+	mustGit(t, repo, "config", "gpg.format", "ssh")
+	mustGit(t, repo, "config", "user.signingkey", filepath.Join(repo, "missing-key.pub"))
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := AddAll(repo); err != nil {
+		t.Fatalf("AddAll: %v", err)
+	}
+	return repo
+}
+
+// TestCommit_SkipsSigning verifies that by default kanban's commit operations
+// never attempt to sign, even when the repo config enables it — the kanban
+// container has no signing key, so a mounted ~/.gitconfig with
+// commit.gpgsign=true must not break merges.
+func TestCommit_SkipsSigning(t *testing.T) {
+	SetCommitSigning(false) // default; explicit so the test is order-independent.
+	repo := signingRepo(t)
+	if err := Commit(repo, "no sign", Identity{Name: "Ada", Email: "ada@example.com"}); err != nil {
+		t.Fatalf("Commit should skip signing and succeed: %v", err)
+	}
+	if sig := strings.TrimSpace(mustGitOut(t, repo, "log", "-1", "--pretty=%G?")); sig != "N" {
+		t.Errorf("commit signature status = %q, want N (unsigned)", sig)
+	}
+}
+
+// TestCommit_SigningEnabled verifies the toggle: with signing enabled kanban no
+// longer suppresses it, so the same repo (configured to sign with a missing
+// key) now fails the commit instead of silently skipping the signature.
+func TestCommit_SigningEnabled(t *testing.T) {
+	SetCommitSigning(true)
+	defer SetCommitSigning(false)
+	repo := signingRepo(t)
+	if err := Commit(repo, "sign", Identity{Name: "Ada", Email: "ada@example.com"}); err == nil {
+		t.Fatal("Commit should attempt signing (and fail with a missing key) when signing is enabled")
+	}
+}
+
 func initBareishRepo(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "repo")

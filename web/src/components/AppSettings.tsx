@@ -54,6 +54,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
   const [tab, setTab] = useState<SettingsTab>("general");
   const [harness, setHarness] = useState<string>("");
   const [worktreesRoot, setWorktreesRoot] = useState<string>("");
+  const [signCommits, setSignCommits] = useState<boolean>(false);
   const savedOrientation = useTerminalOrientation();
   const [orientation, setOrientation] = useState<TerminalOrientation>(savedOrientation);
   const { mode } = useThemeMode();
@@ -64,6 +65,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
     if (settingsQ.data) {
       setHarness(settingsQ.data.harness);
       setWorktreesRoot(settingsQ.data.worktrees_root);
+      setSignCommits(settingsQ.data.sign_commits);
     }
   }, [settingsQ.data]);
 
@@ -79,7 +81,7 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
   const updateMut = useMutation({
     mutationFn: async () => {
       if (orientation !== savedOrientation) setTerminalOrientation(orientation);
-      const payload: { harness?: string; worktrees_root?: string } = {};
+      const payload: { harness?: string; worktrees_root?: string; sign_commits?: boolean } = {};
       if (settingsQ.data && harness !== settingsQ.data.harness) payload.harness = harness;
       if (
         settingsQ.data &&
@@ -87,6 +89,9 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
         worktreesRoot.trim() !== settingsQ.data.worktrees_root
       ) {
         payload.worktrees_root = worktreesRoot.trim();
+      }
+      if (settingsQ.data && signCommits !== settingsQ.data.sign_commits) {
+        payload.sign_commits = signCommits;
       }
       await api.updateSettings(payload);
     },
@@ -103,7 +108,8 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
       worktreesRoot.trim() !== settingsQ.data.worktrees_root
     : false;
   const orientationDirty = orientation !== savedOrientation;
-  const dirty = harnessDirty || orientationDirty || worktreesRootDirty;
+  const signCommitsDirty = settingsQ.data ? signCommits !== settingsQ.data.sign_commits : false;
+  const dirty = harnessDirty || orientationDirty || worktreesRootDirty || signCommitsDirty;
   const busy = updateMut.isPending;
   const harnesses = harnessesQ.data ?? [];
   const worktreesLocked = settingsQ.data?.worktrees_root_locked ?? false;
@@ -185,6 +191,24 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
                 <option value="vertical">right</option>
                 <option value="horizontal">bottom</option>
               </select>
+            </FormField>
+            <FormField label="Sign commits">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={signCommits}
+                  onChange={(e) => setSignCommits(e.target.checked)}
+                  disabled={settingsQ.isLoading}
+                />
+                <span>Sign kanban's merge &amp; squash commits</span>
+              </label>
+              <span className="text-xs text-fg-muted">
+                Off by default — kanban forces signing off so merges don't fail when the container
+                has no key. When on, it defers to your gitconfig's{" "}
+                <span className="font-mono">commit.gpgsign</span>, so mount your signing key and
+                agent into the container. Saved to{" "}
+                <span className="font-mono">~/.config/kanban/config.toml</span>.
+              </span>
             </FormField>
           </>
         )}

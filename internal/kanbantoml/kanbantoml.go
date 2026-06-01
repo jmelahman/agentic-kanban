@@ -24,6 +24,7 @@ type File struct {
 	Merge        *MergeSection        `toml:"merge"`
 	GitHub       *GitHubSection       `toml:"github"`
 	Worktrees    *WorktreesSection    `toml:"worktrees"`
+	Git          *GitSection          `toml:"git"`
 	Plans        *PlansSection        `toml:"plans"`
 	Branches     *BranchesSection     `toml:"branches"`
 	Devcontainer *DevcontainerSection `toml:"devcontainer"`
@@ -38,6 +39,14 @@ type HarnessSection struct {
 
 type WorktreesSection struct {
 	Root *string `toml:"root"`
+}
+
+// GitSection configures how kanban makes its own commits. SignCommits, when
+// true, lets the ambient git config's commit.gpgsign decide whether kanban's
+// merge/squash commits are signed; when false (the default) kanban forces
+// signing off, since the container usually has no signing key.
+type GitSection struct {
+	SignCommits *bool `toml:"sign_commits"`
 }
 
 // PlansSection configures the directory the in-app Plans tab reads. An
@@ -195,6 +204,7 @@ func merge(project, user File) File {
 	out.Merge = mergeMerge(project.Merge, user.Merge)
 	out.GitHub = mergeGitHub(project.GitHub, user.GitHub)
 	out.Worktrees = mergeWorktrees(project.Worktrees, user.Worktrees)
+	out.Git = mergeGit(project.Git, user.Git)
 	out.Plans = mergePlans(project.Plans, user.Plans)
 	out.Branches = mergeBranches(project.Branches, user.Branches)
 	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
@@ -215,6 +225,20 @@ func mergeWorktrees(p, u *WorktreesSection) *WorktreesSection {
 	}
 	if u != nil && u.Root != nil {
 		out.Root = u.Root
+	}
+	return &out
+}
+
+func mergeGit(p, u *GitSection) *GitSection {
+	if p == nil && u == nil {
+		return nil
+	}
+	out := GitSection{}
+	if p != nil {
+		out.SignCommits = p.SignCommits
+	}
+	if u != nil && u.SignCommits != nil {
+		out.SignCommits = u.SignCommits
 	}
 	return &out
 }
@@ -471,6 +495,16 @@ func WriteUserWorktreesRoot(root string) error {
 		return writeUserSection("worktrees", nil)
 	}
 	return writeUserSection("worktrees", map[string]any{"root": root})
+}
+
+// WriteUserSignCommits sets the [git].sign_commits key in the user config when
+// enabled, or clears the [git] section when disabled (the default), keeping the
+// file minimal.
+func WriteUserSignCommits(enabled bool) error {
+	if !enabled {
+		return writeUserSection("git", nil)
+	}
+	return writeUserSection("git", map[string]any{"sign_commits": true})
 }
 
 // writeUserSection sets the named top-level table to value (or removes it

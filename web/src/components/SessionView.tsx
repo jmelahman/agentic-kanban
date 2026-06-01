@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   type ReactNode,
+  Suspense,
+  lazy,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -39,7 +41,11 @@ import { PlansPanel } from "./PlansPanel";
 import { Tab } from "./Tab";
 import { TasksPanel } from "./TasksPanel";
 
-const TAB_ORDER = ["agent", "shell", "tasks", "plans", "info"] as const;
+// DiffPanel pulls in @pierre/diffs + Shiki; lazy-load it so that weight only
+// lands when the diff tab is first opened, not in the initial bundle.
+const DiffPanel = lazy(() => import("./DiffPanel").then((m) => ({ default: m.DiffPanel })));
+
+const TAB_ORDER = ["agent", "shell", "tasks", "diff", "plans", "info"] as const;
 type TabId = (typeof TAB_ORDER)[number];
 
 const TAB_KEY_PREFIX = "sessionPane.tab.";
@@ -132,12 +138,15 @@ export function SessionView({
   });
   const hasPlans = (plansQ.data?.length ?? 0) > 0;
 
+  // The Diff tab needs a worktree to diff; it appears once the session has one.
+  const hasWorktree = !!session?.worktree_path;
+
   // Visible tabs follow `TAB_ORDER` minus any conditionally-hidden ones.
   // Shortcuts and the bounce-on-hidden effect both consult this so a
   // hidden tab is treated as if it never existed.
   const visibleTabs = useMemo<readonly TabId[]>(
-    () => TAB_ORDER.filter((t) => t !== "plans" || hasPlans),
-    [hasPlans],
+    () => TAB_ORDER.filter((t) => (t !== "plans" || hasPlans) && (t !== "diff" || hasWorktree)),
+    [hasPlans, hasWorktree],
   );
 
   useShortcut(
@@ -623,6 +632,7 @@ export function SessionView({
         <Tab active={tab === "agent"} onClick={() => setTab("agent")} label="agent" />
         <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="terminal" />
         <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
+        {hasWorktree && <Tab active={tab === "diff"} onClick={() => setTab("diff")} label="diff" />}
         {hasPlans && <Tab active={tab === "plans"} onClick={() => setTab("plans")} label="plans" />}
         <Tab active={tab === "info"} onClick={() => setTab("info")} label="info" />
       </div>
@@ -646,6 +656,11 @@ export function SessionView({
           </div>
         )}
         {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
+        {tab === "diff" && session && (
+          <Suspense fallback={<p className="p-4 text-sm text-fg-muted">Loading diff viewer…</p>}>
+            <DiffPanel session={session} />
+          </Suspense>
+        )}
         {tab === "plans" && session && <PlansPanel session={session} />}
         {tab === "info" &&
           (session ? (

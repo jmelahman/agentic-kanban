@@ -144,6 +144,7 @@ export type AppSettings = {
   worktrees_root: string;
   worktrees_root_resolved: string;
   worktrees_root_locked: boolean;
+  sign_commits: boolean;
 };
 
 export type Harness = { id: string; label: string; pty_command: string[] };
@@ -283,7 +284,7 @@ export const api = {
   deletePort: (id: number) => request<void>(`/api/ports/${id}`, { method: "DELETE" }),
 
   getSettings: () => request<AppSettings>("/api/settings"),
-  updateSettings: (input: { harness?: string; worktrees_root?: string }) =>
+  updateSettings: (input: { harness?: string; worktrees_root?: string; sign_commits?: boolean }) =>
     request<AppSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(input) }),
   listHarnesses: () => request<Harness[]>("/api/harnesses"),
 
@@ -309,6 +310,8 @@ export const api = {
     return res.text();
   },
 
+  getSessionDiff: (sessionId: number) => request<SessionDiff>(`/api/sessions/${sessionId}/diff`),
+
   getVersion: () => request<Version>("/api/version"),
 };
 
@@ -316,6 +319,14 @@ export type PlanMeta = {
   name: string;
   mod_time: string;
   size: number;
+};
+
+// SessionDiff is the unified patch of a session worktree vs. where its branch
+// diverged from the board base (committed + uncommitted tracked changes).
+// `patch` is empty when there are no changes (or the session has no worktree).
+export type SessionDiff = {
+  base: string;
+  patch: string;
 };
 
 export type SubscribeOptions = {

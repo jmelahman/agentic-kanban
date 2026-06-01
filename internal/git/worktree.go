@@ -5,8 +5,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -225,7 +228,142 @@ func CurrentHead(repoPath, ref string) (string, error) {
 	return strings.TrimSpace(out.String()), nil
 }
 
+// DiffAgainstBase returns the unified diff (patch) of the worktree's full
+// uncommitted state — committed-on-branch changes plus every uncommitted
+// modification, including brand-new untracked files (honoring .gitignore) —
+// against the point where the session branch diverged from base. It resolves
+// base to whichever ref exists locally (`base`, then `origin/<base>`), finds
+// the merge-base with HEAD, and diffs from there to the working tree (`-M`
+// enables rename detection). When no merge-base can be computed (e.g. an
+// orphan/empty branch) it diffs against the resolved base, and when base
+// resolves to nothing it diffs against the empty tree so a brand-new branch
+// still shows its work. An empty string with a nil error means "no changes".
+//
+// Untracked files have no git object to diff, so to surface them in one pass —
+// without mutating the agent's real index — everything is staged into a
+// throwaway index (seeded from the real one so git's stat-cache keeps `add -A`
+// fast), then a single `diff --cached` reports the lot. The real index and
+// working tree are left untouched. .gitignore is honored, so anything the repo
+// ignores (e.g. a gitignored `.claude/settings.local.json`) never appears.
+func DiffAgainstBase(worktreePath, base string) (string, error) {
+	var diffTarget string
+	if ref := resolveDiffBase(worktreePath, base); ref != "" {
+		if mb, err := mergeBase(worktreePath, ref, "HEAD"); err == nil && mb != "" {
+			diffTarget = mb
+		} else {
+			diffTarget = ref
+		}
+	}
+
+	tmpDir, err := os.MkdirTemp("", "kanban-diff-")
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+	tmpIndex := filepath.Join(tmpDir, "index")
+	seedTempIndex(worktreePath, tmpIndex)
+
+	env := append(os.Environ(), "GIT_INDEX_FILE="+tmpIndex)
+	if _, err := captureGitEnv(env, "-C", worktreePath, "add", "-A"); err != nil {
+		return "", err
+	}
+	args := []string{"-C", worktreePath, "diff", "--no-color", "-M", "--cached"}
+	if diffTarget != "" {
+		args = append(args, diffTarget)
+	}
+	return captureGitEnv(env, args...)
+}
+
+// seedTempIndex best-effort copies the worktree's real index into dst so that
+// `git add -A` against dst reuses git's stat-cache and skips re-hashing
+// unchanged files. Failures are ignored — an empty index still yields a
+// correct (if slower) diff.
+func seedTempIndex(worktreePath, dst string) {
+	out, err := captureGit("-C", worktreePath, "rev-parse", "--git-path", "index")
+	if err != nil {
+		return
+	}
+	src := strings.TrimSpace(out)
+	if !filepath.IsAbs(src) {
+		src = filepath.Join(worktreePath, src)
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(dst, data, 0o600)
+}
+
+// resolveDiffBase returns the first of `base` or `origin/<base>` that names an
+// existing ref reachable from the worktree, or "" when neither does (or base
+// is empty).
+func resolveDiffBase(worktreePath, base string) string {
+	if base == "" {
+		return ""
+	}
+	if _, err := revParse(worktreePath, base); err == nil {
+		return base
+	}
+	remote := "origin/" + base
+	if _, err := revParse(worktreePath, remote); err == nil {
+		return remote
+	}
+	return ""
+}
+
+// mergeBase returns the best common ancestor SHA of refs a and b.
+func mergeBase(worktreePath, a, b string) (string, error) {
+	out, err := captureGit("-C", worktreePath, "merge-base", a, b)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// captureGit runs git with args and returns its stdout. Unlike run(), it keeps
+// stdout for the caller; the wrapped error includes stderr for context.
+func captureGit(args ...string) (string, error) {
+	return captureGitEnv(nil, args...)
+}
+
+// captureGitEnv is captureGit with an explicit environment (e.g. a
+// GIT_INDEX_FILE override). A nil env inherits the current process environment.
+func captureGitEnv(env []string, args ...string) (string, error) {
+	cmd := exec.Command("git", args...)
+	if env != nil {
+		cmd.Env = env
+	}
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, errb.String())
+	}
+	return out.String(), nil
+}
+
+// noSignArgs disables commit/tag signing for the git operations kanban runs on
+// the user's behalf (merge, squash, rebase, commit). Injected as `-c` overrides
+// (highest precedence), mirroring how Identity injects user.name/email.
+var noSignArgs = []string{"-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false"}
+
+// signCommits gates whether kanban lets the ambient git config sign its
+// commits. False (the default) forces signing off via noSignArgs, since the
+// kanban container usually has no signing key and a mounted ~/.gitconfig with
+// commit.gpgsign=true would otherwise make merges fail. Toggled at startup and
+// from the App Settings handler via SetCommitSigning.
+var signCommits atomic.Bool
+
+// SetCommitSigning configures whether kanban's own commit/merge/squash/rebase
+// operations may be signed. When enabled, kanban stops forcing signing off and
+// defers to the git config's commit.gpgsign — the deployment is then
+// responsible for providing a signing key/agent inside the container.
+func SetCommitSigning(enabled bool) { signCommits.Store(enabled) }
+
 func run(name string, args ...string) error {
+	if name == "git" && !signCommits.Load() {
+		args = append(append([]string{}, noSignArgs...), args...)
+	}
 	cmd := exec.Command(name, args...)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb

@@ -32,6 +32,8 @@ docker run -d --name kanban \
   -v $HOME/.claude:$HOME/.claude \
   -v $HOME/.claude.json:$HOME/.claude.json \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
+  -v $HOME/.gitconfig:$HOME/.gitconfig:ro \
+  -v $HOME/.config/git:$HOME/.config/git:ro \
   -v $SOURCE:$SOURCE \
   -e HOME=$HOME \
   -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
@@ -40,6 +42,12 @@ docker run -d --name kanban \
   -e GH_TOKEN=$(gh auth token) \
   lahmanja/kanban:latest
 ```
+
+::: tip Hiding files from the diff view
+The session **diff** tab honors git's full ignore chain, including your **global** excludes — the file named by `core.excludesFile` in your `~/.gitconfig` (default `~/.config/git/ignore`). Both are mounted read-only above, so adding a pattern like `.claude/settings.local.json` to your global excludes keeps it out of every board's diff without editing each repo. If your `core.excludesFile` points at a non-default path such as `~/.gitignore`, mount that file too: `-v $HOME/.gitignore:$HOME/.gitignore:ro`.
+
+Your signing key is never mounted into the container, and kanban makes its own merge/squash commits with **signing disabled by default** — so a `commit.gpgsign = true` in the mounted gitconfig won't break merges. If you've mounted your signing key + agent and want kanban's commits signed, enable **Sign commits** in App Settings (or `[git] sign_commits = true` in `~/.config/kanban/config.toml`).
+:::
 
 ::: tip Rootless Docker
 Set `DOCKER_SOCK_PATH` in your shell to point at your rootless socket — see the [rootless Docker docs](https://docs.docker.com/engine/security/rootless/). The same value flows into `KANBAN_HOST_DOCKER_SOCK` so the host path is used as the bind source when kanban spawns session containers. On rootless setups the socket is typically owned by your own UID/GID, so `--user "$(id -u):$(id -g)" --group-add "$(stat -c '%g' "$DOCKER_SOCK_PATH")"` is usually enough — no `chown` needed.

@@ -1274,6 +1274,7 @@ type settingsResp struct {
 	WorktreesRoot         string `json:"worktrees_root"`
 	WorktreesRootResolved string `json:"worktrees_root_resolved"`
 	WorktreesRootLocked   bool   `json:"worktrees_root_locked"`
+	SignCommits           bool   `json:"sign_commits"`
 }
 
 func (h *handlers) settingsResponse() settingsResp {
@@ -1283,7 +1284,15 @@ func (h *handlers) settingsResponse() settingsResp {
 		WorktreesRoot:         readUserWorktreesRoot(),
 		WorktreesRootResolved: h.config.WorktreesDir(),
 		WorktreesRootLocked:   h.config.HasWorktreesDirOverride(),
+		SignCommits:           readUserSignCommits(),
 	}
+}
+
+// readUserSignCommits reports whether the user opted kanban into commit signing
+// ([git].sign_commits in the user config). Defaults false.
+func readUserSignCommits() bool {
+	g := kanbantoml.Load("").Git
+	return g != nil && g.SignCommits != nil && *g.SignCommits
 }
 
 func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -1293,6 +1302,7 @@ func (h *handlers) getSettings(w http.ResponseWriter, r *http.Request) {
 type updateSettingsReq struct {
 	Harness       *string `json:"harness"`
 	WorktreesRoot *string `json:"worktrees_root"`
+	SignCommits   *bool   `json:"sign_commits"`
 }
 
 func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
@@ -1322,6 +1332,13 @@ func (h *handlers) updateSettings(w http.ResponseWriter, r *http.Request) {
 			h.httpError(w, err, 500)
 			return
 		}
+	}
+	if req.SignCommits != nil {
+		if err := kanbantoml.WriteUserSignCommits(*req.SignCommits); err != nil {
+			h.httpError(w, err, 500)
+			return
+		}
+		git.SetCommitSigning(*req.SignCommits)
 	}
 	writeJSON(w, 200, h.settingsResponse())
 }
@@ -1580,6 +1597,40 @@ func (h *handlers) getSessionPlan(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.WriteHeader(200)
 	_, _ = w.Write(data)
+}
+
+type sessionDiff struct {
+	Base  string `json:"base"`
+	Patch string `json:"patch"`
+}
+
+// getSessionDiff returns a unified diff of the session worktree against the
+// point where its branch diverged from the board's base branch (committed plus
+// uncommitted tracked changes — see git.DiffAgainstBase). A session without a
+// worktree returns an empty patch rather than an error so the frontend can
+// render a "no changes" state.
+func (h *handlers) getSessionDiff(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	if sess.WorktreePath == "" {
+		writeJSON(w, 200, sessionDiff{})
+		return
+	}
+	board, err := h.boardForSession(r.Context(), sess)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	patch, err := git.DiffAgainstBase(sess.WorktreePath, board.BaseBranch)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, sessionDiff{Base: board.BaseBranch, Patch: patch})
 }
 
 // slugMaxLen caps slugified output so that branch names built as

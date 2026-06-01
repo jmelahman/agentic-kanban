@@ -26,8 +26,10 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/errreport"
+	"github.com/jmelahman/kanban/internal/git"
 	"github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/kanbantoml"
 	"github.com/jmelahman/kanban/internal/mcp"
 	"github.com/jmelahman/kanban/internal/metrics"
 	"github.com/jmelahman/kanban/internal/session"
@@ -171,6 +173,11 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 	cfg, err := config.Load(dataDirOverride, worktreesDirOverride, portStart, portEnd)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	// Apply the persisted commit-signing preference before any merge/commit ops.
+	if g := kanbantoml.Load("").Git; g != nil && g.SignCommits != nil {
+		git.SetCommitSigning(*g.SignCommits)
 	}
 
 	dbPath := cfg.DBPath()

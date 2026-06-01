@@ -47,6 +47,8 @@ docker run -d --name kanban \
   -v $HOME/.claude:$HOME/.claude \
   -v $HOME/.claude.json:$HOME/.claude.json \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
+  -v $HOME/.gitconfig:$HOME/.gitconfig:ro \
+  -v $HOME/.config/git:$HOME/.config/git:ro \
   -v $SOURCE:$SOURCE \
   -e HOME=$HOME \
   -e XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \

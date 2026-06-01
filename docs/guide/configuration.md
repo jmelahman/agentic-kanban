@@ -16,6 +16,15 @@ id = "claude-code"            # default harness for new sessions
 [worktrees]
 root = "/path/to/worktrees"   # parent dir for new worktrees (overrides --worktrees-dir)
 
+# How kanban makes its own merge/squash commits. sign_commits is off by
+# default: kanban forces signing off (`-c commit.gpgsign=false`) so merges
+# never fail when the container has no signing key. Turn it on — also via the
+# App Settings dialog — only when you've mounted your signing key/agent into
+# the container and want kanban's commits signed; kanban then defers to your
+# gitconfig's commit.gpgsign.
+[git]
+sign_commits = false
+
 # Directory the per-ticket "plans" tab reads. The tab only appears when the
 # directory has at least one `.md` file. An absolute path is shared across
 # every ticket. A relative path (e.g. "./plans") is resolved against each
