@@ -170,14 +170,6 @@ export function DiffPanel({ session }: { session: Session }) {
   // GitHub-style. Ephemeral (not persisted) and per-path, so toggling one file
   // leaves the rest as diffs. Each viewed file lazily fetches its full contents.
   const [viewFilePaths, setViewFilePaths] = useState<ReadonlySet<string>>(() => new Set());
-  const toggleFileView = useCallback((path: string) => {
-    setViewFilePaths((prev) => {
-      const next = new Set(prev);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
 
   const [collapsed, setCollapsed] = useState(loadSidebarCollapsed);
   // The file currently scrolled to the top of the viewport, highlighted in the
@@ -250,6 +242,24 @@ export function DiffPanel({ session }: { session: Session }) {
     container.scrollTo({ top, behavior: "smooth" });
     setActivePath(path);
   }, []);
+
+  // Toggle a file between its diff and whole-file ("View file") view. Swapping
+  // the body changes the file's height — collapsing a long blob back to its
+  // diff pulls everything below it up — so once the new layout commits (next
+  // frame) re-anchor the toggled file's header to the top, rather than leaving
+  // the user scrolled into whatever shifted into view.
+  const toggleFileView = useCallback(
+    (path: string) => {
+      setViewFilePaths((prev) => {
+        const next = new Set(prev);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      });
+      requestAnimationFrame(() => scrollToFile(path));
+    },
+    [scrollToFile],
+  );
 
   if (diffQ.isLoading) {
     return <p className="p-4 text-sm text-fg-muted">Loading diff…</p>;
