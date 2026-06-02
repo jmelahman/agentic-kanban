@@ -262,14 +262,7 @@ func CurrentHead(repoPath, ref string) (string, error) {
 // ignores (e.g. a gitignored `.claude/settings.local.json`) never appears.
 func DiffAgainstBase(worktreePath, base string) (diff string, err error) {
 	defer func(start time.Time) { metrics.ObserveGitCommand("diff", start, err) }(time.Now())
-	var diffTarget string
-	if ref := resolveDiffBase(worktreePath, base); ref != "" {
-		if mb, err := mergeBase(worktreePath, ref, "HEAD"); err == nil && mb != "" {
-			diffTarget = mb
-		} else {
-			diffTarget = ref
-		}
-	}
+	diffTarget := resolveDiffTarget(worktreePath, base)
 
 	tmpDir, err := os.MkdirTemp("", "kanban-diff-")
 	if err != nil {
@@ -297,12 +290,9 @@ func DiffAgainstBase(worktreePath, base string) (diff string, err error) {
 // symlink pointing out of the tree) can't read arbitrary files. A missing file,
 // or one resolving outside the worktree, returns fs.ErrNotExist.
 func ReadWorktreeFile(worktreePath, relPath string) (string, error) {
-	if relPath == "" || filepath.IsAbs(relPath) {
-		return "", fs.ErrNotExist
-	}
-	clean := filepath.Clean(relPath)
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return "", fs.ErrNotExist
+	clean, err := cleanRelPath(relPath)
+	if err != nil {
+		return "", err
 	}
 	root, err := filepath.EvalSymlinks(worktreePath)
 	if err != nil {
@@ -320,6 +310,47 @@ func ReadWorktreeFile(worktreePath, relPath string) (string, error) {
 		return "", err
 	}
 	return string(data), nil
+}
+
+// ReadBaseFile returns the contents of relPath as of the point the session
+// branch diverged from base — the "old" side of DiffAgainstBase. It resolves
+// the same diff target DiffAgainstBase does (the merge-base with HEAD, falling
+// back to the resolved base ref) and reads the blob with `git show <ref>:<path>`,
+// so the lines it returns line up exactly with the patch's hunks. A file absent
+// at that point (e.g. one the session newly created) or a branch with no base to
+// compare against returns fs.ErrNotExist, so callers can treat it as an empty
+// old side. Unlike ReadWorktreeFile this reads from git's object store rather
+// than the filesystem, so only the lexical ".."-escape guard applies.
+func ReadBaseFile(worktreePath, base, relPath string) (string, error) {
+	clean, err := cleanRelPath(relPath)
+	if err != nil {
+		return "", err
+	}
+	diffTarget := resolveDiffTarget(worktreePath, base)
+	if diffTarget == "" {
+		return "", fs.ErrNotExist
+	}
+	out, err := captureGit("-C", worktreePath, "show", diffTarget+":"+filepath.ToSlash(clean))
+	if err != nil {
+		// Most often the path doesn't exist at this ref (a new file); git also
+		// errors on a bad ref. Either way there's no old side to show.
+		return "", fs.ErrNotExist
+	}
+	return out, nil
+}
+
+// cleanRelPath validates that relPath is a non-empty, non-absolute path that
+// can't escape its root via "..", returning the lexically-cleaned form. Shared
+// by the worktree- and git-object readers as their first-line path guard.
+func cleanRelPath(relPath string) (string, error) {
+	if relPath == "" || filepath.IsAbs(relPath) {
+		return "", fs.ErrNotExist
+	}
+	clean := filepath.Clean(relPath)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fs.ErrNotExist
+	}
+	return clean, nil
 }
 
 // seedTempIndex best-effort copies the worktree's real index into dst so that
@@ -357,6 +388,23 @@ func resolveDiffBase(worktreePath, base string) string {
 		return remote
 	}
 	return ""
+}
+
+// resolveDiffTarget returns the ref DiffAgainstBase diffs the working tree
+// against: the merge-base of the resolved base ref and HEAD, falling back to the
+// resolved base ref when no merge-base exists (e.g. an orphan branch), and ""
+// when base resolves to nothing (a brand-new branch is then diffed against the
+// empty tree). Shared with ReadBaseFile so the "old" side of a single file is
+// read from the exact same point the patch is computed against.
+func resolveDiffTarget(worktreePath, base string) string {
+	ref := resolveDiffBase(worktreePath, base)
+	if ref == "" {
+		return ""
+	}
+	if mb, err := mergeBase(worktreePath, ref, "HEAD"); err == nil && mb != "" {
+		return mb
+	}
+	return ref
 }
 
 // mergeBase returns the best common ancestor SHA of refs a and b.

@@ -315,6 +315,12 @@ export const api = {
   getSessionFile: (sessionId: number, path: string) =>
     request<SessionFile>(`/api/sessions/${sessionId}/file?path=${encodeURIComponent(path)}`),
 
+  getSessionFileDiff: (sessionId: number, path: string, oldPath?: string) => {
+    const params = new URLSearchParams({ path });
+    if (oldPath && oldPath !== path) params.set("old_path", oldPath);
+    return request<SessionFileDiff>(`/api/sessions/${sessionId}/file-diff?${params}`);
+  },
+
   getVersion: () => request<Version>("/api/version"),
 };
 
@@ -338,6 +344,18 @@ export type SessionDiff = {
 export type SessionFile = {
   path: string;
   contents: string;
+};
+
+// SessionFileDiff carries both sides of one changed file — the merge-base
+// version and the current working-tree version — so the diff viewer can rebuild
+// the file's diff with full surrounding context and offer GitHub-style
+// expand-up/down. A side that doesn't exist at its ref comes back empty: an
+// empty `old_contents` is a newly-added file, an empty `new_contents` a deleted
+// one.
+export type SessionFileDiff = {
+  path: string;
+  old_contents: string;
+  new_contents: string;
 };
 
 export type SubscribeOptions = {

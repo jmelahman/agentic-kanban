@@ -1667,3 +1667,55 @@ func (h *handlers) getSessionFile(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, sessionFile{Path: path, Contents: contents})
 }
+
+type sessionFileDiff struct {
+	Path        string `json:"path"`
+	OldContents string `json:"old_contents"`
+	NewContents string `json:"new_contents"`
+}
+
+// getSessionFileDiff returns both sides of a single changed file — the base
+// version (from the merge-base the patch is computed against) and the current
+// working-tree version — so the diff viewer can render expandable surrounding
+// context (GitHub's "expand up/down") instead of just the patch's few context
+// lines. `path` names the current file; `old_path` is the pre-rename path when
+// it differs (the diff's `prevName`), defaulting to `path`. A side that doesn't
+// exist at its ref comes back empty — an empty `old_contents` means a new file,
+// an empty `new_contents` a deleted one. Only when *both* are empty (the path is
+// in neither tree) is it a 404.
+func (h *handlers) getSessionFileDiff(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		h.httpError(w, fmt.Errorf("path query parameter is required"), 400)
+		return
+	}
+	oldPath := r.URL.Query().Get("old_path")
+	if oldPath == "" {
+		oldPath = path
+	}
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	if sess.WorktreePath == "" {
+		h.httpError(w, fmt.Errorf("session has no worktree"), 404)
+		return
+	}
+	board, err := h.boardForSession(r.Context(), sess)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+
+	// A missing side is expected (new/deleted file) and maps to empty contents;
+	// only a path present in neither tree is a genuine 404.
+	newContents, newErr := git.ReadWorktreeFile(sess.WorktreePath, path)
+	oldContents, oldErr := git.ReadBaseFile(sess.WorktreePath, board.BaseBranch, oldPath)
+	if newErr != nil && oldErr != nil {
+		h.httpError(w, fmt.Errorf("file not found: %s", path), 404)
+		return
+	}
+	writeJSON(w, 200, sessionFileDiff{Path: path, OldContents: oldContents, NewContents: newContents})
+}

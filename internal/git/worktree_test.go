@@ -2,6 +2,8 @@ package git
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -244,6 +246,43 @@ func TestDiffAgainstBase(t *testing.T) {
 	// stays untracked, and nothing new is staged.
 	if statusAfter := mustGitOut(t, repo, "status", "--porcelain"); statusAfter != statusBefore {
 		t.Errorf("real index mutated by diff:\nbefore:\n%s\nafter:\n%s", statusBefore, statusAfter)
+	}
+}
+
+// TestReadBaseFile checks that the "old" side of the diff is read from the
+// merge-base — original content for a tracked file (ignoring both the worktree
+// edit and post-divergence base movement), and "not found" for files that
+// didn't exist at the merge-base (added-on-branch or untracked) so callers treat
+// them as an empty old side.
+func TestReadBaseFile(t *testing.T) {
+	repo := initBareishRepo(t)
+	mustGit(t, repo, "config", "user.name", "Seed")
+	mustGit(t, repo, "config", "user.email", "seed@example.com")
+	writeAndCommit(t, repo, "main", "seed.txt", "seed\n", "init")
+
+	// Branch off (merge-base is this point), add a file on the branch, advance
+	// base after divergence, then edit the tracked file in the worktree.
+	mustGit(t, repo, "checkout", "-q", "-b", "feature")
+	writeAndCommit(t, repo, "feature", "committed.txt", "committed change\n", "add committed")
+	mustGit(t, repo, "checkout", "-q", "main")
+	writeAndCommit(t, repo, "main", "seed.txt", "seed moved on main\n", "main moves on")
+	mustGit(t, repo, "checkout", "-q", "feature")
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("seed edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Tracked file: base content is the merge-base version, not the worktree
+	// edit and not main's post-divergence change.
+	if got, err := ReadBaseFile(repo, "main", "seed.txt"); err != nil || got != "seed\n" {
+		t.Errorf("ReadBaseFile(seed.txt) = %q, %v; want %q, nil", got, err, "seed\n")
+	}
+	// Added on the branch after divergence — absent at the merge-base.
+	if _, err := ReadBaseFile(repo, "main", "committed.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadBaseFile(committed.txt) err = %v; want fs.ErrNotExist", err)
+	}
+	// Path traversal is rejected before touching git.
+	if _, err := ReadBaseFile(repo, "main", "../escape.txt"); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("ReadBaseFile(../escape.txt) err = %v; want fs.ErrNotExist", err)
 	}
 }
 

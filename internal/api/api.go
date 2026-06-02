@@ -92,6 +92,7 @@ func NewMux(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/sessions/{id}/diff", h.getSessionDiff)
 	mux.HandleFunc("GET /api/sessions/{id}/file", h.getSessionFile)
+	mux.HandleFunc("GET /api/sessions/{id}/file-diff", h.getSessionFileDiff)
 
 	mux.HandleFunc("GET /api/sessions/{id}/discover-tasks", h.discoverTasks)
 	mux.HandleFunc("GET /api/sessions/{id}/task-runs", h.listTaskRuns)

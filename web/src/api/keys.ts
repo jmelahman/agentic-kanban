@@ -13,4 +13,9 @@ export const queryKeys = {
   sessionPlan: (sessionId: number, name: string) => ["sessionPlan", sessionId, name] as const,
   sessionDiff: (sessionId: number) => ["sessionDiff", sessionId] as const,
   sessionFile: (sessionId: number, path: string) => ["sessionFile", sessionId, path] as const,
+  // Keyed by the file's diff signature so the base+head contents refetch (and
+  // the diff is rebuilt) whenever the file changes, but stay cached across the
+  // 4s diff poll while it doesn't.
+  sessionFileDiff: (sessionId: number, path: string, signature: string) =>
+    ["sessionFileDiff", sessionId, path, signature] as const,
 };
