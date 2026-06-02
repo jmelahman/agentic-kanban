@@ -233,13 +233,13 @@ export function DiffPanel({ session }: { session: Session }) {
     return () => cancelAnimationFrame(id);
   }, [orderedFiles, updateActive]);
 
-  const scrollToFile = useCallback((path: string) => {
+  const scrollToFile = useCallback((path: string, behavior: ScrollBehavior = "smooth") => {
     const container = scrollRef.current;
     const el = fileRefs.current.get(path);
     if (!container || !el) return;
     const top =
       el.getBoundingClientRect().top - container.getBoundingClientRect().top + container.scrollTop;
-    container.scrollTo({ top, behavior: "smooth" });
+    container.scrollTo({ top, behavior });
     setActivePath(path);
   }, []);
 
@@ -247,7 +247,8 @@ export function DiffPanel({ session }: { session: Session }) {
   // the body changes the file's height — collapsing a long blob back to its
   // diff pulls everything below it up — so once the new layout commits (next
   // frame) re-anchor the toggled file's header to the top, rather than leaving
-  // the user scrolled into whatever shifted into view.
+  // the user scrolled into whatever shifted into view. The jump is instant, not
+  // smooth: the body teleports in place, so there's no motion to animate along.
   const toggleFileView = useCallback(
     (path: string) => {
       setViewFilePaths((prev) => {
@@ -256,7 +257,7 @@ export function DiffPanel({ session }: { session: Session }) {
         else next.add(path);
         return next;
       });
-      requestAnimationFrame(() => scrollToFile(path));
+      requestAnimationFrame(() => scrollToFile(path, "instant"));
     },
     [scrollToFile],
   );
