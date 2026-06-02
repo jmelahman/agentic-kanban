@@ -25,6 +25,8 @@ import (
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
+
+	"github.com/jmelahman/kanban/internal/jsonc"
 )
 
 // DevcontainerConfig is a minimal subset of the devcontainer.json spec.
@@ -263,7 +265,7 @@ func LoadDevcontainer(worktreePath string) (*DevcontainerConfig, error) {
 		log.Printf("devcontainer: %s has no devcontainer.json; using user fallback at %s", worktreePath, loaded)
 	}
 
-	stripped := stripJSONComments(data)
+	stripped := jsonc.StripComments(data)
 	var cfg DevcontainerConfig
 	if err := json.Unmarshal(stripped, &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", loaded, err)
@@ -295,58 +297,6 @@ func UserDevcontainerPath() (string, error) {
 		return "", err
 	}
 	return filepath.Join(dir, "devcontainer.json"), nil
-}
-
-// stripJSONComments removes // line comments and /* */ block comments.
-// devcontainer.json is "JSON with comments" in practice.
-func stripJSONComments(data []byte) []byte {
-	out := make([]byte, 0, len(data))
-	inString := false
-	escape := false
-	for i := 0; i < len(data); i++ {
-		c := data[i]
-		if inString {
-			out = append(out, c)
-			if escape {
-				escape = false
-				continue
-			}
-			if c == '\\' {
-				escape = true
-				continue
-			}
-			if c == '"' {
-				inString = false
-			}
-			continue
-		}
-		if c == '"' {
-			inString = true
-			out = append(out, c)
-			continue
-		}
-		if c == '/' && i+1 < len(data) {
-			if data[i+1] == '/' {
-				for i < len(data) && data[i] != '\n' {
-					i++
-				}
-				if i < len(data) {
-					out = append(out, data[i])
-				}
-				continue
-			}
-			if data[i+1] == '*' {
-				i += 2
-				for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
-					i++
-				}
-				i++
-				continue
-			}
-		}
-		out = append(out, c)
-	}
-	return out
 }
 
 // Spawn builds and runs the devcontainer for a given worktree.

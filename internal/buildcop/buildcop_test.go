@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmelahman/kanban/internal/kanbantoml"
+	"github.com/jmelahman/kanban/internal/slug"
 )
 
 func toBoardSection(name, repoPath, branch string, threshold *float64, minRuns, streak, window *int) kanbantoml.BuildCopBoard {
@@ -269,8 +270,8 @@ func TestSlugify(t *testing.T) {
 		"Build Cop / all":   "build-cop-all",
 	}
 	for in, want := range cases {
-		if got := slugify(in); got != want {
-			t.Errorf("slugify(%q) = %q, want %q", in, got, want)
+		if got := slug.Make(in, "build-cop"); got != want {
+			t.Errorf("slug.Make(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

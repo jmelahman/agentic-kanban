@@ -5,7 +5,6 @@ import {
   DndContext,
   type DragEndEvent,
   DragOverlay,
-  type DragStartEvent,
   PointerSensor,
   useDroppable,
   useSensor,
@@ -17,10 +16,10 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Board } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useBoardSubscription } from "@/hooks/useBoardSubscription";
-import { fetchBoardStructure, ticketStore, useSession, useTicket } from "@/store";
+import { useTicketDnd } from "@/hooks/useTicketDnd";
+import { fetchBoardStructure, useSession, useTicket } from "@/store";
 import type { BoardStructure } from "@/store";
 import { STATUS_BG, STATUS_BG_NONE } from "@/components/Ticket";
-import { moveTicketIdInStructure } from "@/components/Board";
 import { Button } from "@/components/Button";
 import { loadCollapsedBoards, writeCollapsedBoards } from "./storage";
 
@@ -185,9 +184,6 @@ function BoardNode({
   const qc = useQueryClient();
   const [addingColumnId, setAddingColumnId] = useState<number | null>(null);
   const [title, setTitle] = useState("");
-  const [draggingId, setDraggingId] = useState<number | null>(null);
-  // 5px activation distance lets click-to-open still fire on TicketRow buttons.
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const createMut = useMutation({
     mutationFn: (columnId: number) => api.createTicket(boardId, { column_id: columnId, title }),
@@ -198,63 +194,14 @@ function BoardNode({
     },
   });
 
-  const moveMut = useMutation({
-    mutationFn: (input: { id: number; column_id: number; position: number }) =>
-      api.moveTicket(input.id, { column_id: input.column_id, position: input.position }),
-    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.board(boardId) }),
-  });
+  const { draggingId, sensors, onDragStart, onDragEnd, onDragCancel } = useTicketDnd(
+    boardId,
+    structure,
+  );
 
   const totalTickets = structure
     ? Object.values(structure.ticketIdsByColumn).reduce((n, ids) => n + ids.length, 0)
     : 0;
-
-  function onDragStart(e: DragStartEvent) {
-    setDraggingId(Number(e.active.id));
-  }
-
-  function onDragEnd(e: DragEndEvent) {
-    setDraggingId(null);
-    if (!structure) return;
-    const ticketId = Number(e.active.id);
-    const overId = e.over?.id;
-    if (overId == null) return;
-    const moved = ticketStore.get(ticketId);
-    if (!moved) return;
-
-    const { ticketIdsByColumn } = structure;
-    let targetCol: number;
-    let insertIndex: number;
-    if (typeof overId === "string" && overId.startsWith("col-")) {
-      targetCol = Number(overId.slice(4));
-      if (Number.isNaN(targetCol)) return;
-      const list = ticketIdsByColumn[targetCol] ?? [];
-      insertIndex = list.filter((id) => id !== ticketId).length;
-    } else {
-      const overTicketId = Number(overId);
-      const overTicket = ticketStore.get(overTicketId);
-      if (!overTicket) return;
-      targetCol = overTicket.column_id;
-      const targetList = (ticketIdsByColumn[targetCol] ?? []).filter((id) => id !== ticketId);
-      const idx = targetList.indexOf(overTicketId);
-      if (idx < 0) {
-        insertIndex = targetList.length;
-      } else if (moved.column_id === targetCol && moved.position < overTicket.position) {
-        insertIndex = idx + 1;
-      } else {
-        insertIndex = idx;
-      }
-    }
-
-    if (moved.column_id === targetCol) {
-      const sourceList = ticketIdsByColumn[targetCol] ?? [];
-      if (sourceList.indexOf(ticketId) === insertIndex) return;
-    }
-
-    qc.setQueryData<BoardStructure>(queryKeys.board(boardId), (old) =>
-      old ? moveTicketIdInStructure(old, ticketId, targetCol, insertIndex) : old,
-    );
-    moveMut.mutate({ id: ticketId, column_id: targetCol, position: insertIndex });
-  }
 
   const draggingSessionId =
     draggingId != null && structure ? (structure.sessionIdByTicket[draggingId] ?? null) : null;
@@ -298,7 +245,7 @@ function BoardNode({
           collisionDetection={closestCorners}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
-          onDragCancel={() => setDraggingId(null)}
+          onDragCancel={onDragCancel}
         >
           <div className="pb-1">
             {structure.columns.map((c) => {

@@ -19,6 +19,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/jsonc"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 )
 
@@ -61,8 +62,8 @@ type VSCodeTask struct {
 
 // vsTasksFile mirrors the on-disk shape of .vscode/tasks.json.
 type vsTasksFile struct {
-	Version string         `json:"version"`
-	Tasks   []vsTaskRaw    `json:"tasks"`
+	Version string            `json:"version"`
+	Tasks   []vsTaskRaw       `json:"tasks"`
 	Inputs  []json.RawMessage `json:"inputs,omitempty"`
 }
 
@@ -78,8 +79,8 @@ type vsTaskRaw struct {
 
 // vsLaunchFile mirrors .vscode/launch.json (only program/args used).
 type vsLaunchFile struct {
-	Version        string             `json:"version"`
-	Configurations []vsLaunchConfig   `json:"configurations"`
+	Version        string           `json:"version"`
+	Configurations []vsLaunchConfig `json:"configurations"`
 }
 
 type vsLaunchConfig struct {
@@ -105,7 +106,7 @@ func Discover(worktreePath string) ([]VSCodeTask, []string, error) {
 	tasksPath := filepath.Join(worktreePath, ".vscode", "tasks.json")
 	if data, err := os.ReadFile(tasksPath); err == nil {
 		var file vsTasksFile
-		if err := json.Unmarshal(stripComments(data), &file); err != nil {
+		if err := json.Unmarshal(jsonc.StripComments(data), &file); err != nil {
 			msg := fmt.Sprintf(".vscode/tasks.json: %v", err)
 			log.Print(msg)
 			warnings = append(warnings, msg)
@@ -131,7 +132,7 @@ func Discover(worktreePath string) ([]VSCodeTask, []string, error) {
 	launchPath := filepath.Join(worktreePath, ".vscode", "launch.json")
 	if data, err := os.ReadFile(launchPath); err == nil {
 		var file vsLaunchFile
-		if err := json.Unmarshal(stripComments(data), &file); err != nil {
+		if err := json.Unmarshal(jsonc.StripComments(data), &file); err != nil {
 			msg := fmt.Sprintf(".vscode/launch.json: %v", err)
 			log.Print(msg)
 			warnings = append(warnings, msg)
@@ -160,56 +161,6 @@ func Discover(worktreePath string) ([]VSCodeTask, []string, error) {
 // merged kanban config (user file layered over <worktree>/.kanban.toml).
 func PortFor(worktreePath, label string) (int, bool) {
 	return kanbantoml.Load(worktreePath).PortFor(label)
-}
-
-func stripComments(data []byte) []byte {
-	out := make([]byte, 0, len(data))
-	inString := false
-	escape := false
-	for i := 0; i < len(data); i++ {
-		c := data[i]
-		if inString {
-			out = append(out, c)
-			if escape {
-				escape = false
-				continue
-			}
-			if c == '\\' {
-				escape = true
-				continue
-			}
-			if c == '"' {
-				inString = false
-			}
-			continue
-		}
-		if c == '"' {
-			inString = true
-			out = append(out, c)
-			continue
-		}
-		if c == '/' && i+1 < len(data) {
-			if data[i+1] == '/' {
-				for i < len(data) && data[i] != '\n' {
-					i++
-				}
-				if i < len(data) {
-					out = append(out, data[i])
-				}
-				continue
-			}
-			if data[i+1] == '*' {
-				i += 2
-				for i+1 < len(data) && !(data[i] == '*' && data[i+1] == '/') {
-					i++
-				}
-				i++
-				continue
-			}
-		}
-		out = append(out, c)
-	}
-	return out
 }
 
 // Runner manages task executions inside session containers.

@@ -1,24 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  DndContext,
-  type DragEndEvent,
-  DragOverlay,
-  type DragStartEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import { useCallback, useState } from "react";
-import { api } from "@/api/client";
+import { useQuery } from "@tanstack/react-query";
+import { DndContext, DragOverlay } from "@dnd-kit/core";
+import { useCallback } from "react";
 import { queryKeys } from "@/api/keys";
 import { useTerminalOrientation } from "@/hooks/useTerminalOrientation";
+import { useTicketDnd } from "@/hooks/useTicketDnd";
 import { useShortcut } from "@/keys/useShortcut";
 import {
   activeTicketStore,
   addTicketRequestStore,
   type BoardStructure,
   fetchBoardStructure,
-  ticketStore,
   useSession,
   useTicket,
 } from "@/store";
@@ -60,39 +51,18 @@ function nextTicketId(
   return activeId;
 }
 
-export function moveTicketIdInStructure(
-  structure: BoardStructure,
-  movedId: number,
-  targetCol: number,
-  insertIndex: number,
-): BoardStructure {
-  const ticketIdsByColumn: Record<number, number[]> = {};
-  for (const [colKey, ids] of Object.entries(structure.ticketIdsByColumn)) {
-    ticketIdsByColumn[Number(colKey)] = ids.filter((id) => id !== movedId);
-  }
-  const target = ticketIdsByColumn[targetCol] ?? [];
-  target.splice(insertIndex, 0, movedId);
-  ticketIdsByColumn[targetCol] = target;
-  return { ...structure, ticketIdsByColumn };
-}
-
 export function Board({ boardId }: { boardId: number }) {
-  const qc = useQueryClient();
   const stateQ = useQuery({
     queryKey: queryKeys.board(boardId),
     queryFn: () => fetchBoardStructure(boardId),
   });
-  const [draggingId, setDraggingId] = useState<number | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const orientation = useTerminalOrientation();
 
-  const moveMut = useMutation({
-    mutationFn: (input: { id: number; column_id: number; position: number }) =>
-      api.moveTicket(input.id, { column_id: input.column_id, position: input.position }),
-    onSettled: () => qc.invalidateQueries({ queryKey: queryKeys.board(boardId) }),
-  });
-
   const structure = stateQ.data;
+  const { draggingId, sensors, onDragStart, onDragEnd, onDragCancel } = useTicketDnd(
+    boardId,
+    structure,
+  );
   const moveSelection = useCallback(
     (direction: Direction) => {
       if (!structure) return;
@@ -124,54 +94,6 @@ export function Board({ boardId }: { boardId: number }) {
   const { board, columns, ticketIdsByColumn, sessionIdByTicket, merge_config, sync_config } =
     structure;
 
-  function onDragStart(e: DragStartEvent) {
-    setDraggingId(Number(e.active.id));
-  }
-
-  function onDragEnd(e: DragEndEvent) {
-    setDraggingId(null);
-    const ticketId = Number(e.active.id);
-    const overId = e.over?.id;
-    if (overId == null) return;
-    const moved = ticketStore.get(ticketId);
-    if (!moved) return;
-
-    // over.id is either `col-N` (column droppable) or a ticket id (sortable item).
-    let targetCol: number;
-    let insertIndex: number;
-    if (typeof overId === "string" && overId.startsWith("col-")) {
-      targetCol = Number(overId.slice(4));
-      if (Number.isNaN(targetCol)) return;
-      const list = ticketIdsByColumn[targetCol] ?? [];
-      insertIndex = list.filter((id) => id !== ticketId).length;
-    } else {
-      const overTicketId = Number(overId);
-      const overTicket = ticketStore.get(overTicketId);
-      if (!overTicket) return;
-      targetCol = overTicket.column_id;
-      const targetList = (ticketIdsByColumn[targetCol] ?? []).filter((id) => id !== ticketId);
-      const idx = targetList.indexOf(overTicketId);
-      if (idx < 0) {
-        insertIndex = targetList.length;
-      } else if (moved.column_id === targetCol && moved.position < overTicket.position) {
-        // Dragging downward within the same column: drop after the over ticket.
-        insertIndex = idx + 1;
-      } else {
-        insertIndex = idx;
-      }
-    }
-
-    if (moved.column_id === targetCol) {
-      const sourceList = ticketIdsByColumn[targetCol] ?? [];
-      if (sourceList.indexOf(ticketId) === insertIndex) return;
-    }
-
-    qc.setQueryData<BoardStructure>(queryKeys.board(boardId), (old) =>
-      old ? moveTicketIdInStructure(old, ticketId, targetCol, insertIndex) : old,
-    );
-    moveMut.mutate({ id: ticketId, column_id: targetCol, position: insertIndex });
-  }
-
   return (
     <div
       className={`flex h-full min-w-0 ${orientation === "horizontal" ? "flex-col" : "flex-row"}`}
@@ -180,7 +102,7 @@ export function Board({ boardId }: { boardId: number }) {
         sensors={sensors}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
-        onDragCancel={() => setDraggingId(null)}
+        onDragCancel={onDragCancel}
       >
         <div data-board-area className="flex min-h-0 min-w-0 flex-1 gap-2 overflow-x-auto p-3">
           {columns.map((c) => (

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jmelahman/kanban/internal/kanbantoml"
+	"github.com/jmelahman/kanban/internal/slug"
 )
 
 // DefaultInterval is the poll cadence applied when [buildcop].interval is
@@ -90,7 +91,7 @@ func resolveBoard(in kanbantoml.BuildCopBoard) BoardConfig {
 	} else {
 		out.Name = defaultName(out.Branch)
 	}
-	out.Slug = slugify(out.Name)
+	out.Slug = slug.Make(out.Name, "build-cop")
 	if in.FailureThreshold != nil {
 		out.FailureThreshold = *in.FailureThreshold
 	}

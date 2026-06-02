@@ -31,6 +31,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/metrics"
+	"github.com/jmelahman/kanban/internal/slug"
 )
 
 const (
@@ -245,7 +246,7 @@ func (p *Poller) createTicket(ctx context.Context, boardID, colID int64, s jobSt
 		BoardID:     boardID,
 		ColumnID:    colID,
 		Title:       titleFor(s),
-		Slug:        slugify(fmt.Sprintf("buildcop-%s-%s", s.Workflow, s.Job)),
+		Slug:        slug.Make(fmt.Sprintf("buildcop-%s-%s", s.Workflow, s.Job), "build-cop"),
 		Body:        bodyFor(s),
 		Fingerprint: fp,
 	}
@@ -649,36 +650,4 @@ func bodyFor(s jobStats) string {
 		fmt.Fprintf(&b, "\n[Most recent failing job](%s)\n", s.LastFailureURL)
 	}
 	return b.String()
-}
-
-// slugify mirrors the same helper in errreport — duplicated to avoid a
-// cross-internal-package dependency on a one-off string utility.
-func slugify(s string) string {
-	const maxLen = 80
-	s = strings.ToLower(strings.TrimSpace(s))
-	var b strings.Builder
-	prevDash := false
-	for _, c := range s {
-		switch {
-		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
-			b.WriteRune(c)
-			prevDash = false
-		case c == '-' || c == '_':
-			b.WriteRune('-')
-			prevDash = true
-		default:
-			if !prevDash && b.Len() > 0 {
-				b.WriteByte('-')
-				prevDash = true
-			}
-		}
-	}
-	out := strings.TrimRight(b.String(), "-")
-	if len(out) > maxLen {
-		out = strings.TrimRight(out[:maxLen], "-")
-	}
-	if out == "" {
-		out = "build-cop"
-	}
-	return out
 }

@@ -24,6 +24,7 @@ import (
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 	"github.com/jmelahman/kanban/internal/session"
+	"github.com/jmelahman/kanban/internal/slug"
 	"github.com/jmelahman/kanban/internal/tasks"
 )
 
@@ -103,11 +104,11 @@ func (h *handlers) createBoard(w http.ResponseWriter, r *http.Request) {
 		req.BaseBranch = "main"
 	}
 	if req.WorktreeRoot == "" && req.RepoPath != "" {
-		req.WorktreeRoot = filepath.Join(h.config.WorktreesDir(), slugify(req.Name))
+		req.WorktreeRoot = filepath.Join(h.config.WorktreesDir(), slug.Make(req.Name, "x"))
 	}
 	board := &db.Board{
 		Name:           req.Name,
-		Slug:           slugify(req.Name),
+		Slug:           slug.Make(req.Name, "x"),
 		RepoPath:       req.RepoPath,
 		MountPath:      req.MountPath,
 		WorktreeRoot:   req.WorktreeRoot,
@@ -324,7 +325,7 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 		BoardID:  board.ID,
 		ColumnID: columnID,
 		Title:    req.Title,
-		Slug:     slugify(req.Title),
+		Slug:     slug.Make(req.Title, "x"),
 		Body:     req.Body,
 	}
 	if err := h.store.CreateTicket(r.Context(), t); err != nil {
@@ -1631,38 +1632,4 @@ func (h *handlers) getSessionDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, sessionDiff{Base: board.BaseBranch, Patch: patch})
-}
-
-// slugMaxLen caps slugified output so that branch names built as
-// "<prefix>/<board-slug>/<ticket-slug>" stay under GitHub's ~244-char
-// branch-name limit even with the longest expected prefix.
-const slugMaxLen = 80
-
-func slugify(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	var b strings.Builder
-	prevDash := false
-	for _, c := range s {
-		switch {
-		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
-			b.WriteRune(c)
-			prevDash = false
-		case c == '-' || c == '_':
-			b.WriteRune('-')
-			prevDash = true
-		default:
-			if !prevDash && b.Len() > 0 {
-				b.WriteByte('-')
-				prevDash = true
-			}
-		}
-	}
-	out := strings.TrimRight(b.String(), "-")
-	if len(out) > slugMaxLen {
-		out = strings.TrimRight(out[:slugMaxLen], "-")
-	}
-	if out == "" {
-		out = "x"
-	}
-	return out
 }

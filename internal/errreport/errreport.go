@@ -29,6 +29,7 @@ import (
 	"time"
 
 	"github.com/jmelahman/kanban/internal/db"
+	"github.com/jmelahman/kanban/internal/slug"
 )
 
 // Config controls reporter behavior. Enabled gates all ticket creation;
@@ -152,12 +153,12 @@ func (r *Reporter) ensureBoard(ctx context.Context) (int64, int64, error) {
 		return r.boardID, r.newColID, nil
 	}
 
-	slug := slugify(r.cfg.BoardName)
-	board, err := r.store.GetBoardBySlug(ctx, slug)
+	boardSlug := slug.Make(r.cfg.BoardName, "errors")
+	board, err := r.store.GetBoardBySlug(ctx, boardSlug)
 	if errors.Is(err, db.ErrNotFound) {
 		board = &db.Board{
 			Name:       r.cfg.BoardName,
-			Slug:       slug,
+			Slug:       boardSlug,
 			BaseBranch: "main",
 		}
 		if err := r.store.CreateBoardRaw(ctx, board); err != nil {
@@ -322,36 +323,4 @@ func fingerprintSlug(fp string) string {
 		fp = fp[:8]
 	}
 	return "err-" + fp
-}
-
-// slugify mirrors the api package's slugify; duplicated here to avoid a
-// circular import (api → errreport already exists for ticket creation).
-func slugify(s string) string {
-	const maxLen = 80
-	s = strings.ToLower(strings.TrimSpace(s))
-	var b strings.Builder
-	prevDash := false
-	for _, c := range s {
-		switch {
-		case c >= 'a' && c <= 'z', c >= '0' && c <= '9':
-			b.WriteRune(c)
-			prevDash = false
-		case c == '-' || c == '_':
-			b.WriteRune('-')
-			prevDash = true
-		default:
-			if !prevDash && b.Len() > 0 {
-				b.WriteByte('-')
-				prevDash = true
-			}
-		}
-	}
-	out := strings.TrimRight(b.String(), "-")
-	if len(out) > maxLen {
-		out = strings.TrimRight(out[:maxLen], "-")
-	}
-	if out == "" {
-		out = "errors"
-	}
-	return out
 }
