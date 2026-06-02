@@ -32,6 +32,30 @@ var (
 	)
 )
 
+// Local git CLI metrics.
+//
+// `operation` is a small, fixed set of human-readable labels (worktree_add,
+// worktree_remove, diff, fetch) naming the git command kanban shelled out to.
+// Latency is dominated by disk I/O and, for fetch, a remote round-trip, so it
+// reuses latencyBuckets — the 10s top bucket lines up with the fetch timeout.
+var (
+	gitCommandDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "kanban_git_command_duration_seconds",
+			Help:    "Latency of local git CLI operations invoked by the kanban server.",
+			Buckets: latencyBuckets,
+		},
+		[]string{"operation"},
+	)
+	gitCommandErrors = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "kanban_git_command_errors_total",
+			Help: "Local git CLI operations that returned a non-nil error.",
+		},
+		[]string{"operation"},
+	)
+)
+
 // GitHub API metrics.
 //
 // `endpoint` is the URL path with owner/repo/etc. normalized to placeholders

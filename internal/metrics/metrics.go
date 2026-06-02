@@ -25,6 +25,8 @@ func init() {
 	Registry.MustRegister(
 		dbQueryDuration,
 		dbQueryErrors,
+		gitCommandDuration,
+		gitCommandErrors,
 		githubRequests,
 		githubRequestDuration,
 		githubRateLimitRemaining,

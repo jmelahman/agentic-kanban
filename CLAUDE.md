@@ -80,30 +80,25 @@ faster with indexes at n≥1000; everything else is a wash on small tables).
 ## Metrics
 
 `internal/metrics` exposes a shared Prometheus registry served at
-`GET /metrics`. Four signals are wired:
+`GET /metrics`. See `docs/guide/observability.md` for the signal catalog
+(HTTP, GitHub REST API, local git CLI, SQLite, Go runtime), PromQL
+examples, and recording rules.
 
-- HTTP server (middleware in `cmd/server/main.go`, labelled by ServeMux
-  pattern).
-- GitHub REST API (RoundTripper installed on both `internal/github` and
-  `internal/buildcop` clients; records counters, latency, and
-  `X-RateLimit-*` headers).
-- SQLite queries (driver wrapper registered as `sqlite-instrumented`; used
-  by `internal/db.Open`).
-- Go runtime / process collectors.
+Two rules when extending instrumentation:
 
-When adding a new HTTP client that calls GitHub, wrap its `Transport` with
-`metrics.WrapGitHubTransport(nil)` — otherwise it won't show up in the
-rate-limit gauges.
+- New HTTP client that calls GitHub → wrap its `Transport` with
+  `metrics.WrapGitHubTransport(nil)`, or it won't show up in the
+  rate-limit gauges.
+- New git shell-out in `internal/git` worth timing → call
+  `metrics.ObserveGitCommand("<operation>", start, err)` with `start` taken
+  just before the command; keep the `operation` label set small and fixed.
 
-`compose.yaml` bundles a Prometheus service; the UI is exposed under
-`/prometheus/` via a reverse-proxy on the kanban backend (driven by
-`$KANBAN_PROMETHEUS_URL`). See `docs/guide/observability.md`.
-
-From inside this devcontainer (attached to `kanban-net`), Prometheus is
-reachable directly at `http://prometheus:9090/prometheus/` — the server
-is configured with `--web.external-url=/prometheus`, so the API lives
-under `/prometheus/api/v1/...` (a bare `/api/v1/...` returns 404). Useful
-probes:
+`compose.yaml` bundles a Prometheus service reverse-proxied at `/prometheus/`
+(driven by `$KANBAN_PROMETHEUS_URL`). From inside this devcontainer (attached
+to `kanban-net`) it's also reachable directly at
+`http://prometheus:9090/prometheus/` — the server runs with
+`--web.external-url=/prometheus`, so the API lives under
+`/prometheus/api/v1/...` (a bare `/api/v1/...` returns 404). Useful probes:
 
 ```bash
 # Build / version

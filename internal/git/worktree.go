@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/jmelahman/kanban/internal/metrics"
 )
 
 // fetchTimeout caps best-effort `git fetch origin <base>` calls done while
@@ -40,11 +42,14 @@ func (i Identity) configArgs() []string {
 // base is a remote-tracking ref (e.g. "origin/main"); session branches aren't
 // meant to push back to the base.
 func AddWorktree(repoPath, branch, worktreePath, base string) error {
+	start := time.Now()
 	args := []string{"-C", repoPath, "worktree", "add", "--no-track", "-b", branch, worktreePath}
 	if base != "" {
 		args = append(args, base)
 	}
-	return run("git", args...)
+	err := run("git", args...)
+	metrics.ObserveGitCommand("worktree_add", start, err)
+	return err
 }
 
 // ResolveLatestBase returns the ref to use as the start-point for a new
@@ -60,7 +65,10 @@ func ResolveLatestBase(repoPath, base string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 	defer cancel()
-	if err := exec.CommandContext(ctx, "git", "-C", repoPath, "fetch", "--quiet", "origin", base).Run(); err != nil {
+	start := time.Now()
+	err := exec.CommandContext(ctx, "git", "-C", repoPath, "fetch", "--quiet", "origin", base).Run()
+	metrics.ObserveGitCommand("fetch", start, err)
+	if err != nil {
 		log.Printf("git fetch origin %s in %s: %v (falling back to local %s)", base, repoPath, err, base)
 	}
 	remote := "refs/remotes/origin/" + base
@@ -91,12 +99,18 @@ func revParse(repoPath, ref string) (string, error) {
 
 // AddWorktreeFromExisting checks out an existing branch into a new worktree.
 func AddWorktreeFromExisting(repoPath, branch, worktreePath string) error {
-	return run("git", "-C", repoPath, "worktree", "add", worktreePath, branch)
+	start := time.Now()
+	err := run("git", "-C", repoPath, "worktree", "add", worktreePath, branch)
+	metrics.ObserveGitCommand("worktree_add", start, err)
+	return err
 }
 
 // RemoveWorktree removes a worktree (force).
 func RemoveWorktree(repoPath, worktreePath string) error {
-	return run("git", "-C", repoPath, "worktree", "remove", "--force", worktreePath)
+	start := time.Now()
+	err := run("git", "-C", repoPath, "worktree", "remove", "--force", worktreePath)
+	metrics.ObserveGitCommand("worktree_remove", start, err)
+	return err
 }
 
 // DeleteBranch deletes a local branch.
@@ -245,7 +259,8 @@ func CurrentHead(repoPath, ref string) (string, error) {
 // fast), then a single `diff --cached` reports the lot. The real index and
 // working tree are left untouched. .gitignore is honored, so anything the repo
 // ignores (e.g. a gitignored `.claude/settings.local.json`) never appears.
-func DiffAgainstBase(worktreePath, base string) (string, error) {
+func DiffAgainstBase(worktreePath, base string) (diff string, err error) {
+	defer func(start time.Time) { metrics.ObserveGitCommand("diff", start, err) }(time.Now())
 	var diffTarget string
 	if ref := resolveDiffBase(worktreePath, base); ref != "" {
 		if mb, err := mergeBase(worktreePath, ref, "HEAD"); err == nil && mb != "" {

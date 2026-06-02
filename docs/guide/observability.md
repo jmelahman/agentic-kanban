@@ -1,7 +1,7 @@
 # Observability
 
 The kanban backend exposes a Prometheus exposition endpoint at `GET /metrics`
-covering four signals:
+covering five signals:
 
 - **HTTP server** — `kanban_http_requests_total{route,method,status}` and
   `kanban_http_request_duration_seconds{route,method}`. `route` is the Go
@@ -13,6 +13,16 @@ covering four signals:
   `kanban_github_rate_limit_limit{resource}`, and
   `kanban_github_rate_limit_reset_timestamp_seconds{resource}`. `resource`
   mirrors GitHub's bucketing (`core`, `search`, `graphql`, ...).
+- **Local git CLI** — `kanban_git_command_duration_seconds{operation}` and
+  `kanban_git_command_errors_total{operation}`. `operation` is a small fixed
+  set naming the git command the server shelled out to: `worktree_add`
+  (creating a session worktree), `worktree_remove` (tearing one down), `diff`
+  (the full uncommitted-state patch behind the session diff view), and `fetch`
+  (the best-effort `git fetch origin <base>` run before a worktree is created).
+  The `diff` timing is the whole multi-step pipeline (rev-parse → merge-base →
+  staging into a throwaway index → `diff --cached`), not the individual git
+  invocations. These measure *local* git, distinct from the **GitHub REST API**
+  signal above, which is HTTP calls to github.com.
 - **SQLite queries** — `kanban_db_query_duration_seconds{op,target}` and
   `kanban_db_query_errors_total{op,target}`. `op` is the SQL verb
   (`select`, `insert`, `update`, `delete`, `tx`, `pragma`, `ddl`, ...) and
@@ -83,6 +93,29 @@ If the poll cadence is too aggressive for the install:
   re-used until they age out of the rolling window.
 - **PR poller** ticks every 30s and is bounded to 2 pages of 100 PRs per
   repo per tick.
+
+## Diagnosing slow git operations
+
+Worktree creation, the session diff, and the pre-worktree fetch each show up
+under their own `operation` label. Mean latency per operation over the last
+5 minutes:
+
+```promql
+sum by (operation) (rate(kanban_git_command_duration_seconds_sum[5m]))
+  / sum by (operation) (rate(kanban_git_command_duration_seconds_count[5m]))
+```
+
+Tail latency (p95) for a single operation — e.g. the diff view feeling slow:
+
+```promql
+histogram_quantile(0.95,
+  sum by (le) (rate(kanban_git_command_duration_seconds_bucket{operation="diff"}[5m])))
+```
+
+`fetch` is best-effort and capped at a 10s timeout, so a rising
+`rate(kanban_git_command_errors_total{operation="fetch"}[5m])` usually points
+at a flaky or slow remote rather than a kanban bug — new worktrees still get
+created off the local base when it fails.
 
 ## Recording rules
 
