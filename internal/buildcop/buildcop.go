@@ -14,10 +14,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"net/http"
@@ -29,6 +27,7 @@ import (
 	"time"
 
 	"github.com/jmelahman/kanban/internal/db"
+	"github.com/jmelahman/kanban/internal/eventbus"
 	"github.com/jmelahman/kanban/internal/github"
 	"github.com/jmelahman/kanban/internal/metrics"
 	"github.com/jmelahman/kanban/internal/slug"
@@ -40,15 +39,9 @@ const (
 	ColumnFixed         = "Fixed"
 )
 
-// Publisher mirrors github.Publisher so the SSE bus is injected without
-// pulling the api package into buildcop's import graph.
-type Publisher interface {
-	Publish(boardID int64, typ string, data any)
-}
-
 type Poller struct {
 	store    *db.Store
-	bus      Publisher
+	bus      eventbus.Publisher
 	cfg      Config
 	interval time.Duration
 	http     *http.Client
@@ -74,7 +67,7 @@ type boardCache struct {
 // workflow runs change much more slowly than PR state, and the higher
 // cadence would waste rate-limit budget without surfacing failures sooner
 // than the GitHub UI does.
-func NewPoller(store *db.Store, bus Publisher, cfg Config, interval time.Duration) *Poller {
+func NewPoller(store *db.Store, bus eventbus.Publisher, cfg Config, interval time.Duration) *Poller {
 	if interval <= 0 {
 		interval = 2 * time.Minute
 	}
@@ -437,7 +430,7 @@ func (p *Poller) listRuns(ctx context.Context, repoPath, branch string, since ti
 	var all []ghRun
 	for page := 0; page < 5 && next != ""; page++ {
 		var resp ghRunsResp
-		link, err := p.fetchPage(cctx, tok, next, &resp)
+		link, err := github.GetJSONPage(cctx, p.http, tok, next, &resp)
 		if err != nil {
 			return nil, err
 		}
@@ -469,7 +462,7 @@ func (p *Poller) listJobs(ctx context.Context, repoPath string, runID int64) ([]
 	var all []ghJob
 	for page := 0; page < 3 && next != ""; page++ {
 		var resp ghJobsResp
-		link, err := p.fetchPage(cctx, tok, next, &resp)
+		link, err := github.GetJSONPage(cctx, p.http, tok, next, &resp)
 		if err != nil {
 			return nil, err
 		}
@@ -477,38 +470,6 @@ func (p *Poller) listJobs(ctx context.Context, repoPath string, runID int64) ([]
 		next = link
 	}
 	return all, nil
-}
-
-// fetchPage is a thin wrapper around github.GetJSON that also returns the
-// rel="next" Link header for pagination. github.GetJSON itself doesn't
-// expose response headers, so we issue the request here to capture Link.
-func (p *Poller) fetchPage(ctx context.Context, tok, u string, out any) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	if tok != "" {
-		req.Header.Set("Authorization", "Bearer "+tok)
-	}
-	resp, err := p.http.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("github api: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("github api: read body: %w", err)
-	}
-	if resp.StatusCode/100 != 2 {
-		return "", fmt.Errorf("github api %s: %s: %s",
-			u, resp.Status, strings.TrimSpace(string(body)))
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return "", fmt.Errorf("github api: parse: %w", err)
-	}
-	return github.ParseNextLink(resp.Header.Get("Link")), nil
 }
 
 // Aggregation --------------------------------------------------------------

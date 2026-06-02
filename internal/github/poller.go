@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/jmelahman/kanban/internal/db"
+	"github.com/jmelahman/kanban/internal/eventbus"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 	"github.com/jmelahman/kanban/internal/metrics"
 )
@@ -80,11 +81,6 @@ func LoadConfig(repoPath string) Config {
 	return cfg
 }
 
-// Publisher publishes board events. *api.EventBus satisfies this.
-type Publisher interface {
-	Publish(boardID int64, typ string, data any)
-}
-
 // SessionStopper is the subset of *session.Manager the poller needs to halt
 // a session's container after a PR is merged externally. The worktree,
 // branch, and session row are preserved so the user can still inspect or
@@ -95,7 +91,7 @@ type SessionStopper interface {
 
 type Poller struct {
 	store    *db.Store
-	bus      Publisher
+	bus      eventbus.Publisher
 	sessions SessionStopper
 	interval time.Duration
 	http     *http.Client
@@ -113,7 +109,7 @@ type prCacheEntry struct {
 }
 
 // NewPoller constructs a poller. interval is the global tick rate.
-func NewPoller(store *db.Store, bus Publisher, sessions SessionStopper, interval time.Duration) *Poller {
+func NewPoller(store *db.Store, bus eventbus.Publisher, sessions SessionStopper, interval time.Duration) *Poller {
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -169,7 +165,7 @@ type ghPR struct {
 	Number   int64   `json:"number"`
 	HTMLURL  string  `json:"html_url"`
 	Title    string  `json:"title"`
-	State    string  `json:"state"`     // "open" or "closed"
+	State    string  `json:"state"` // "open" or "closed"
 	Draft    bool    `json:"draft"`
 	MergedAt *string `json:"merged_at"` // null until merged
 	Head     struct {
@@ -468,7 +464,7 @@ func APIBaseFor(host string) string {
 }
 
 var (
-	ghTokenCache   sync.Map // host -> string
+	ghTokenCache    sync.Map // host -> string
 	ghTokenLookPath = exec.LookPath
 	ghTokenRun      = func(name string, args ...string) ([]byte, error) {
 		return exec.Command(name, args...).Output()

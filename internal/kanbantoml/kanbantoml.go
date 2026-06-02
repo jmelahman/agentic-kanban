@@ -215,60 +215,48 @@ func merge(project, user File) File {
 	return out
 }
 
-func mergeWorktrees(p, u *WorktreesSection) *WorktreesSection {
+// mergeSinglePtrField merges a config section that carries a single pointer
+// field, with the user value winning over the project value when set. Returns
+// nil when both inputs are nil. get/set access the lone field; a nil field
+// (== zero) means "unset", matching the per-section merge rules.
+func mergeSinglePtrField[S any, F comparable](p, u *S, zero F, get func(*S) F, set func(*S, F)) *S {
 	if p == nil && u == nil {
 		return nil
 	}
-	out := WorktreesSection{}
+	out := new(S)
 	if p != nil {
-		out.Root = p.Root
+		set(out, get(p))
 	}
-	if u != nil && u.Root != nil {
-		out.Root = u.Root
+	if u != nil {
+		if v := get(u); v != zero {
+			set(out, v)
+		}
 	}
-	return &out
+	return out
+}
+
+func mergeWorktrees(p, u *WorktreesSection) *WorktreesSection {
+	return mergeSinglePtrField(p, u, (*string)(nil),
+		func(s *WorktreesSection) *string { return s.Root },
+		func(s *WorktreesSection, v *string) { s.Root = v })
 }
 
 func mergeGit(p, u *GitSection) *GitSection {
-	if p == nil && u == nil {
-		return nil
-	}
-	out := GitSection{}
-	if p != nil {
-		out.SignCommits = p.SignCommits
-	}
-	if u != nil && u.SignCommits != nil {
-		out.SignCommits = u.SignCommits
-	}
-	return &out
+	return mergeSinglePtrField(p, u, (*bool)(nil),
+		func(s *GitSection) *bool { return s.SignCommits },
+		func(s *GitSection, v *bool) { s.SignCommits = v })
 }
 
 func mergePlans(p, u *PlansSection) *PlansSection {
-	if p == nil && u == nil {
-		return nil
-	}
-	out := PlansSection{}
-	if p != nil {
-		out.Dir = p.Dir
-	}
-	if u != nil && u.Dir != nil {
-		out.Dir = u.Dir
-	}
-	return &out
+	return mergeSinglePtrField(p, u, (*string)(nil),
+		func(s *PlansSection) *string { return s.Dir },
+		func(s *PlansSection, v *string) { s.Dir = v })
 }
 
 func mergeBranches(p, u *BranchesSection) *BranchesSection {
-	if p == nil && u == nil {
-		return nil
-	}
-	out := BranchesSection{}
-	if p != nil {
-		out.Prefix = p.Prefix
-	}
-	if u != nil && u.Prefix != nil {
-		out.Prefix = u.Prefix
-	}
-	return &out
+	return mergeSinglePtrField(p, u, (*string)(nil),
+		func(s *BranchesSection) *string { return s.Prefix },
+		func(s *BranchesSection, v *string) { s.Prefix = v })
 }
 
 func mergeErrors(p, u *ErrorsSection) *ErrorsSection {
@@ -321,17 +309,9 @@ func mergeBuildCop(p, u *BuildCopSection) *BuildCopSection {
 }
 
 func mergeHarness(p, u *HarnessSection) *HarnessSection {
-	if p == nil && u == nil {
-		return nil
-	}
-	out := HarnessSection{}
-	if p != nil {
-		out.ID = p.ID
-	}
-	if u != nil && u.ID != nil {
-		out.ID = u.ID
-	}
-	return &out
+	return mergeSinglePtrField(p, u, (*string)(nil),
+		func(s *HarnessSection) *string { return s.ID },
+		func(s *HarnessSection, v *string) { s.ID = v })
 }
 
 func mergeSync(p, u *SyncSection) *SyncSection {

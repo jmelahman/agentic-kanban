@@ -165,12 +165,12 @@ func fetchReviewDecision(ctx context.Context, client *http.Client, apiBase, tok,
 }
 
 type ghCheckRun struct {
-	Name        string `json:"name"`
-	Status      string `json:"status"`     // queued, in_progress, completed
-	Conclusion  string `json:"conclusion"` // success, failure, neutral, cancelled, skipped, timed_out, action_required, ""
-	HTMLURL     string `json:"html_url"`
-	DetailsURL  string `json:"details_url"`
-	StartedAt   string `json:"started_at"`
+	Name       string `json:"name"`
+	Status     string `json:"status"`     // queued, in_progress, completed
+	Conclusion string `json:"conclusion"` // success, failure, neutral, cancelled, skipped, timed_out, action_required, ""
+	HTMLURL    string `json:"html_url"`
+	DetailsURL string `json:"details_url"`
+	StartedAt  string `json:"started_at"`
 }
 
 type ghCheckRunsResp struct {
@@ -274,13 +274,14 @@ func firstNonEmpty(s ...string) string {
 	return ""
 }
 
-// GetJSON issues a GET against u and decodes the JSON body into out. Sets the
-// standard GitHub API headers and bearer auth when tok is non-empty. Shared
-// between the PR poller, PR-detail aggregator, and the build-cop poller.
-func GetJSON(ctx context.Context, client *http.Client, tok, u string, out any) error {
+// GetJSONPage issues a GET against u and decodes the JSON body into out, like
+// GetJSON, and additionally returns the URL of the next page parsed from the
+// Link header (or "" when there is none). Sets the standard GitHub API headers
+// and bearer auth when tok is non-empty.
+func GetJSONPage(ctx context.Context, client *http.Client, tok, u string, out any) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
@@ -289,19 +290,27 @@ func GetJSON(ctx context.Context, client *http.Client, tok, u string, out any) e
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return fmt.Errorf("github api: %w", err)
+		return "", fmt.Errorf("github api: %w", err)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("github api: read body: %w", err)
+		return "", fmt.Errorf("github api: read body: %w", err)
 	}
 	if resp.StatusCode/100 != 2 {
-		return fmt.Errorf("github api %s: %s: %s",
+		return "", fmt.Errorf("github api %s: %s: %s",
 			u, resp.Status, strings.TrimSpace(string(body)))
 	}
 	if err := json.Unmarshal(body, out); err != nil {
-		return fmt.Errorf("github api: parse: %w", err)
+		return "", fmt.Errorf("github api: parse: %w", err)
 	}
-	return nil
+	return ParseNextLink(resp.Header.Get("Link")), nil
+}
+
+// GetJSON issues a GET against u and decodes the JSON body into out. Sets the
+// standard GitHub API headers and bearer auth when tok is non-empty. Shared
+// between the PR poller, PR-detail aggregator, and the build-cop poller.
+func GetJSON(ctx context.Context, client *http.Client, tok, u string, out any) error {
+	_, err := GetJSONPage(ctx, client, tok, u, out)
+	return err
 }
