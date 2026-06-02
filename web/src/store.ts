@@ -9,6 +9,7 @@ import type {
   SyncConfig,
   Ticket,
 } from "@/api/client";
+import { clearSessionTab } from "@/storage";
 
 // Per-id subscriptions: a render that reads `useEntity(store, id)` only
 // re-runs when that one id's value changes. By construction, updating ticket 5
@@ -252,7 +253,13 @@ export async function fetchBoardStructure(boardId: number): Promise<BoardStructu
   // Trust local state and let SSE drive any real deletion.
   sessionStore.forEach((s, id) => {
     if (newSessionIds.has(id)) return;
-    if (!ticketStore.get(s.ticket_id)) sessionStore.delete(id);
+    if (!ticketStore.get(s.ticket_id)) {
+      sessionStore.delete(id);
+      // Drop the session's remembered-tab key so it doesn't outlive the
+      // session (archive/delete). One key per session id, so without this
+      // they accumulate in localStorage forever.
+      clearSessionTab(id);
+    }
   });
 
   const ticketIdsByColumn: Record<number, number[]> = {};

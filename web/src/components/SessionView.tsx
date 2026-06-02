@@ -25,6 +25,7 @@ import { sessionStore, setTerminalSlot, usePullProgress, useSession, useTicket }
 import { useToast } from "@/toast";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import { useShortcut } from "@/keys/useShortcut";
+import { readSessionTab, writeSessionTab } from "@/storage";
 import {
   ArchiveIcon,
   CheckIcon,
@@ -53,11 +54,9 @@ const DiffPanel = lazy(() => importDiffPanel().then((m) => ({ default: m.DiffPan
 const TAB_ORDER = ["agent", "shell", "tasks", "diff", "plans", "info"] as const;
 type TabId = (typeof TAB_ORDER)[number];
 
-const TAB_KEY_PREFIX = "sessionPane.tab.";
-
 function loadInitialTab(sessionId: number | null): TabId {
-  if (sessionId == null || typeof localStorage === "undefined") return "agent";
-  const raw = localStorage.getItem(TAB_KEY_PREFIX + sessionId);
+  if (sessionId == null) return "agent";
+  const raw = readSessionTab(sessionId);
   return (TAB_ORDER as readonly string[]).includes(raw ?? "") ? (raw as TabId) : "agent";
 }
 
@@ -214,7 +213,7 @@ export function SessionView({
 
   useEffect(() => {
     if (sessionId == null) return;
-    localStorage.setItem(TAB_KEY_PREFIX + sessionId, tab);
+    writeSessionTab(sessionId, tab);
   }, [tab, sessionId]);
 
   useClickOutside(syncMenuRef, () => setSyncMenuOpen(false), {
