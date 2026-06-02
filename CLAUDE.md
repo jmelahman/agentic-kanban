@@ -149,6 +149,7 @@ entry to `REGRESSIONS.md` and a one-line title here.
 - `sessions` row has multiple writers — session lifecycle vs PR poller
 - Per-origin SSE streams starve the WebSocket pool — board subscriptions
 - A deleted board can refetch its `/state` on a loop — board-level events
+- Build Cop boards on the same repo share one jobs cache — per-tick cache eviction
 
 ## Documentation upkeep
 

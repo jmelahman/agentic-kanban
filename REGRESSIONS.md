@@ -83,3 +83,29 @@ breaks the loop: 4xx responses are never retried, and a 404 on a `["board",
 …]` query refetches the boards list (dropping the dead board so its Overview
 node unmounts) instead of toasting. If you ever add a board-level SSE event,
 prefer evicting proactively over relying on this 404 fallback.
+
+### Build Cop boards on the same repo share one jobs cache
+
+The build-cop poller memoizes `/actions/runs/:id/jobs` per `(repo_path,
+run_id)` — completed runs are immutable, so a warm cache makes the steady
+state ~zero job fetches per tick (only genuinely new runs). The trap: the
+cache is keyed by **repo, not by board**, and more than one Build Cop board
+can poll the same repo (e.g. an all-branches board plus a `branch = "main"`
+board). If each board evicts the cache against *its own* window, the boards
+clobber each other every tick: the all-branches board's non-main runs are
+dropped by the main board's retain, then refetched next tick, then dropped
+again. That fanout — ~150 jobs calls/tick at the incident — burned the entire
+5000/hr core budget and 403'd the unrelated PR poller as collateral (shared
+token). It surfaced the day a second Build Cop board was added to a repo that
+already had one, and nothing in the single-board tests caught it.
+
+Rules:
+
+- Eviction is **per tick**, not per board: `tick` collects each board's keep
+  set, unions them by repo, and calls `retainJobs` once per repo
+  (`retainJobsForBoards`). `syncBoard` must *not* evict on its own.
+- Skip eviction for a repo whose board errored this tick — a transient
+  `listRuns` failure shouldn't drop entries the failed board would have kept.
+- If you add conditional-request (ETag) support or otherwise touch the cache,
+  keep the union-retain invariant: any code path that retains against a single
+  board's window reintroduces the storm.

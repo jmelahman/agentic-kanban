@@ -55,9 +55,12 @@ type Poller struct {
 
 	// jobsCache memoizes /actions/runs/:id/jobs responses. Completed workflow
 	// runs are immutable, so once cached we never refetch. Key is
-	// "<repo_path>|<run_id>"; evictRun is called at the end of each tick to
-	// drop entries that fell out of the rolling window so memory stays
-	// proportional to the active window, not the lifetime of the process.
+	// "<repo_path>|<run_id>". Retention runs once per tick (see tick) over the
+	// UNION of every board's in-window runs for a repo — multiple boards can
+	// poll the same repo (e.g. an all-branches board plus a main-only board),
+	// and the cache is shared per repo, so retaining against a single board's
+	// window would evict the other boards' freshly cached runs and force a full
+	// refetch of the jobs endpoint every tick.
 	jobsMu    sync.Mutex
 	jobsCache map[string][]ghJob
 }
@@ -152,27 +155,72 @@ func (p *Poller) Start(ctx context.Context) {
 	}
 }
 
+// boardKeep is one board's contribution to the per-tick cache-retention pass:
+// the repo it polls and the set of run IDs currently inside its window.
+type boardKeep struct {
+	repo string
+	keep map[int64]struct{}
+}
+
 func (p *Poller) tick(ctx context.Context) {
+	var synced []boardKeep
+	// Repos with at least one board that failed to sync this tick. We skip
+	// eviction for them so a transient error (e.g. a 5xx from listRuns) can't
+	// drop cache entries the failed board would have kept, forcing a refetch.
+	failed := make(map[string]struct{})
 	for _, b := range p.cfg.Boards {
 		if b.RepoPath == "" {
 			log.Printf("buildcop: board %q has no repo_path, skipping", b.Name)
 			continue
 		}
-		if err := p.syncBoard(ctx, b); err != nil {
+		keep, err := p.syncBoard(ctx, b)
+		if err != nil {
 			log.Printf("buildcop: board %q: %v", b.Name, err)
+			failed[b.RepoPath] = struct{}{}
+			continue
 		}
+		synced = append(synced, boardKeep{repo: b.RepoPath, keep: keep})
+	}
+	p.retainJobsForBoards(synced, failed)
+}
+
+// retainJobsForBoards evicts cached run-jobs once per tick. Entries are kept
+// when their run is in the UNION of every board's window for that repo, so two
+// boards sharing a repo never evict each other (see the jobsCache comment).
+// Repos in skip are left untouched this tick.
+func (p *Poller) retainJobsForBoards(synced []boardKeep, skip map[string]struct{}) {
+	union := make(map[string]map[int64]struct{})
+	for _, bk := range synced {
+		if _, bad := skip[bk.repo]; bad {
+			continue
+		}
+		m := union[bk.repo]
+		if m == nil {
+			m = make(map[int64]struct{}, len(bk.keep))
+			union[bk.repo] = m
+		}
+		for id := range bk.keep {
+			m[id] = struct{}{}
+		}
+	}
+	for repo, keep := range union {
+		p.retainJobs(repo, keep)
 	}
 }
 
-func (p *Poller) syncBoard(ctx context.Context, cfg BoardConfig) error {
+// syncBoard polls one board and reconciles its tickets. It returns the set of
+// run IDs currently inside the board's window so the caller can retain the
+// shared jobs cache against the union across all boards on the repo (eviction
+// is deliberately NOT done here — see tick / retainJobsForBoards).
+func (p *Poller) syncBoard(ctx context.Context, cfg BoardConfig) (map[int64]struct{}, error) {
 	cache, err := p.ensureBoard(ctx, cfg)
 	if err != nil {
-		return fmt.Errorf("ensure board: %w", err)
+		return nil, fmt.Errorf("ensure board: %w", err)
 	}
 	since := time.Now().UTC().Add(-time.Duration(cfg.WindowDays) * 24 * time.Hour)
 	runs, err := p.listRuns(ctx, cfg.RepoPath, cfg.Branch, since)
 	if err != nil {
-		return fmt.Errorf("list runs: %w", err)
+		return nil, fmt.Errorf("list runs: %w", err)
 	}
 	// Filter to within window (the API filter is approximate when paginating)
 	// and to the configured branch.
@@ -204,10 +252,12 @@ func (p *Poller) syncBoard(ctx context.Context, cfg BoardConfig) error {
 		jobsByRun[r.ID] = jobs
 		p.putCachedJobs(cfg.RepoPath, r.ID, jobs)
 	}
-	p.retainJobs(cfg.RepoPath, keep)
 
 	stats := aggregate(runs, jobsByRun)
-	return p.reconcile(ctx, cfg, cache, stats)
+	if err := p.reconcile(ctx, cfg, cache, stats); err != nil {
+		return nil, err
+	}
+	return keep, nil
 }
 
 func (p *Poller) reconcile(ctx context.Context, cfg BoardConfig, cache boardCache, stats map[string]jobStats) error {
