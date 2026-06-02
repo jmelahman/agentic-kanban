@@ -51,7 +51,7 @@ import { TasksPanel } from "./TasksPanel";
 const importDiffPanel = () => import("./DiffPanel");
 const DiffPanel = lazy(() => importDiffPanel().then((m) => ({ default: m.DiffPanel })));
 
-const TAB_ORDER = ["agent", "shell", "tasks", "diff", "plans", "info"] as const;
+const TAB_ORDER = ["agent", "shell", "diff", "tasks", "plans", "info"] as const;
 type TabId = (typeof TAB_ORDER)[number];
 
 function loadInitialTab(sessionId: number | null): TabId {
@@ -653,8 +653,8 @@ export function SessionView({
       <div className="flex border-b border-border text-sm">
         <Tab active={tab === "agent"} onClick={() => setTab("agent")} label="agent" />
         <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="terminal" />
-        <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
         {hasWorktree && <Tab active={tab === "diff"} onClick={() => setTab("diff")} label="diff" />}
+        <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
         {hasPlans && <Tab active={tab === "plans"} onClick={() => setTab("plans")} label="plans" />}
         <Tab active={tab === "info"} onClick={() => setTab("info")} label="info" />
       </div>
@@ -677,12 +677,12 @@ export function SessionView({
             )}
           </div>
         )}
-        {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
         {tab === "diff" && session && (
           <Suspense fallback={<p className="p-4 text-sm text-fg-muted">Loading diff viewer…</p>}>
             <DiffPanel session={session} />
           </Suspense>
         )}
+        {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
         {tab === "plans" && session && <PlansPanel session={session} />}
         {tab === "info" &&
           (session ? (
