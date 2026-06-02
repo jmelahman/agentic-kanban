@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { init, Terminal, FitAddon, type ITheme } from "ghostty-web";
+import { init, Terminal, type ITheme } from "ghostty-web";
 import { APPEARANCE_EVENT } from "@/hooks/useThemeMode";
 
 const ghosttyReady = init();
@@ -21,7 +21,7 @@ type Props = {
 export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const fitRef = useRef<FitAddon | null>(null);
+  const fitRef = useRef<(() => void) | null>(null);
   const termRef = useRef<Terminal | null>(null);
 
   useEffect(() => {
@@ -51,12 +51,41 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
         fontSize: 13,
         theme: getTerminalTheme(),
       });
-      const fit = new FitAddon();
-      fitRef.current = fit;
       termRef.current = term;
-      term.loadAddon(fit);
       term.open(host);
-      fit.fit();
+
+      // Fit the terminal to fill the host box exactly. Two ghostty quirks
+      // otherwise leave a visible margin on the right and bottom:
+      //
+      //  1. Its bundled FitAddon reserves a hard-coded 15px scrollbar gutter
+      //     (we draw the scrollbar onto the canvas instead, so that strip is
+      //     dead space). We skip the addon and floor to whole cells against
+      //     the full host width/height ourselves to reclaim it.
+      //  2. A character grid only lands on whole cells, so cols×cellWidth is
+      //     still up to one cell short of the host. ghostty sizes the <canvas>
+      //     to that grid (and writes it as an inline width/height), so we
+      //     stretch the canvas back to 100% to cover the sub-cell remainder.
+      //     That stretch is under one cell per axis — visually imperceptible,
+      //     and small enough that cell-based click/selection mapping (which
+      //     divides the canvas rect by the cell size) stays accurate.
+      //
+      // ghostty only rewrites the inline canvas size from term.resize() and
+      // font changes; we own every resize via this function and never change
+      // the font at runtime, so re-applying the stretch here is sufficient.
+      const fitToHost = () => {
+        const m = term.renderer?.getMetrics();
+        if (!m?.width || !m.height) return;
+        const cols = Math.max(1, Math.floor(host.clientWidth / m.width));
+        const rows = Math.max(1, Math.floor(host.clientHeight / m.height));
+        if (cols !== term.cols || rows !== term.rows) term.resize(cols, rows);
+        const canvas = host.querySelector("canvas");
+        if (canvas) {
+          canvas.style.width = "100%";
+          canvas.style.height = "100%";
+        }
+      };
+      fitRef.current = fitToHost;
+      fitToHost();
       // Bypass term.focus() — it calls host.focus() with no options, so the
       // browser scrolls the host into view. With the mobile soft keyboard
       // open the visual viewport is short, so that scroll lands the terminal
@@ -104,7 +133,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
         if (fitTimer != null) clearTimeout(fitTimer);
         fitTimer = window.setTimeout(() => {
           fitTimer = null;
-          fit.fit();
+          fitToHost();
         }, 80);
       };
       const observer = new ResizeObserver(scheduleFit);
@@ -155,7 +184,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
     const target = mountTarget ?? getOffscreenContainer();
     if (wrapper.parentElement === target) return;
     target.appendChild(wrapper);
-    fitRef.current?.fit();
+    fitRef.current?.();
     if (mountTarget) hostRef.current?.focus({ preventScroll: true });
   }, [mountTarget]);
 

@@ -136,69 +136,19 @@ bundled Chromium under `$PLAYWRIGHT_BROWSERS_PATH=/ms-playwright`.
 
 ## Recurring regression notes
 
-Short entries on bugs that have bitten us before. When you fix a regression
-that fits a pattern below, extend the entry; when you fix something new and
-likely to recur, add a fresh one. Keep each entry short — state the rule,
-not the war story.
+Tripwires for code that's bitten us before. Full write-ups live in
+`REGRESSIONS.md` (kept out of the published `docs/` site — it's internal
+lore, not user docs). If you're touching any area below, read its entry there
+before changing it. Several of these fire from changes that don't look risky
+(adding an SSE event, a handler that updates a couple of columns), so don't
+skip the check. When you fix something new and likely to recur, add the full
+entry to `REGRESSIONS.md` and a one-line title here.
 
-### `ghostty-web` terminal dispose poisons the WASM heap
-
-`Terminal.dispose()` calls `ghostty_terminal_free`, which corrupts the
-shared WASM linear memory whenever the terminal previously wrote a
-multi-codepoint grapheme cluster (flag emoji, skin tone, ZWJ family,
-keycap). Because `init()` keeps a single page-wide Ghostty instance, the
-next terminal's first `write()` traps with "Out of bounds memory access"
-— see upstream issue coder/ghostty-web#141. `PtyTerminal.tsx` works
-around this by setting the private `wasmTerm` field to `undefined`
-before calling `dispose()`, which skips the buggy `free()` while keeping
-the rest of cleanup (DOM removal, document listeners, observers). Drop
-the workaround when coder/ghostty-web#142 lands and we bump the package.
-
-### `sessions` row has multiple writers
-
-Two independent paths write to the `sessions` row: the session manager
-(lifecycle columns — `status`, `container_id`, `started_at`, `stopped_at`)
-and the GitHub poller (`pr_state`, `pr_number`, `pr_url`, `pr_title`).
-Anything that loads the row, mutates a few fields, then writes the whole
-row back will silently clobber whatever the other writer just committed.
-Rules:
-
-- Use column-scoped updates (`UpdateSessionLifecycle`, `UpdateSessionPR`).
-  Don't `UpsertSession` from a path that doesn't own every column.
-- Before publishing `session_updated` over SSE, refetch from the DB so the
-  wire payload reflects what's persisted. HTTP handlers funnel through
-  `publishSessionUpdated(ctx, sessionID)` which refetches; the poller
-  refetches in `applyTransition`'s defer.
-
-### Per-origin SSE streams starve the WebSocket pool
-
-Browsers cap HTTP/1.1 connections at 6 per origin and route the initial
-WebSocket upgrade request through the same pool. One `EventSource` per
-board (Overview subscribes to *every* loaded board) saturates the pool
-once you have ~6 boards open; the next PTY WebSocket handshake then sits
-queued in `readyState: CONNECTING` indefinitely — the terminal panel
-shows a cursor but never receives output until the user refreshes. All
-SSE subscribers funnel through a singleton `BoardEventManager` in
-`web/src/api/client.ts` that keeps one stream open against
-`GET /api/events?boards=…`. Don't add new code paths that open per-board
-EventSources; route them through `subscribeBoard` / `useBoardSubscription`.
-
-### A deleted board can refetch its `/state` on a loop
-
-There is no board-level SSE (no `board_created`/`board_deleted`), so the
-boards list is only refreshed by *this* client's own mutations. A long-lived
-tab that loaded while board N existed keeps board N mounted in Overview after
-someone else deletes it — still observing `["board", N]` and still subscribed
-via the multiplexed stream. Once we moved to one shared connection
-(`26713ba`), every subscribed board's events arrive reliably (the old
-per-board EventSources were starved by the 6-connection cap and silently
-dropped these), so each event for the dead board re-invalidates and refetches
-its 404ing `GET /api/boards/N/state` — amplified ×4 by react-query retries,
-each a toast + `reportRuntimeError`. The `QueryClient` in `web/src/main.tsx`
-breaks the loop: 4xx responses are never retried, and a 404 on a `["board",
-…]` query refetches the boards list (dropping the dead board so its Overview
-node unmounts) instead of toasting. If you ever add a board-level SSE event,
-prefer evicting proactively over relying on this 404 fallback.
+- `ghostty-web` terminal dispose poisons the WASM heap — terminal teardown
+- `ghostty-web` canvas doesn't fill its container — terminal sizing/fit
+- `sessions` row has multiple writers — session lifecycle vs PR poller
+- Per-origin SSE streams starve the WebSocket pool — board subscriptions
+- A deleted board can refetch its `/state` on a loop — board-level events
 
 ## Documentation upkeep
 
