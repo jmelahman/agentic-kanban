@@ -163,6 +163,50 @@ Ensures a session exists for the given ticket; creates one if absent.
 |-----------|---------|----------|--------------|
 | `session` | integer | yes      | Session id.  |
 
+### Config
+
+Read and write the layered kanban config (see [Configuration](/guide/configuration)), mirroring `git config`. Keys are dotted, e.g. `sync.allow_rebase` or `github.draft_column`.
+
+#### `list_config`
+
+Lists config keys with values and source.
+
+| Argument | Type   | Required | Notes                                                          |
+|----------|--------|----------|----------------------------------------------------------------|
+| `scope`  | string | no       | `effective` (default), `local`, or `global`.                   |
+| `board`  | string | no       | Board id or slug; selects the local layer.                     |
+
+#### `get_config`
+
+Returns `{ "key", "value" }` for one dotted key. A single `devcontainer.container_env` entry is addressable as `devcontainer.container_env.<NAME>`.
+
+| Argument | Type   | Required | Notes                                        |
+|----------|--------|----------|----------------------------------------------|
+| `key`    | string | yes      | Dotted config key.                           |
+| `scope`  | string | no       | `effective` (default), `local`, or `global`. |
+| `board`  | string | no       | Board id or slug.                            |
+
+#### `set_config`
+
+Sets a config key.
+
+| Argument | Type   | Required | Notes                                                                                          |
+|----------|--------|----------|------------------------------------------------------------------------------------------------|
+| `key`    | string | yes      | Dotted config key.                                                                             |
+| `value`  | any    | yes      | Native JSON value matching the key's type (bool/string, array, object, or array-of-objects).   |
+| `scope`  | string | yes      | `local` (requires `board`) or `global`.                                                        |
+| `board`  | string | no       | Board id or slug; required for `local`.                                                        |
+
+#### `unset_config`
+
+Removes a config key.
+
+| Argument | Type   | Required | Notes                                   |
+|----------|--------|----------|-----------------------------------------|
+| `key`    | string | yes      | Dotted config key.                      |
+| `scope`  | string | yes      | `local` (requires `board`) or `global`. |
+| `board`  | string | no       | Board id or slug; required for `local`. |
+
 ## Wiring
 
 ### Claude Desktop

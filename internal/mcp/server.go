@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/jmelahman/kanban/internal/client"
 )
@@ -191,12 +192,12 @@ func toolDefinitions() []map[string]any {
 			"inputSchema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":          schemaProp("string", "Board name"),
-					"repo_path":     schemaProp("string", "Path to the host git repo (one of repo_path/mount_path is required)"),
-					"mount_path":    schemaProp("string", "Mount path inside session containers (alternative to repo_path)"),
-					"worktree_root": schemaProp("string", "Override the parent directory for new session worktrees"),
-					"base_branch":   schemaProp("string", "Branch session worktrees fork from (default: main)"),
-					"branch_prefix": schemaProp("string", "Optional prefix prepended to session branch names"),
+					"name":             schemaProp("string", "Board name"),
+					"repo_path":        schemaProp("string", "Path to the host git repo (one of repo_path/mount_path is required)"),
+					"mount_path":       schemaProp("string", "Mount path inside session containers (alternative to repo_path)"),
+					"worktree_root":    schemaProp("string", "Override the parent directory for new session worktrees"),
+					"base_branch":      schemaProp("string", "Branch session worktrees fork from (default: main)"),
+					"branch_prefix":    schemaProp("string", "Optional prefix prepended to session branch names"),
 					"git_author_name":  schemaProp("string", "Author name used for merge commits (e.g. squash merges)"),
 					"git_author_email": schemaProp("string", "Author email used for merge commits"),
 				},
@@ -220,13 +221,13 @@ func toolDefinitions() []map[string]any {
 			"inputSchema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"board":         boardIdentSchema(),
-					"name":          schemaProp("string", "New name"),
-					"repo_path":     schemaProp("string", "New repo path"),
-					"mount_path":    schemaProp("string", "New mount path"),
-					"worktree_root": schemaProp("string", "New worktree root"),
-					"base_branch":   schemaProp("string", "New base branch"),
-					"branch_prefix": schemaProp("string", "New branch prefix"),
+					"board":            boardIdentSchema(),
+					"name":             schemaProp("string", "New name"),
+					"repo_path":        schemaProp("string", "New repo path"),
+					"mount_path":       schemaProp("string", "New mount path"),
+					"worktree_root":    schemaProp("string", "New worktree root"),
+					"base_branch":      schemaProp("string", "New base branch"),
+					"branch_prefix":    schemaProp("string", "New branch prefix"),
 					"git_author_name":  schemaProp("string", "New commit author name"),
 					"git_author_email": schemaProp("string", "New commit author email"),
 				},
@@ -440,6 +441,57 @@ func toolDefinitions() []map[string]any {
 				"required": []string{"session"},
 			},
 		},
+		{
+			"name":        "list_config",
+			"description": "List kanban config keys with their values and source. scope is 'effective' (default, merged + read-only runtime values), 'local', or 'global'; board (id or slug) selects the local layer for the effective/local view.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"scope": schemaProp("string", "effective (default), local, or global"),
+					"board": boardIdentSchema(),
+				},
+			},
+		},
+		{
+			"name":        "get_config",
+			"description": "Get one config value by dotted key (e.g. sync.allow_rebase, github.draft_column, devcontainer.container_env.FOO). scope/board as in list_config.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"key":   schemaProp("string", "Dotted config key"),
+					"scope": schemaProp("string", "effective (default), local, or global"),
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"key"},
+			},
+		},
+		{
+			"name":        "set_config",
+			"description": "Set a config key. scope is 'local' (requires board) or 'global'. value is a native JSON value matching the key's type: bool/string for scalars, array for run_args/mounts, object for container_env, array-of-objects for task/buildcop.boards.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"key":   schemaProp("string", "Dotted config key"),
+					"value": map[string]any{"description": "New value (type depends on the key)"},
+					"scope": schemaProp("string", "local (requires board) or global"),
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"key", "value", "scope"},
+			},
+		},
+		{
+			"name":        "unset_config",
+			"description": "Remove a config key. scope is 'local' (requires board) or 'global'.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"key":   schemaProp("string", "Dotted config key"),
+					"scope": schemaProp("string", "local (requires board) or global"),
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"key", "scope"},
+			},
+		},
 	}
 }
 
@@ -455,24 +507,27 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 	// unmarshal args into a single big shape; tools only read the fields
 	// they care about.
 	var a struct {
-		Board          string  `json:"board"`
-		Name           string  `json:"name"`
-		RepoPath       string  `json:"repo_path"`
-		MountPath      string  `json:"mount_path"`
-		WorktreeRoot   string  `json:"worktree_root"`
-		BaseBranch     string  `json:"base_branch"`
-		BranchPrefix   string  `json:"branch_prefix"`
-		GitAuthorName  string  `json:"git_author_name"`
-		GitAuthorEmail string  `json:"git_author_email"`
-		NamePtr      *string `json:"-"`
-		Title        string  `json:"title"`
-		Body         string  `json:"body"`
-		Column       string  `json:"column"`
-		Ticket       int64   `json:"ticket"`
-		ColumnID     int64   `json:"column_id"`
-		Position     int     `json:"position"`
-		Strategy     string  `json:"strategy"`
-		Session      int64   `json:"session"`
+		Board          string          `json:"board"`
+		Name           string          `json:"name"`
+		RepoPath       string          `json:"repo_path"`
+		MountPath      string          `json:"mount_path"`
+		WorktreeRoot   string          `json:"worktree_root"`
+		BaseBranch     string          `json:"base_branch"`
+		BranchPrefix   string          `json:"branch_prefix"`
+		GitAuthorName  string          `json:"git_author_name"`
+		GitAuthorEmail string          `json:"git_author_email"`
+		NamePtr        *string         `json:"-"`
+		Title          string          `json:"title"`
+		Body           string          `json:"body"`
+		Column         string          `json:"column"`
+		Ticket         int64           `json:"ticket"`
+		ColumnID       int64           `json:"column_id"`
+		Position       int             `json:"position"`
+		Strategy       string          `json:"strategy"`
+		Session        int64           `json:"session"`
+		Key            string          `json:"key"`
+		Value          json.RawMessage `json:"value"`
+		Scope          string          `json:"scope"`
 	}
 	if len(p.Arguments) > 0 {
 		if err := json.Unmarshal(p.Arguments, &a); err != nil {
@@ -679,9 +734,80 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 		raw, err := s.client.RestartSession(ctx, a.Session)
 		return rawOrError(raw, err), nil
 
+	case "list_config":
+		raw, err := s.client.Config(ctx, a.Scope, a.Board)
+		return rawOrError(raw, err), nil
+
+	case "get_config":
+		raw, err := s.client.Config(ctx, a.Scope, a.Board)
+		if err != nil {
+			return errorResult(err.Error()), nil
+		}
+		v, ok := configValueFor(raw, a.Key)
+		if !ok {
+			return errorResult(fmt.Sprintf("no value set for %q", a.Key)), nil
+		}
+		buf, _ := json.Marshal(map[string]any{"key": a.Key, "value": v})
+		return textResult(string(buf)), nil
+
+	case "set_config":
+		var v any
+		if len(a.Value) > 0 {
+			if err := json.Unmarshal(a.Value, &v); err != nil {
+				return errorResult("invalid value: " + err.Error()), nil
+			}
+		}
+		raw, err := s.client.ConfigPatch(ctx, client.ConfigPatchArgs{
+			Scope: a.Scope,
+			Board: a.Board,
+			Set:   map[string]any{a.Key: v},
+		})
+		return rawOrError(raw, err), nil
+
+	case "unset_config":
+		raw, err := s.client.ConfigPatch(ctx, client.ConfigPatchArgs{
+			Scope: a.Scope,
+			Board: a.Board,
+			Unset: []string{a.Key},
+		})
+		return rawOrError(raw, err), nil
+
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", p.Name)
 	}
+}
+
+// configValueFor extracts a single key's value from a GET /api/config
+// response, resolving a StringMap entry address (parent.key) by indexing the
+// parent map when no exact key matches.
+func configValueFor(raw json.RawMessage, key string) (any, bool) {
+	var view struct {
+		Entries []struct {
+			Key   string `json:"key"`
+			Value any    `json:"value"`
+		} `json:"entries"`
+	}
+	if json.Unmarshal(raw, &view) != nil {
+		return nil, false
+	}
+	for _, e := range view.Entries {
+		if e.Key == key {
+			return e.Value, true
+		}
+	}
+	if i := strings.LastIndex(key, "."); i > 0 {
+		parent, sub := key[:i], key[i+1:]
+		for _, e := range view.Entries {
+			if e.Key == parent {
+				if m, ok := e.Value.(map[string]any); ok {
+					if v, ok := m[sub]; ok {
+						return v, true
+					}
+				}
+			}
+		}
+	}
+	return nil, false
 }
 
 // boardID resolves ident through the client, returning (id, nil) on success

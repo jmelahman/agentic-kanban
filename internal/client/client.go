@@ -258,6 +258,44 @@ func (c *Client) RestartSession(ctx context.Context, id int64) (json.RawMessage,
 	return c.do(ctx, http.MethodPost, "/api/sessions/"+strconv.FormatInt(id, 10)+"/restart", nil, http.StatusOK)
 }
 
+// ConfigPatchArgs is the request body for PATCH /api/config. Scope is "local"
+// or "global"; Board (id or slug) is required for local scope. Set values are
+// native typed values (bool/string/array/object); Unset names keys to clear.
+type ConfigPatchArgs struct {
+	Scope string         `json:"scope"`
+	Board string         `json:"board,omitempty"`
+	Set   map[string]any `json:"set,omitempty"`
+	Unset []string       `json:"unset,omitempty"`
+}
+
+// Config calls GET /api/config. scope is "effective" (default when ""),
+// "local", or "global"; board (id or slug) scopes the local layer.
+func (c *Client) Config(ctx context.Context, scope, board string) (json.RawMessage, error) {
+	q := url.Values{}
+	if scope != "" {
+		q.Set("scope", scope)
+	}
+	if board != "" {
+		q.Set("board", board)
+	}
+	path := "/api/config"
+	if enc := q.Encode(); enc != "" {
+		path += "?" + enc
+	}
+	return c.do(ctx, http.MethodGet, path, nil, http.StatusOK)
+}
+
+// ConfigPatch calls PATCH /api/config and returns the refreshed config view.
+func (c *Client) ConfigPatch(ctx context.Context, a ConfigPatchArgs) (json.RawMessage, error) {
+	if a.Scope == "" {
+		return nil, fmt.Errorf("scope required (local or global)")
+	}
+	if len(a.Set) == 0 && len(a.Unset) == 0 {
+		return nil, fmt.Errorf("nothing to set or unset")
+	}
+	return c.do(ctx, http.MethodPatch, "/api/config", a, http.StatusOK)
+}
+
 // ResolveBoardID resolves a board identifier (numeric id or slug) to a
 // numeric id by listing boards. The REST endpoints under /api/boards/{id}
 // (state, archived, etc.) require numeric ids; this helper lets callers

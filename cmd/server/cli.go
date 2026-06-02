@@ -20,7 +20,7 @@ import (
 // running `kanban serve`. For dockerized deploys curl against the REST API
 // is friendlier (no host install).
 func addClientCommands(root *cobra.Command) {
-	root.AddCommand(boardCmd(), ticketCmd(), columnCmd(), sessionCmd())
+	root.AddCommand(boardCmd(), ticketCmd(), columnCmd(), sessionCmd(), configCmd())
 }
 
 // resolveURL returns the effective server URL for a leaf command. KANBAN_URL

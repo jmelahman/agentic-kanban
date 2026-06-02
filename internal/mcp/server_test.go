@@ -75,6 +75,7 @@ func TestRun_CreateTicketFlow(t *testing.T) {
 		"delete_ticket", "done_ticket", "sync_ticket", "merge_ticket",
 		"archive_column_tickets",
 		"ensure_session", "start_session", "stop_session", "restart_session",
+		"list_config", "get_config", "set_config", "unset_config",
 	}
 	for _, name := range expectTools {
 		if !strings.Contains(string(listResp["result"]), `"`+name+`"`) {
@@ -207,6 +208,52 @@ func TestCallTool_LifecycleCoverage(t *testing.T) {
 	if len(archived) != 0 {
 		t.Errorf("delete_archived: %d archived left", len(archived))
 	}
+}
+
+// TestCallTool_Config exercises the config tools through callTool, asserting
+// set -> get round-trips a value and unset clears it. KANBAN_CONFIG is
+// redirected so the global write hits a throwaway file.
+func TestCallTool_Config(t *testing.T) {
+	t.Setenv("KANBAN_CONFIG", filepath.Join(t.TempDir(), "config.toml"))
+	srv, _, _ := newKanbanTestServer(t)
+	s := &server{client: client.New(srv.URL, srv.Client())}
+	ctx := t.Context()
+
+	call := func(name string, args map[string]any) map[string]any {
+		t.Helper()
+		argBuf, _ := json.Marshal(args)
+		paramBuf, _ := json.Marshal(map[string]any{"name": name, "arguments": json.RawMessage(argBuf)})
+		out, err := s.callTool(ctx, paramBuf)
+		if err != nil {
+			t.Fatalf("callTool %s: %v", name, err)
+		}
+		if isErr, _ := out["isError"].(bool); isErr {
+			t.Fatalf("tool %s returned error: %s", name, textOf(out))
+		}
+		return out
+	}
+
+	call("set_config", map[string]any{"key": "sync.allow_rebase", "value": true, "scope": "global"})
+
+	out := call("get_config", map[string]any{"key": "sync.allow_rebase"})
+	if !strings.Contains(textOf(out), `"value":true`) {
+		t.Fatalf("get_config after set: %s", textOf(out))
+	}
+
+	call("unset_config", map[string]any{"key": "sync.allow_rebase", "scope": "global"})
+
+	out = call("get_config", map[string]any{"key": "sync.allow_rebase"})
+	if !strings.Contains(textOf(out), `"value":null`) {
+		t.Fatalf("get_config after unset: %s", textOf(out))
+	}
+}
+
+func textOf(out map[string]any) string {
+	if c, ok := out["content"].([]map[string]any); ok && len(c) > 0 {
+		text, _ := c[0]["text"].(string)
+		return text
+	}
+	return ""
 }
 
 func newKanbanTestServer(t *testing.T) (*httptest.Server, *db.Store, *db.Board) {

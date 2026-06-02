@@ -115,6 +115,9 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/settings", h.updateSettings)
 	mux.HandleFunc("GET /api/harnesses", h.listHarnesses)
 
+	mux.HandleFunc("GET /api/config", h.getConfig)
+	mux.HandleFunc("PATCH /api/config", h.patchConfig)
+
 	mux.HandleFunc("GET /api/fs/check", h.fsCheck)
 
 	mux.Handle("GET /metrics", metrics.Handler())

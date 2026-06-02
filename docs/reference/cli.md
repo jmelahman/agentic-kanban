@@ -28,11 +28,16 @@ kanban
 │   └── merge          Merge a ticket branch into base
 ├── column             Column-level operations
 │   └── archive-all    Archive every ticket in a column
-└── session            Manage agent sessions
-    ├── ensure         Ensure a session exists for a ticket
-    ├── start          Start a stopped session
-    ├── stop           Stop a running session
-    └── restart        Restart a session
+├── session            Manage agent sessions
+│   ├── ensure         Ensure a session exists for a ticket
+│   ├── start          Start a stopped session
+│   ├── stop           Stop a running session
+│   └── restart        Restart a session
+└── config             Read and write kanban configuration
+    ├── list           List config keys with value and source
+    ├── get            Print one config value
+    ├── set            Set a config key
+    └── unset          Remove a config key
 ```
 
 `kanban --version` prints the build version.
@@ -211,11 +216,47 @@ Starts or restarts a session by numeric session id.
 
 Stops a running session.
 
+## `config`
+
+Read and write the layered kanban config (see [Configuration](/guide/configuration)), mirroring `git config`. Keys are dotted, e.g. `sync.allow_rebase` or `github.draft_column`.
+
+Scope flags are shared by every subcommand:
+
+- `--global` — the user config (`~/.config/kanban/config.toml`).
+- `--local --board <id-or-slug>` — that board's project `.kanban.toml`.
+- Reads (`list`, `get`) default to the merged **effective** view when no scope flag is given; writes (`set`, `unset`) require `--global` or `--local`.
+
+### `config list [--local | --global] [--board <id-or-slug>] [--json]`
+
+Prints a `KEY  VALUE  SOURCE` table. The effective view also includes read-only runtime values (`data_dir`, ports) with source `runtime`.
+
+### `config get <key> [--local | --global] [--board <id-or-slug>] [--json]`
+
+Prints the bare value (so it's pipe-friendly). `--json` prints `{"key","value"}`. A single `devcontainer.container_env` entry is addressable as `devcontainer.container_env.<NAME>`.
+
+### `config set <key> <value> (--global | --local --board <id-or-slug>)`
+
+```sh
+kanban config set sync.allow_rebase true --global
+kanban config set github.draft_column "Draft" --global
+kanban config set branches.prefix feat --local --board playground
+# Collections take a JSON value:
+kanban config set devcontainer.run_args '["--cap-add=NET_ADMIN"]' --global
+kanban config set task '[{"label":"web","container_port":3000}]' --global
+kanban config set devcontainer.container_env.FOO bar --global
+```
+
+Booleans accept `true`/`false`; strings pass through; arrays/maps/tables take a JSON document.
+
+### `config unset <key> (--global | --local --board <id-or-slug>)`
+
+Removes the key (and prunes any section it leaves empty).
+
 ## Environment variables
 
 | Variable               | Used by                                       | Notes                                                           |
 | ---------------------- | --------------------------------------------- | --------------------------------------------------------------- |
-| `KANBAN_URL`           | `mcp`, `board`, `ticket`, `column`, `session` | Default server URL. Overridden by `--server` if explicitly set. |
+| `KANBAN_URL`           | `mcp`, `board`, `ticket`, `column`, `session`, `config` | Default server URL. Overridden by `--server` if explicitly set. |
 | `KANBAN_CONFIG`        | `serve`                                       | User-level config path. Overridden by `--config` if set.        |
 | `KANBAN_DATA_DIR`      | `serve`                                       | Data directory. Overridden by `--data-dir` if set.              |
 | `KANBAN_WORKTREES_DIR` | `serve`                                       | Worktrees directory. Overridden by `--worktrees-dir` if set.    |

@@ -10,8 +10,6 @@
 package kanbantoml
 
 import (
-	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -87,13 +85,13 @@ type BuildCopSection struct {
 // required field; everything else has a default applied at resolve time.
 // Branch == "" or "*" matches every branch.
 type BuildCopBoard struct {
-	Name                *string  `toml:"name"`
-	RepoPath            *string  `toml:"repo_path"`
-	Branch              *string  `toml:"branch"`
-	FailureThreshold    *float64 `toml:"failure_threshold"`
-	MinRuns             *int     `toml:"min_runs"`
-	GreenStreakRequired *int     `toml:"green_streak_required"`
-	WindowDays          *int     `toml:"window_days"`
+	Name                *string  `json:"name,omitempty" toml:"name"`
+	RepoPath            *string  `json:"repo_path,omitempty" toml:"repo_path"`
+	Branch              *string  `json:"branch,omitempty" toml:"branch"`
+	FailureThreshold    *float64 `json:"failure_threshold,omitempty" toml:"failure_threshold"`
+	MinRuns             *int     `json:"min_runs,omitempty" toml:"min_runs"`
+	GreenStreakRequired *int     `json:"green_streak_required,omitempty" toml:"green_streak_required"`
+	WindowDays          *int     `json:"window_days,omitempty" toml:"window_days"`
 }
 
 type SyncSection struct {
@@ -136,8 +134,8 @@ type GitHubSection struct {
 }
 
 type TaskEntry struct {
-	Label         string `toml:"label"`
-	ContainerPort int    `toml:"container_port"`
+	Label         string `json:"label" toml:"label"`
+	ContainerPort int    `json:"container_port" toml:"container_port"`
 }
 
 // UserPath returns the user-level config path. $KANBAN_CONFIG, when set,
@@ -460,70 +458,42 @@ func (f File) PortFor(label string) (int, bool) {
 // WriteUserHarness sets (or clears, when id == "") the [harness].id key in
 // the user config, preserving any other top-level keys already in the file.
 // Creates the file (and parent directories) when needed; deletes the file
-// when clearing leaves it empty.
+// when clearing leaves it empty. Thin wrapper over EditFile so it shares the
+// per-file write lock and atomic write with the generic config API.
 func WriteUserHarness(id string) error {
-	if id == "" {
-		return writeUserSection("harness", nil)
+	path, err := UserPath()
+	if err != nil {
+		return err
 	}
-	return writeUserSection("harness", map[string]any{"id": id})
+	if id == "" {
+		return EditFile(path, nil, []string{"harness.id"})
+	}
+	return EditFile(path, map[string]any{"harness.id": id}, nil)
 }
 
 // WriteUserWorktreesRoot sets (or clears, when root == "") the
 // [worktrees].root key in the user config.
 func WriteUserWorktreesRoot(root string) error {
-	if root == "" {
-		return writeUserSection("worktrees", nil)
+	path, err := UserPath()
+	if err != nil {
+		return err
 	}
-	return writeUserSection("worktrees", map[string]any{"root": root})
+	if root == "" {
+		return EditFile(path, nil, []string{"worktrees.root"})
+	}
+	return EditFile(path, map[string]any{"worktrees.root": root}, nil)
 }
 
 // WriteUserSignCommits sets the [git].sign_commits key in the user config when
 // enabled, or clears the [git] section when disabled (the default), keeping the
 // file minimal.
 func WriteUserSignCommits(enabled bool) error {
-	if !enabled {
-		return writeUserSection("git", nil)
-	}
-	return writeUserSection("git", map[string]any{"sign_commits": true})
-}
-
-// writeUserSection sets the named top-level table to value (or removes it
-// when value is nil), preserving every other top-level key already in the
-// file. Deletes the file when the result is empty.
-func writeUserSection(name string, value map[string]any) error {
 	path, err := UserPath()
 	if err != nil {
 		return err
 	}
-
-	root := map[string]any{}
-	if data, err := os.ReadFile(path); err == nil && len(data) > 0 {
-		if err := toml.Unmarshal(data, &root); err != nil {
-			return fmt.Errorf("parse %s: %w", path, err)
-		}
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	if !enabled {
+		return EditFile(path, nil, []string{"git.sign_commits"})
 	}
-
-	if value == nil {
-		delete(root, name)
-	} else {
-		root[name] = value
-	}
-
-	if len(root) == 0 {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		return nil
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	out, err := toml.Marshal(root)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, out, 0o644)
+	return EditFile(path, map[string]any{"git.sign_commits": true}, nil)
 }

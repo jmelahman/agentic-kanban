@@ -132,6 +132,29 @@ Most sections are object-merged: a key set in the user file wins; keys only set 
 - `[[task]]` entries merge by `label`: a user entry with the same `label` replaces the project entry, and user-only labels are appended.
 - `[[buildcop.boards]]` is **replaced wholesale** when the user file sets any entries — board names can change and there's no stable identity to merge by, so the rule is "if the user declared boards, those are the boards."
 
+## Managing config from the API / CLI / MCP
+
+Besides editing the TOML files by hand, every key above is readable and writable
+through a `git config`-style surface — REST, CLI, and MCP — backed by a running
+`kanban serve`. `--global` targets the user config; `--local --board <id-or-slug>`
+targets that board's project `.kanban.toml`. Reads default to the merged
+**effective** view, which also surfaces read-only runtime values (data dir,
+ports).
+
+```sh
+kanban config list                                   # effective view
+kanban config set sync.allow_rebase true --global
+kanban config set branches.prefix feat --local --board playground
+kanban config set devcontainer.run_args '["--cap-add=NET_ADMIN"]' --global
+kanban config unset github.draft_column --global
+```
+
+Two caveats: writes rewrite the whole file, so **comments and key ordering are
+not preserved**; and because `[devcontainer].mounts`/`run_args` *append* across
+layers (see [merge semantics](#merge-semantics)), the effective view shows the
+combined value. See the [CLI](/reference/cli#config), [REST](/reference/api#config),
+and [MCP](/reference/mcp#config) references for the full surface.
+
 ## Overriding the user-config path
 
 ```sh
@@ -249,5 +272,6 @@ hosts.
 
 ## See also
 
-- [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `board list`, `ticket create`.
-- [REST API](/reference/api) — endpoints exposed by the running server.
+- [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `board list`, `ticket create`, `config set`.
+- [REST API](/reference/api) — endpoints exposed by the running server, including `/api/config`.
+- [MCP reference](/reference/mcp) — the `*_config` tools and the rest of the agent-facing surface.
