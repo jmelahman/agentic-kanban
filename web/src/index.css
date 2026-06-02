@@ -127,3 +127,37 @@ body {
   background-color: var(--color-bg);
   color: var(--color-fg);
 }
+
+/*
+ * Pride Month easter egg: the wordmark flows through a rainbow gradient during
+ * June (applied via the .rainbow-text class — see App.tsx). The gradient is
+ * clipped to the text; animation pans it horizontally for a shimmer.
+ */
+@keyframes rainbow-text-pan {
+  to {
+    background-position: 200% center;
+  }
+}
+.rainbow-text {
+  background-image: linear-gradient(
+    90deg,
+    #e40303,
+    #ff8c00,
+    #ffed00,
+    #008026,
+    #004dff,
+    #750787,
+    #e40303
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: rainbow-text-pan 4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rainbow-text {
+    animation: none;
+  }
+}
