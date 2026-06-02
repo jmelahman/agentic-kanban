@@ -1,13 +1,16 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import { FileDiff } from "@pierre/diffs/react";
-import { useQuery } from "@tanstack/react-query";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Session } from "@/api/client";
-import { queryKeys } from "@/api/keys";
+import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import type { Session } from "@/api/client";
 import { useContrast } from "@/hooks/useContrast";
+import { useSessionDiff } from "@/hooks/useSessionDiff";
 import { useThemeMode } from "@/hooks/useThemeMode";
 
 const SIDEBAR_COLLAPSED_KEY = "diff.sidebar.collapsed";
+
+// Stable empty list so `useDeferredValue`'s initial value never changes identity
+// and the first-mount defer below fires reliably.
+const EMPTY_FILES: FileDiffMetadata[] = [];
 
 // Re-skin @pierre/diffs to match the app. The library renders into shadow DOM
 // and themes itself through `--diffs-*` custom properties; this CSS is injected
@@ -124,13 +127,11 @@ export function DiffPanel({ session }: { session: Session }) {
   const highContrast = useContrast() === "high";
   const theme = `github-${resolved}${highContrast ? "-high-contrast" : ""}`;
 
-  const diffQ = useQuery({
-    queryKey: queryKeys.sessionDiff(session.id),
-    queryFn: () => api.getSessionDiff(session.id),
-    refetchInterval: 4000,
-  });
+  // Polls every 4s while mounted (the diff tab is open). SessionView keeps this
+  // same cache entry warm in the background on other tabs, so opening the tab
+  // usually renders from cache rather than waiting on a cold fetch.
+  const diffQ = useSessionDiff(session.id);
 
-  // The panel only mounts while the diff tab is active, so polling is cheap.
   const files = useMemo<FileDiffMetadata[]>(() => {
     const patch = diffQ.data?.patch ?? "";
     if (!patch.trim()) return [];
@@ -143,6 +144,16 @@ export function DiffPanel({ session }: { session: Session }) {
 
   const tree = useMemo(() => buildTree(files), [files]);
   const orderedFiles = useMemo(() => flattenLeaves(tree), [tree]);
+
+  // Highlighting every file (Shiki, on the main thread — `disableWorkerPool`) is
+  // the expensive part of this panel. Defer it so the shell (sidebar + a
+  // "Loading diff…" line) paints first and the diffs fill in via a non-blocking
+  // transition. The `EMPTY_FILES` initial value forces the defer even on the
+  // first mount when the patch is already warm in cache; otherwise the first
+  // open would highlight every file synchronously and jank the tab switch. On
+  // later polls `deferredFiles` holds the previous list, so a changed patch
+  // re-renders in the background without flashing the placeholder.
+  const deferredFiles = useDeferredValue(orderedFiles, EMPTY_FILES);
 
   const [collapsed, setCollapsed] = useState(loadSidebarCollapsed);
   // The file currently scrolled to the top of the viewport, highlighted in the
@@ -267,12 +278,16 @@ export function DiffPanel({ session }: { session: Session }) {
         onScroll={onScroll}
         className="min-w-0 flex-1 overflow-auto [scrollbar-gutter:stable]"
       >
-        <DiffStack
-          files={orderedFiles}
-          theme={theme}
-          themeType={resolved}
-          registerRef={registerRef}
-        />
+        {deferredFiles.length === 0 ? (
+          <p className="p-4 text-sm text-fg-muted">Loading diff…</p>
+        ) : (
+          <DiffStack
+            files={deferredFiles}
+            theme={theme}
+            themeType={resolved}
+            registerRef={registerRef}
+          />
+        )}
       </div>
     </div>
   );

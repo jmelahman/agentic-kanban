@@ -20,6 +20,7 @@ import {
   type SyncConfig,
 } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { useSessionDiff } from "@/hooks/useSessionDiff";
 import { sessionStore, setTerminalSlot, usePullProgress, useSession, useTicket } from "@/store";
 import { useToast } from "@/toast";
 import { useClickOutside } from "@/hooks/useClickOutside";
@@ -42,8 +43,12 @@ import { Tab } from "./Tab";
 import { TasksPanel } from "./TasksPanel";
 
 // DiffPanel pulls in @pierre/diffs + Shiki; lazy-load it so that weight only
-// lands when the diff tab is first opened, not in the initial bundle.
-const DiffPanel = lazy(() => import("./DiffPanel").then((m) => ({ default: m.DiffPanel })));
+// lands when the diff tab is first opened, not in the initial bundle. The
+// importer is shared so SessionView can prefetch the chunk in the background
+// (see the effect below) — by the time the user opens the diff tab the JS is
+// already parsed, not downloading behind the Suspense fallback.
+const importDiffPanel = () => import("./DiffPanel");
+const DiffPanel = lazy(() => importDiffPanel().then((m) => ({ default: m.DiffPanel })));
 
 const TAB_ORDER = ["agent", "shell", "tasks", "diff", "plans", "info"] as const;
 type TabId = (typeof TAB_ORDER)[number];
@@ -148,6 +153,24 @@ export function SessionView({
     () => TAB_ORDER.filter((t) => (t !== "plans" || hasPlans) && (t !== "diff" || hasWorktree)),
     [hasPlans, hasWorktree],
   );
+
+  // Keep the diff warm in the background while the user is on another tab, so
+  // opening the diff tab renders from cache instead of a cold fetch. Gated on
+  // `shortcutsEnabled` (the focused view) so the multi-panel overview doesn't
+  // fire a `git diff` subprocess per open panel — only the ticket in focus
+  // warms. While the diff tab is open DiffPanel owns the (faster) poll, so this
+  // backs off to avoid a duplicate request racing the same cache entry.
+  useSessionDiff(sessionId ?? 0, {
+    enabled: shortcutsEnabled && hasWorktree && sessionId != null && tab !== "diff",
+    active: false,
+  });
+
+  // Prefetch the (heavy) DiffPanel chunk once a worktree exists on the focused
+  // view, so the diff tab doesn't sit behind the Suspense fallback while the JS
+  // downloads on first open. Fire-and-forget; lazy() dedupes the import.
+  useEffect(() => {
+    if (shortcutsEnabled && hasWorktree) void importDiffPanel();
+  }, [shortcutsEnabled, hasWorktree]);
 
   useShortcut(
     "tab.next",
