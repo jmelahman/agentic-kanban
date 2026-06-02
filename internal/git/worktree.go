@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -287,6 +288,38 @@ func DiffAgainstBase(worktreePath, base string) (diff string, err error) {
 		args = append(args, diffTarget)
 	}
 	return captureGitEnv(env, args...)
+}
+
+// ReadWorktreeFile returns the current working-tree contents of relPath inside
+// worktreePath — the "new" side of DiffAgainstBase (working tree, including
+// uncommitted edits). relPath is validated to stay within the worktree, both
+// lexically and after resolving symlinks, so a hostile path (e.g. "../" or a
+// symlink pointing out of the tree) can't read arbitrary files. A missing file,
+// or one resolving outside the worktree, returns fs.ErrNotExist.
+func ReadWorktreeFile(worktreePath, relPath string) (string, error) {
+	if relPath == "" || filepath.IsAbs(relPath) {
+		return "", fs.ErrNotExist
+	}
+	clean := filepath.Clean(relPath)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return "", fs.ErrNotExist
+	}
+	root, err := filepath.EvalSymlinks(worktreePath)
+	if err != nil {
+		return "", err
+	}
+	full, err := filepath.EvalSymlinks(filepath.Join(root, clean))
+	if err != nil {
+		return "", err
+	}
+	if full != root && !strings.HasPrefix(full, root+string(filepath.Separator)) {
+		return "", fs.ErrNotExist
+	}
+	data, err := os.ReadFile(full)
+	if err != nil {
+		return "", err
+	}
+	return string(data), nil
 }
 
 // seedTempIndex best-effort copies the worktree's real index into dst so that

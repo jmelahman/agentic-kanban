@@ -1,7 +1,18 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
-import { FileDiff } from "@pierre/diffs/react";
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import type { Session } from "@/api/client";
+import { File, FileDiff } from "@pierre/diffs/react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { api, type Session } from "@/api/client";
+import { queryKeys } from "@/api/keys";
 import { useContrast } from "@/hooks/useContrast";
 import { useSessionDiff } from "@/hooks/useSessionDiff";
 import { useThemeMode } from "@/hooks/useThemeMode";
@@ -155,6 +166,19 @@ export function DiffPanel({ session }: { session: Session }) {
   // re-renders in the background without flashing the placeholder.
   const deferredFiles = useDeferredValue(orderedFiles, EMPTY_FILES);
 
+  // Paths the user has switched from the diff to a whole-file ("View file") view,
+  // GitHub-style. Ephemeral (not persisted) and per-path, so toggling one file
+  // leaves the rest as diffs. Each viewed file lazily fetches its full contents.
+  const [viewFilePaths, setViewFilePaths] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleFileView = useCallback((path: string) => {
+    setViewFilePaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
   const [collapsed, setCollapsed] = useState(loadSidebarCollapsed);
   // The file currently scrolled to the top of the viewport, highlighted in the
   // sidebar. Tracked separately from the heavy diff stack so scroll updates
@@ -283,8 +307,11 @@ export function DiffPanel({ session }: { session: Session }) {
         ) : (
           <DiffStack
             files={deferredFiles}
+            sessionId={session.id}
             theme={theme}
             themeType={resolved}
+            viewFilePaths={viewFilePaths}
+            onToggleView={toggleFileView}
             registerRef={registerRef}
           />
         )}
@@ -293,18 +320,27 @@ export function DiffPanel({ session }: { session: Session }) {
   );
 }
 
-// DiffStack renders every changed file's diff stacked vertically. It is
-// memoized on (files, theme) so the active-file highlight — which changes on
-// every scroll frame — never re-renders the (expensive) FileDiff list.
+// DiffStack renders every changed file stacked vertically. It is memoized on
+// its props so the active-file highlight — which changes on every scroll frame
+// (held in DiffPanel, not here) — never re-renders the (expensive) file list.
+// `viewFilePaths` only changes on a "View file" toggle, so a toggle re-renders
+// the stack but React reconciles by `key`, leaving the other files' FileDiff
+// instances (and their Shiki highlight) untouched.
 const DiffStack = memo(function DiffStack({
   files,
+  sessionId,
   theme,
   themeType,
+  viewFilePaths,
+  onToggleView,
   registerRef,
 }: {
   files: FileDiffMetadata[];
+  sessionId: number;
   theme: string;
   themeType: "light" | "dark";
+  viewFilePaths: ReadonlySet<string>;
+  onToggleView: (path: string) => void;
   registerRef: (el: HTMLElement | null) => void;
 }) {
   return (
@@ -316,33 +352,178 @@ const DiffStack = memo(function DiffStack({
           ref={registerRef}
           className="border-b border-border last:border-b-0"
         >
-          {f.hunks.length === 0 ? (
-            <div className="px-3 py-2">
-              <div className="truncate font-mono text-xs text-fg" title={displayPath(f)}>
-                {displayPath(f)}
-              </div>
-              <div className="text-sm text-fg-muted">
-                No textual diff to display (binary file or metadata-only change).
-              </div>
-            </div>
-          ) : (
-            <FileDiff
-              fileDiff={f}
-              options={{
-                diffStyle: "split",
-                theme,
-                themeType,
-                stickyHeader: true,
-                unsafeCSS: DIFF_UNSAFE_CSS,
-              }}
-              disableWorkerPool
-            />
-          )}
+          <DiffFileEntry
+            file={f}
+            sessionId={sessionId}
+            theme={theme}
+            themeType={themeType}
+            viewFile={viewFilePaths.has(f.name)}
+            onToggleView={onToggleView}
+          />
         </div>
       ))}
     </>
   );
 });
+
+type FileEntryProps = {
+  file: FileDiffMetadata;
+  sessionId: number;
+  theme: string;
+  themeType: "light" | "dark";
+  viewFile: boolean;
+  onToggleView: (path: string) => void;
+};
+
+// DiffFileEntry renders one file as either its diff or — when toggled — its
+// whole contents (the "View file" blob view). A blob view is only offered for
+// text files that still exist on the new side: binary/metadata-only changes
+// (no hunks) and deletions have nothing to show as a file.
+function DiffFileEntry({
+  file,
+  sessionId,
+  theme,
+  themeType,
+  viewFile,
+  onToggleView,
+}: FileEntryProps) {
+  const canView = file.type !== "deleted" && file.hunks.length > 0;
+
+  if (file.hunks.length === 0) {
+    return (
+      <div className="px-3 py-2">
+        <div className="truncate font-mono text-xs text-fg" title={displayPath(file)}>
+          {displayPath(file)}
+        </div>
+        <div className="text-sm text-fg-muted">
+          No textual diff to display (binary file or metadata-only change).
+        </div>
+      </div>
+    );
+  }
+
+  if (viewFile && canView) {
+    return (
+      <FileBlob
+        file={file}
+        sessionId={sessionId}
+        theme={theme}
+        themeType={themeType}
+        onToggleView={onToggleView}
+      />
+    );
+  }
+
+  return (
+    <FileDiff
+      fileDiff={file}
+      options={{
+        diffStyle: "split",
+        theme,
+        themeType,
+        stickyHeader: true,
+        unsafeCSS: DIFF_UNSAFE_CSS,
+      }}
+      renderHeaderMetadata={
+        canView
+          ? () => <ViewToggle viewing={false} onClick={() => onToggleView(file.name)} />
+          : undefined
+      }
+      disableWorkerPool
+    />
+  );
+}
+
+// FileBlob fetches the file's current working-tree contents and renders them as
+// a plain, syntax-highlighted file (no diff coloring), like GitHub's "View
+// file". The fetch is cached per (session, path); it is a point-in-time
+// snapshot and does not poll, so heavy in-progress edits won't thrash it.
+function FileBlob({
+  file,
+  sessionId,
+  theme,
+  themeType,
+  onToggleView,
+}: Omit<FileEntryProps, "viewFile">) {
+  const back = () => onToggleView(file.name);
+  const q = useQuery({
+    queryKey: queryKeys.sessionFile(sessionId, file.name),
+    queryFn: () => api.getSessionFile(sessionId, file.name),
+    staleTime: 10_000,
+  });
+
+  if (q.isPending) {
+    return (
+      <BlobBar file={file} onToggleView={back}>
+        <span className="text-fg-muted">Loading file…</span>
+      </BlobBar>
+    );
+  }
+  if (q.isError || !q.data) {
+    return (
+      <BlobBar file={file} onToggleView={back}>
+        <span className="text-danger">Couldn't load file.</span>
+      </BlobBar>
+    );
+  }
+
+  return (
+    <File
+      file={{ name: file.name, contents: q.data.contents }}
+      options={{
+        theme,
+        themeType,
+        stickyHeader: true,
+        unsafeCSS: DIFF_UNSAFE_CSS,
+      }}
+      renderHeaderMetadata={() => <ViewToggle viewing onClick={back} />}
+      disableWorkerPool
+    />
+  );
+}
+
+// BlobBar is a minimal stand-in header for the blob view's loading/error
+// states, so the "View diff" toggle stays reachable before the File component
+// (which draws its own header) has any contents to render.
+function BlobBar({
+  file,
+  onToggleView,
+  children,
+}: {
+  file: FileDiffMetadata;
+  onToggleView: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div>
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-surface px-3 py-2">
+        <span
+          className="min-w-0 flex-1 truncate font-mono text-xs text-fg"
+          title={displayPath(file)}
+        >
+          {displayPath(file)}
+        </span>
+        <ViewToggle viewing onClick={onToggleView} />
+      </div>
+      <div className="px-3 py-2 text-sm">{children}</div>
+    </div>
+  );
+}
+
+// ViewToggle is the per-file "View file" / "View diff" switch. The library
+// projects it (light DOM) into the file header's metadata slot, so it styles
+// with the app's own tokens and its onClick behaves like any React handler.
+function ViewToggle({ viewing, onClick }: { viewing: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="rounded px-1.5 py-0.5 text-[11px] text-fg-muted hover:bg-surface-2 hover:text-fg"
+    >
+      {viewing ? "View diff" : "View file"}
+    </button>
+  );
+}
 
 function TreeRows({
   nodes,

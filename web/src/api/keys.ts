@@ -12,4 +12,5 @@ export const queryKeys = {
   sessionPlans: (sessionId: number) => ["sessionPlans", sessionId] as const,
   sessionPlan: (sessionId: number, name: string) => ["sessionPlan", sessionId, name] as const,
   sessionDiff: (sessionId: number) => ["sessionDiff", sessionId] as const,
+  sessionFile: (sessionId: number, path: string) => ["sessionFile", sessionId, path] as const,
 };

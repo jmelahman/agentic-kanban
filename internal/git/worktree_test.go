@@ -247,6 +247,54 @@ func TestDiffAgainstBase(t *testing.T) {
 	}
 }
 
+func TestReadWorktreeFile(t *testing.T) {
+	repo := initBareishRepo(t)
+	if err := os.WriteFile(filepath.Join(repo, "hello.txt"), []byte("hi there\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "sub", "nested.txt"), []byte("nested\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// A secret outside the worktree, plus a symlink to it from inside, to prove
+	// neither "../" nor a symlink can escape the worktree.
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outside, []byte("top secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("reads a file", func(t *testing.T) {
+		got, err := ReadWorktreeFile(repo, "hello.txt")
+		if err != nil || got != "hi there\n" {
+			t.Fatalf("ReadWorktreeFile = %q, %v; want %q, nil", got, err, "hi there\n")
+		}
+	})
+	t.Run("reads a nested file", func(t *testing.T) {
+		got, err := ReadWorktreeFile(repo, "sub/nested.txt")
+		if err != nil || got != "nested\n" {
+			t.Fatalf("ReadWorktreeFile = %q, %v; want %q, nil", got, err, "nested\n")
+		}
+	})
+	for _, bad := range []string{
+		"../secret.txt",        // parent escape
+		"sub/../../secret.txt", // escape after a descent
+		"/etc/hostname",        // absolute
+		"link.txt",             // symlink pointing outside the tree
+		"missing.txt",          // does not exist
+	} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			if got, err := ReadWorktreeFile(repo, bad); err == nil {
+				t.Fatalf("ReadWorktreeFile(%q) = %q, nil; want error", bad, got)
+			}
+		})
+	}
+}
+
 // signingRepo seeds a repo whose config enables signing with a key that does
 // not exist, so a commit attempt fails unless signing is suppressed.
 func signingRepo(t *testing.T) string {

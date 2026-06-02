@@ -1633,3 +1633,37 @@ func (h *handlers) getSessionDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, sessionDiff{Base: board.BaseBranch, Patch: patch})
 }
+
+type sessionFile struct {
+	Path     string `json:"path"`
+	Contents string `json:"contents"`
+}
+
+// getSessionFile returns the current working-tree contents of a single file in
+// the session worktree — the "new" side of GET /api/sessions/{id}/diff — so the
+// diff viewer can show a whole-file "View file" view (like GitHub's) instead of
+// just the hunks. The `path` query parameter must name a file inside the
+// worktree; anything missing or outside it returns 404.
+func (h *handlers) getSessionFile(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		h.httpError(w, fmt.Errorf("path query parameter is required"), 400)
+		return
+	}
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	if sess.WorktreePath == "" {
+		h.httpError(w, fmt.Errorf("session has no worktree"), 404)
+		return
+	}
+	contents, err := git.ReadWorktreeFile(sess.WorktreePath, path)
+	if err != nil {
+		h.httpError(w, fmt.Errorf("file not found: %s", path), 404)
+		return
+	}
+	writeJSON(w, 200, sessionFile{Path: path, Contents: contents})
+}

@@ -747,6 +747,58 @@ func TestSessionPlans(t *testing.T) {
 	})
 }
 
+func TestSessionFile(t *testing.T) {
+	e := newEnv(t)
+	board := e.seedBoard("Files")
+	tk := e.seedTicket(board, "F")
+	sess := e.seedSession(tk)
+
+	if err := os.MkdirAll(filepath.Join(sess.WorktreePath, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(sess.WorktreePath, "src", "main.go"),
+		[]byte("package main\n"),
+		0o644,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("returns_file_contents", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/file?path=src/main.go", sess.ID))
+		assertStatus(t, resp, 200)
+		var f map[string]string
+		if err := json.Unmarshal(readBody(t, resp), &f); err != nil {
+			t.Fatal(err)
+		}
+		if f["path"] != "src/main.go" || f["contents"] != "package main\n" {
+			t.Errorf("file = %+v; want path=src/main.go contents=%q", f, "package main\n")
+		}
+	})
+
+	t.Run("missing_path_400", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/file", sess.ID))
+		assertStatus(t, resp, 400)
+	})
+
+	t.Run("missing_file_404", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/file?path=src/nope.go", sess.ID))
+		assertStatus(t, resp, 404)
+	})
+
+	t.Run("rejects_traversal", func(t *testing.T) {
+		resp := e.get(fmt.Sprintf("/api/sessions/%d/file?path=..%%2F..%%2Fsecret", sess.ID))
+		if resp.StatusCode == 200 {
+			t.Errorf("expected non-200 for traversal attempt")
+		}
+	})
+
+	t.Run("unknown_session_404", func(t *testing.T) {
+		resp := e.get("/api/sessions/999999/file?path=x")
+		assertStatus(t, resp, 404)
+	})
+}
+
 // ---------- Static frontend ----------
 
 func TestStatic(t *testing.T) {

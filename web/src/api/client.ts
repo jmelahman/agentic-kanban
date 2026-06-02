@@ -312,6 +312,9 @@ export const api = {
 
   getSessionDiff: (sessionId: number) => request<SessionDiff>(`/api/sessions/${sessionId}/diff`),
 
+  getSessionFile: (sessionId: number, path: string) =>
+    request<SessionFile>(`/api/sessions/${sessionId}/file?path=${encodeURIComponent(path)}`),
+
   getVersion: () => request<Version>("/api/version"),
 };
 
@@ -327,6 +330,14 @@ export type PlanMeta = {
 export type SessionDiff = {
   base: string;
   patch: string;
+};
+
+// SessionFile is the current working-tree contents of a single file in a
+// session worktree — the "new" side of SessionDiff — used by the diff viewer's
+// per-file "View file" (whole-file) view.
+export type SessionFile = {
+  path: string;
+  contents: string;
 };
 
 export type SubscribeOptions = {
