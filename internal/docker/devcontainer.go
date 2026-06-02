@@ -287,18 +287,6 @@ func userKanbanConfigDir() (string, error) {
 	return filepath.Join(home, ".config", "kanban"), nil
 }
 
-// UserDevcontainerPath returns the single-file user-level fallback path,
-// $XDG_CONFIG_HOME/kanban/devcontainer.json or ~/.config/kanban/devcontainer.json.
-// The .devcontainer/ directory form (sibling Dockerfile supported) takes
-// precedence over this single-file form when both exist.
-func UserDevcontainerPath() (string, error) {
-	dir, err := userKanbanConfigDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(dir, "devcontainer.json"), nil
-}
-
 // Spawn builds and runs the devcontainer for a given worktree.
 func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnOptions) (*SpawnResult, error) {
 	if cfg.WorkspaceFolder == "" {

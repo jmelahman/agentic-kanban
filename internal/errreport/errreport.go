@@ -60,13 +60,6 @@ func New(store *db.Store, cfg Config) *Reporter {
 	return &Reporter{store: store, cfg: cfg}
 }
 
-// Enabled reports whether ticket creation is active. Useful for callers that
-// want to avoid building expensive payloads (large stacks, snapshots) when
-// the reporter would discard them anyway.
-func (r *Reporter) Enabled() bool {
-	return r != nil && r.cfg.Enabled
-}
-
 // Report files (or updates) a ticket for the given error.
 //
 // source identifies the capture site ("panic", "http", "boundary",

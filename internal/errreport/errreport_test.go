@@ -54,9 +54,6 @@ func TestReporter_NilIsNoOp(t *testing.T) {
 	var r *errreport.Reporter
 	r.Report(context.Background(), "panic", "boom", "stack", nil)
 	r.Capture(context.Background(), "http", nil)
-	if r.Enabled() {
-		t.Fatal("nil reporter should report Enabled() == false")
-	}
 }
 
 func TestReporter_CreatesFreshTicket(t *testing.T) {
