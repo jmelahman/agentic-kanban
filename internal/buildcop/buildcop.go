@@ -37,6 +37,10 @@ const (
 	ColumnFailing       = "Failing"
 	ColumnInvestigating = "Investigating"
 	ColumnFixed         = "Fixed"
+	// ColumnWontFix is a terminal, human-owned column. Once a person parks a
+	// ticket here the reconcile loop leaves it untouched (see reconcile); the
+	// poller never files into it.
+	ColumnWontFix = "Won't fix"
 )
 
 type Poller struct {
@@ -209,6 +213,7 @@ func (p *Poller) syncBoard(ctx context.Context, cfg BoardConfig) error {
 func (p *Poller) reconcile(ctx context.Context, cfg BoardConfig, cache boardCache, stats map[string]jobStats) error {
 	failingColID := cache.Cols[ColumnFailing]
 	fixedColID := cache.Cols[ColumnFixed]
+	wontFixColID := cache.Cols[ColumnWontFix]
 	if failingColID == 0 || fixedColID == 0 {
 		return fmt.Errorf("board %q missing required columns", cfg.Name)
 	}
@@ -218,6 +223,14 @@ func (p *Poller) reconcile(ctx context.Context, cfg BoardConfig, cache boardCach
 		existing, err := p.store.FindOpenTicketByFingerprint(ctx, cache.ID, fp)
 		if err != nil && !errors.Is(err, db.ErrNotFound) {
 			log.Printf("buildcop: find fingerprint %s: %v", fp, err)
+			continue
+		}
+		// "Won't fix" is a terminal manual state: once a human parks a ticket
+		// there the poller leaves it untouched — no title/body refresh, no
+		// re-open on continued failure, no promotion to Fixed on recovery. The
+		// ticket is still open, so FindOpenTicketByFingerprint returns it and
+		// we also avoid filing a duplicate for the same job.
+		if existing != nil && wontFixColID != 0 && existing.ColumnID == wontFixColID {
 			continue
 		}
 		switch {
@@ -340,6 +353,7 @@ func (p *Poller) loadOrCreateBoard(ctx context.Context, cfg BoardConfig) (boardC
 			{BoardID: b.ID, Name: ColumnFailing, Position: 0},
 			{BoardID: b.ID, Name: ColumnInvestigating, Position: 1},
 			{BoardID: b.ID, Name: ColumnFixed, Position: 2},
+			{BoardID: b.ID, Name: ColumnWontFix, Position: 3},
 		}
 		out := boardCache{ID: b.ID, Cols: map[string]int64{}}
 		for i := range cols {
@@ -358,8 +372,22 @@ func (p *Poller) loadOrCreateBoard(ctx context.Context, cfg BoardConfig) (boardC
 		return boardCache{}, fmt.Errorf("list columns: %w", err)
 	}
 	out := boardCache{ID: board.ID, Cols: map[string]int64{}}
+	maxPos := -1
 	for _, c := range cols {
 		out.Cols[c.Name] = c.ID
+		if c.Position > maxPos {
+			maxPos = c.Position
+		}
+	}
+	// Backfill "Won't fix" onto boards created before it existed. Scoped here
+	// rather than in the global db migration because only Build Cop boards get
+	// this layout, and this runs lazily on the first poll after upgrade.
+	if _, ok := out.Cols[ColumnWontFix]; !ok {
+		c := db.Column{BoardID: board.ID, Name: ColumnWontFix, Position: maxPos + 1}
+		if err := p.store.CreateColumn(ctx, &c); err != nil {
+			return boardCache{}, fmt.Errorf("backfill column %s: %w", ColumnWontFix, err)
+		}
+		out.Cols[ColumnWontFix] = c.ID
 	}
 	return out, nil
 }

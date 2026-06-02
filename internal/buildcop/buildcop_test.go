@@ -1,10 +1,12 @@
 package buildcop
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 	"github.com/jmelahman/kanban/internal/slug"
 )
@@ -282,4 +284,162 @@ func keysOf(m map[string]jobStats) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// newStore opens a process-local in-memory store for DB-backed reconcile tests.
+func newStore(t *testing.T) *db.Store {
+	t.Helper()
+	s, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+func testBoardCfg() BoardConfig {
+	return BoardConfig{
+		Name:                "Build Cop: test",
+		Slug:                "build-cop-test",
+		RepoPath:            "/tmp/repo",
+		FailureThreshold:    0.10,
+		MinRuns:             5,
+		GreenStreakRequired: 10,
+		WindowDays:          7,
+	}
+}
+
+// TestEnsureBoardColumnLayout pins the column set for a freshly created Build
+// Cop board: Failing/Investigating/Fixed/Won't fix at positions 0..3.
+func TestEnsureBoardColumnLayout(t *testing.T) {
+	s := newStore(t)
+	p := NewPoller(s, nil, Config{}, 0)
+	cache, err := p.ensureBoard(context.Background(), testBoardCfg())
+	if err != nil {
+		t.Fatalf("ensureBoard: %v", err)
+	}
+	cols, err := s.ListColumns(context.Background(), cache.ID)
+	if err != nil {
+		t.Fatalf("ListColumns: %v", err)
+	}
+	want := []struct {
+		name string
+		pos  int
+	}{
+		{ColumnFailing, 0},
+		{ColumnInvestigating, 1},
+		{ColumnFixed, 2},
+		{ColumnWontFix, 3},
+	}
+	if len(cols) != len(want) {
+		t.Fatalf("got %d columns, want %d: %+v", len(cols), len(want), cols)
+	}
+	for i, w := range want {
+		if cols[i].Name != w.name || cols[i].Position != w.pos {
+			t.Errorf("column %d = (%q, %d), want (%q, %d)", i, cols[i].Name, cols[i].Position, w.name, w.pos)
+		}
+	}
+	if cache.Cols[ColumnWontFix] == 0 {
+		t.Errorf("board cache missing %q", ColumnWontFix)
+	}
+}
+
+// TestLoadOrCreateBoardBackfillsWontFix covers boards created before the
+// "Won't fix" column existed: loading them adds it at the next position, and
+// the operation is idempotent.
+func TestLoadOrCreateBoardBackfillsWontFix(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	cfg := testBoardCfg()
+
+	// Seed a legacy three-column board, as older versions would have created.
+	b := &db.Board{Name: cfg.Name, Slug: cfg.Slug, RepoPath: cfg.RepoPath, BaseBranch: "main"}
+	if err := s.CreateBoardRaw(ctx, b); err != nil {
+		t.Fatalf("CreateBoardRaw: %v", err)
+	}
+	for i, name := range []string{ColumnFailing, ColumnInvestigating, ColumnFixed} {
+		c := db.Column{BoardID: b.ID, Name: name, Position: i}
+		if err := s.CreateColumn(ctx, &c); err != nil {
+			t.Fatalf("CreateColumn %q: %v", name, err)
+		}
+	}
+
+	p := NewPoller(s, nil, Config{}, 0)
+	cache, err := p.loadOrCreateBoard(ctx, cfg)
+	if err != nil {
+		t.Fatalf("loadOrCreateBoard: %v", err)
+	}
+	if cache.Cols[ColumnWontFix] == 0 {
+		t.Fatalf("%q not backfilled into cache", ColumnWontFix)
+	}
+	wf, err := s.FindColumnByName(ctx, b.ID, ColumnWontFix)
+	if err != nil {
+		t.Fatalf("FindColumnByName: %v", err)
+	}
+	if wf.Position != 3 {
+		t.Errorf("%q backfilled at position %d, want 3", ColumnWontFix, wf.Position)
+	}
+
+	// Backfill must be idempotent — a second load must not add a duplicate.
+	if _, err := p.loadOrCreateBoard(ctx, cfg); err != nil {
+		t.Fatalf("loadOrCreateBoard (2nd): %v", err)
+	}
+	cols, err := s.ListColumns(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("ListColumns: %v", err)
+	}
+	if len(cols) != 4 {
+		t.Errorf("after re-load got %d columns, want 4: %+v", len(cols), cols)
+	}
+}
+
+// TestReconcileLeavesWontFixTickets is the core sticky-state guarantee: a
+// ticket parked in "Won't fix" is never touched by reconcile, whether the job
+// is still failing hard or has fully recovered.
+func TestReconcileLeavesWontFixTickets(t *testing.T) {
+	s := newStore(t)
+	ctx := context.Background()
+	cfg := testBoardCfg()
+	p := NewPoller(s, nil, Config{}, 0)
+	cache, err := p.ensureBoard(ctx, cfg)
+	if err != nil {
+		t.Fatalf("ensureBoard: %v", err)
+	}
+
+	const wf, job = "CI", "lint"
+	fp := computeFingerprint(wf, job)
+	wontFixCol := cache.Cols[ColumnWontFix]
+	parked := &db.Ticket{
+		BoardID:     cache.ID,
+		ColumnID:    wontFixCol,
+		Title:       "parked title",
+		Slug:        "parked",
+		Body:        "parked body",
+		Fingerprint: fp,
+	}
+	if err := s.CreateTicket(ctx, parked); err != nil {
+		t.Fatalf("CreateTicket: %v", err)
+	}
+
+	key := wf + ":" + job
+	cases := map[string]map[string]jobStats{
+		"still failing": {key: {Workflow: wf, Job: job, Total: 20, Failures: 20}},
+		"fully recovered": {key: {Workflow: wf, Job: job, Total: 20, Successes: 20,
+			GreenStreak: cfg.GreenStreakRequired + 5}},
+	}
+	for name, stats := range cases {
+		if err := p.reconcile(ctx, cfg, cache, stats); err != nil {
+			t.Fatalf("%s: reconcile: %v", name, err)
+		}
+		got, err := s.GetTicket(ctx, parked.ID)
+		if err != nil {
+			t.Fatalf("%s: GetTicket: %v", name, err)
+		}
+		if got.ColumnID != wontFixCol {
+			t.Errorf("%s: ticket moved to column %d, want %d (%q)", name, got.ColumnID, wontFixCol, ColumnWontFix)
+		}
+		if got.Title != parked.Title || got.Body != parked.Body {
+			t.Errorf("%s: ticket churned: title=%q body=%q", name, got.Title, got.Body)
+		}
+	}
 }

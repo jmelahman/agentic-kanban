@@ -62,9 +62,14 @@ board_name = "kanban-errors"
 # Build Cop polls GitHub Actions on a schedule and files tickets when a job's
 # failure rate over a rolling window exceeds the threshold. Off by default.
 # Each [[buildcop.boards]] entry produces one auto-managed board scoped to
-# the given branch filter; columns are "Failing" / "Investigating" / "Fixed".
-# A job auto-moves to "Fixed" once it has `green_streak_required` consecutive
-# successful runs.
+# the given branch filter; columns are "Failing" / "Investigating" / "Fixed" /
+# "Won't fix". A job auto-moves to "Fixed" once it has `green_streak_required`
+# consecutive successful runs. Drag a ticket to "Won't fix" to silence a job
+# you've decided not to address (a known-flaky test, an infra failure): the
+# poller never touches a ticket parked there — it won't re-open it on continued
+# failure or auto-move it to "Fixed" on recovery — until you move it out
+# yourself. ("Won't fix" is backfilled onto boards created before it existed
+# on the next poll.)
 [buildcop]
 enabled  = false
 interval = "2m"  # poll cadence; default 2m. Each tick lists completed runs
