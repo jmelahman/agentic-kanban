@@ -7,6 +7,7 @@ export const queryKeys = {
   ports: (sessionId: number) => ["ports", sessionId] as const,
   prDetail: (sessionId: number) => ["pr-detail", sessionId] as const,
   settings: ["settings"] as const,
+  config: (scope = "effective") => ["config", scope] as const,
   harnesses: ["harnesses"] as const,
   version: ["version"] as const,
   sessionPlans: (sessionId: number) => ["sessionPlans", sessionId] as const,

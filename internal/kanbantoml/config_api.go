@@ -78,6 +78,8 @@ var schema = []KeySpec{
 	{Key: "buildcop.interval", Kind: KindString, Validate: validateInterval},
 	{Key: "buildcop.boards", Kind: KindTableArray, Validate: validateBoards},
 
+	{Key: "dev_toolbar.enabled", Kind: KindBool},
+
 	{Key: "task", Kind: KindTableArray, Validate: validateTasks},
 }
 
@@ -361,6 +363,10 @@ func GetValue(f File, key string) (any, bool) {
 	case "buildcop.boards":
 		if f.BuildCop != nil && f.BuildCop.Boards != nil {
 			return f.BuildCop.Boards, true
+		}
+	case "dev_toolbar.enabled":
+		if f.DevToolbar != nil && f.DevToolbar.Enabled != nil {
+			return *f.DevToolbar.Enabled, true
 		}
 	case "task":
 		if f.Tasks != nil {

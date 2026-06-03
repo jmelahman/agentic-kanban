@@ -187,6 +187,17 @@ export function MergeIcon(props: IconProps) {
   );
 }
 
+// GaugeIcon — a speedometer dial, used for the opt-in developer toolbar toggle.
+export function GaugeIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M3.5 16a9 9 0 1 1 17 0" />
+      <line x1="12" y1="14" x2="16" y2="9" />
+      <circle cx="12" cy="14" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 export function FullscreenEnterIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>

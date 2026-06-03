@@ -1,0 +1,107 @@
+import { useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
+import { useEffect, useState, useSyncExternalStore } from "react";
+import { inflightRequests, sseStatus, type SseStatus } from "@/api/runtimeSignals";
+
+// Live metric sources for the developer toolbar. Each sampler only runs while
+// `active` is true, and the widget itself only mounts while open — so when the
+// toolbar is closed nothing here costs anything (no rAF loop, no interval).
+
+export type FrameStats = { fps: number; worstMs: number };
+
+// useFrameStats drives a requestAnimationFrame loop while active, counting
+// frames over a rolling 1s window for FPS and tracking the worst inter-frame
+// gap as a jank signal. The first frame after (re)start is skipped so the time
+// spent mounting the effect doesn't inflate the worst-frame number.
+export function useFrameStats(active: boolean): FrameStats {
+  const [stats, setStats] = useState<FrameStats>({ fps: 0, worstMs: 0 });
+  useEffect(() => {
+    if (!active) {
+      setStats({ fps: 0, worstMs: 0 });
+      return;
+    }
+    let raf = 0;
+    let primed = false;
+    let last = performance.now();
+    let windowStart = last;
+    let frames = 0;
+    let worst = 0;
+    const tick = (now: number) => {
+      const delta = now - last;
+      last = now;
+      if (primed) {
+        frames += 1;
+        if (delta > worst) worst = delta;
+      }
+      primed = true;
+      if (now - windowStart >= 1000) {
+        setStats({
+          fps: Math.round((frames * 1000) / (now - windowStart)),
+          worstMs: Math.round(worst),
+        });
+        frames = 0;
+        worst = 0;
+        windowStart = now;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [active]);
+  return stats;
+}
+
+export type RuntimeSamples = {
+  heapUsed: number | null;
+  heapTotal: number | null;
+  heapLimit: number | null;
+  domNodes: number;
+  queryCacheCount: number;
+};
+
+type PerfWithMemory = Performance & {
+  memory?: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number };
+};
+
+function readSamples(qc: QueryClient): RuntimeSamples {
+  const mem = (performance as PerfWithMemory).memory;
+  return {
+    heapUsed: mem ? mem.usedJSHeapSize : null,
+    heapTotal: mem ? mem.totalJSHeapSize : null,
+    heapLimit: mem ? mem.jsHeapSizeLimit : null,
+    domNodes: typeof document !== "undefined" ? document.getElementsByTagName("*").length : 0,
+    queryCacheCount: qc.getQueryCache().getAll().length,
+  };
+}
+
+// useRuntimeSamples polls heap usage (Chromium-only performance.memory), live
+// DOM node count, and React Query cache size once per second while active.
+export function useRuntimeSamples(active: boolean): RuntimeSamples {
+  const qc = useQueryClient();
+  const [samples, setSamples] = useState<RuntimeSamples>(() => readSamples(qc));
+  useEffect(() => {
+    if (!active) return;
+    setSamples(readSamples(qc));
+    const id = setInterval(() => setSamples(readSamples(qc)), 1000);
+    return () => clearInterval(id);
+  }, [active, qc]);
+  return samples;
+}
+
+export function useInflightRequests(): number {
+  return useSyncExternalStore(inflightRequests.subscribe, inflightRequests.get);
+}
+
+export function useSseStatus(): SseStatus {
+  return useSyncExternalStore(sseStatus.subscribe, sseStatus.get);
+}
+
+export function formatBytes(n: number | null): string {
+  if (n == null) return "n/a";
+  if (n < 1024) return `${n} B`;
+  const kb = n / 1024;
+  if (kb < 1024) return `${kb.toFixed(0)} KB`;
+  const mb = kb / 1024;
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(2)} GB`;
+}

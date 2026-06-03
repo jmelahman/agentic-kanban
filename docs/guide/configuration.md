@@ -59,6 +59,16 @@ closed_column = "Done"
 enabled    = false
 board_name = "kanban-errors"
 
+# Opt in to the in-app developer toolbar. Off by default. When enabled, a gauge
+# button appears in the web header (next to App Settings) that toggles a small
+# corner widget showing live frontend health: FPS / worst frame time, JS heap
+# usage (Chromium only), DOM node count, React Query cache + fetch/mutation
+# activity, SSE connection status, and in-flight request count. Which sections
+# show and where the widget pins are per-browser preferences (localStorage), so
+# this flag only controls whether the feature is available at all.
+[dev_toolbar]
+enabled = false
+
 # Build Cop polls GitHub Actions on a schedule and files tickets when a job's
 # failure rate over a rolling window exceeds the threshold. Off by default.
 # Each [[buildcop.boards]] entry produces one auto-managed board scoped to

@@ -28,6 +28,7 @@ type File struct {
 	Devcontainer *DevcontainerSection `toml:"devcontainer"`
 	Errors       *ErrorsSection       `toml:"errors"`
 	BuildCop     *BuildCopSection     `toml:"buildcop"`
+	DevToolbar   *DevToolbarSection   `toml:"dev_toolbar"`
 	Tasks        []TaskEntry          `toml:"task"`
 }
 
@@ -92,6 +93,14 @@ type BuildCopBoard struct {
 	MinRuns             *int     `json:"min_runs,omitempty" toml:"min_runs"`
 	GreenStreakRequired *int     `json:"green_streak_required,omitempty" toml:"green_streak_required"`
 	WindowDays          *int     `json:"window_days,omitempty" toml:"window_days"`
+}
+
+// DevToolbarSection toggles the in-app developer metrics widget — a small
+// corner overlay showing FPS, JS heap, DOM/React-Query activity, and live
+// connection state. Off by default: only developers debugging the frontend
+// want it, so it stays hidden (no header button) for everyone else.
+type DevToolbarSection struct {
+	Enabled *bool `toml:"enabled"`
 }
 
 type SyncSection struct {
@@ -208,6 +217,7 @@ func merge(project, user File) File {
 	out.Devcontainer = mergeDevcontainer(project.Devcontainer, user.Devcontainer)
 	out.Errors = mergeErrors(project.Errors, user.Errors)
 	out.BuildCop = mergeBuildCop(project.BuildCop, user.BuildCop)
+	out.DevToolbar = mergeDevToolbar(project.DevToolbar, user.DevToolbar)
 	out.Tasks = mergeTasks(project.Tasks, user.Tasks)
 
 	return out
@@ -243,6 +253,12 @@ func mergeGit(p, u *GitSection) *GitSection {
 	return mergeSinglePtrField(p, u, (*bool)(nil),
 		func(s *GitSection) *bool { return s.SignCommits },
 		func(s *GitSection, v *bool) { s.SignCommits = v })
+}
+
+func mergeDevToolbar(p, u *DevToolbarSection) *DevToolbarSection {
+	return mergeSinglePtrField(p, u, (*bool)(nil),
+		func(s *DevToolbarSection) *bool { return s.Enabled },
+		func(s *DevToolbarSection, v *bool) { s.Enabled = v })
 }
 
 func mergePlans(p, u *PlansSection) *PlansSection {

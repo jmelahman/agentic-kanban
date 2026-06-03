@@ -1,6 +1,6 @@
 import { type ReactNode, useRef, useState } from "react";
 import { useClickOutside } from "@/hooks/useClickOutside";
-import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon, MoreIcon, PlusIcon } from "@/icons";
+import { ArchiveIcon, CogIcon, GaugeIcon, HelpIcon, MenuIcon, MoreIcon, PlusIcon } from "@/icons";
 import { Button } from "./Button";
 
 type MenuAction = (() => void) | null;
@@ -10,12 +10,14 @@ export function HeaderMobileMenu({
   onArchived,
   onBoardSettings,
   onAppSettings,
+  onDevToolbar,
   suggestRepoLink,
 }: {
   onNewBoard: () => void;
   onArchived: MenuAction;
   onBoardSettings: MenuAction;
   onAppSettings: () => void;
+  onDevToolbar: MenuAction;
   suggestRepoLink: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -92,6 +94,16 @@ export function HeaderMobileMenu({
               onAppSettings();
             }}
           />
+          {onDevToolbar && (
+            <MenuItem
+              icon={<GaugeIcon />}
+              label="Developer toolbar"
+              onClick={() => {
+                close();
+                onDevToolbar();
+              }}
+            />
+          )}
         </div>
       )}
     </div>

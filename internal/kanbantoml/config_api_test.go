@@ -195,13 +195,18 @@ func TestLookup(t *testing.T) {
 func TestGetValue(t *testing.T) {
 	rebase := true
 	prefix := "feat"
+	devToolbar := true
 	f := File{
-		Sync:     &SyncSection{AllowRebase: &rebase},
-		Branches: &BranchesSection{Prefix: &prefix},
-		Tasks:    []TaskEntry{{Label: "web", ContainerPort: 3000}},
+		Sync:       &SyncSection{AllowRebase: &rebase},
+		Branches:   &BranchesSection{Prefix: &prefix},
+		DevToolbar: &DevToolbarSection{Enabled: &devToolbar},
+		Tasks:      []TaskEntry{{Label: "web", ContainerPort: 3000}},
 	}
 	if v, ok := GetValue(f, "sync.allow_rebase"); !ok || v != true {
 		t.Errorf("scalar: %v, %v", v, ok)
+	}
+	if v, ok := GetValue(f, "dev_toolbar.enabled"); !ok || v != true {
+		t.Errorf("dev_toolbar.enabled: %v, %v", v, ok)
 	}
 	if v, ok := GetValue(f, "branches.prefix"); !ok || v != "feat" {
 		t.Errorf("string: %v, %v", v, ok)

@@ -83,6 +83,28 @@ board_name = "ProjectErrors"
 	}
 }
 
+func TestLoad_DevToolbarAbsentDefaults(t *testing.T) {
+	withUserConfig(t, "")
+	repo := writeProject(t, "")
+	f := Load(repo)
+	if f.DevToolbar != nil {
+		t.Fatalf("DevToolbar should be nil when unset; got %+v", f.DevToolbar)
+	}
+}
+
+func TestLoad_DevToolbarUserOverridesProject(t *testing.T) {
+	withUserConfig(t, `[dev_toolbar]
+enabled = true
+`)
+	repo := writeProject(t, `[dev_toolbar]
+enabled = false
+`)
+	f := Load(repo)
+	if f.DevToolbar == nil || f.DevToolbar.Enabled == nil || !*f.DevToolbar.Enabled {
+		t.Fatalf("dev_toolbar.enabled = %+v; want true (user override)", f.DevToolbar)
+	}
+}
+
 func TestLoad_BuildCopIntervalUserOverridesProject(t *testing.T) {
 	withUserConfig(t, `[buildcop]
 interval = "10m"

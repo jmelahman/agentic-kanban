@@ -1,3 +1,5 @@
+import { sseStatus, trackRequestEnd, trackRequestStart } from "@/api/runtimeSignals";
+
 export type Board = {
   id: number;
   name: string;
@@ -174,23 +176,32 @@ export function formatApiError(err: unknown): string {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-    ...init,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    let message = text;
-    try {
-      const parsed = JSON.parse(text);
-      if (parsed && typeof parsed.error === "string") message = parsed.error;
-    } catch {
-      // not JSON; use raw body
+  // Count the request as in-flight for the developer toolbar. finally covers
+  // every exit (network reject, !ok throw, 204, JSON body) so the gauge can't
+  // leak. Long-lived SSE streams go through EventSource, not request(), so
+  // they're excluded by construction.
+  trackRequestStart();
+  try {
+    const res = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      ...init,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let message = text;
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed.error === "string") message = parsed.error;
+      } catch {
+        // not JSON; use raw body
+      }
+      throw new ApiError(res.status, message || `HTTP ${res.status}`, text);
     }
-    throw new ApiError(res.status, message || `HTTP ${res.status}`, text);
+    if (res.status === 204) return undefined as T;
+    return (await res.json()) as T;
+  } finally {
+    trackRequestEnd();
   }
-  if (res.status === 204) return undefined as T;
-  return res.json();
 }
 
 export const api = {
@@ -322,6 +333,27 @@ export const api = {
   },
 
   getVersion: () => request<Version>("/api/version"),
+
+  // Reads the merged config surface (GET /api/config). scope defaults to
+  // "effective" (project file + user file merged). Entries are the registered
+  // dotted keys plus a few read-only runtime values.
+  getConfig: (scope: ConfigScope = "effective") =>
+    request<ConfigView>(`/api/config?scope=${encodeURIComponent(scope)}`),
+};
+
+export type ConfigScope = "effective" | "global" | "local";
+
+export type ConfigEntry = {
+  key: string;
+  value: unknown;
+  source: string;
+  writable: boolean;
+};
+
+export type ConfigView = {
+  scope: string;
+  board?: string;
+  entries: ConfigEntry[];
 };
 
 export type PlanMeta = {
@@ -476,6 +508,7 @@ class BoardEventManager {
     if (this.es) {
       this.es.close();
       this.es = null;
+      sseStatus.set("closed");
     }
     this.currentKey = key;
     if (ids.length === 0) return;
@@ -501,9 +534,11 @@ class BoardEventManager {
       es.addEventListener(t, handler as EventListener);
     }
     es.onopen = () => {
+      sseStatus.set("open");
       for (const l of this.listeners) l.onStatus?.("open");
     };
     es.onerror = () => {
+      sseStatus.set("error");
       for (const l of this.listeners) l.onStatus?.("error");
     };
     this.es = es;
