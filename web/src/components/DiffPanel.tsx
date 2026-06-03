@@ -1,4 +1,10 @@
-import { parseDiffFromFile, parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
+import {
+  type DiffLineAnnotation,
+  parseDiffFromFile,
+  parsePatchFiles,
+  type FileDiffMetadata,
+  type SelectedLineRange,
+} from "@pierre/diffs";
 import { File, FileDiff } from "@pierre/diffs/react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -11,11 +17,21 @@ import {
   useRef,
   useState,
 } from "react";
-import { api, type Session } from "@/api/client";
+import { api, type Session, type Ticket } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useContrast } from "@/hooks/useContrast";
+import { useCopyFeedback } from "@/hooks/useCopyFeedback";
 import { useSessionDiff } from "@/hooks/useSessionDiff";
 import { useThemeMode } from "@/hooks/useThemeMode";
+import { CheckIcon, CopyIcon } from "@/icons";
+import { ScalarStore, useScalarSelector, useTicket } from "@/store";
+import {
+  InlineCommentBox,
+  lineRangeLabel,
+  type ReviewAnchor,
+  type ReviewComment,
+  type ReviewSide,
+} from "./InlineCommentBox";
 
 const SIDEBAR_COLLAPSED_KEY = "diff.sidebar.collapsed";
 // Per-session prefix for the "Viewed" (GitHub-style) set. We persist a
@@ -112,6 +128,150 @@ function hashString(s: string): number {
 function fileSignature(f: FileDiffMetadata): string {
   const body = `${f.type}\u0000${f.prevName ?? ""}\u0000${f.additionLines.join("\n")}\u0000${f.deletionLines.join("\n")}`;
   return hashString(body).toString(36);
+}
+
+// ---------------------------------------------------------------------------
+// Review comments
+//
+// A lightweight, GitHub-style review layer: the user attaches freeform comments
+// to diff lines, then copies them all (with the code they reference) as one
+// plaintext block to paste into an agent. Comments persist per-session in
+// localStorage, like the "Viewed" set above.
+// ---------------------------------------------------------------------------
+
+const COMMENTS_KEY_PREFIX = "diff.review.";
+// Stable empties so per-file selectors / annotation arrays keep referential
+// identity when a file has nothing — see the perf notes on `commentStore`.
+const EMPTY_COMMENTS: ReviewComment[] = [];
+const EMPTY_ANNOTATIONS: DiffLineAnnotation[] = [];
+
+// sessionId -> (file path -> its comments). Grouping by path is deliberate: a
+// per-path selector returns the *same array reference* for files that didn't
+// change, so `useScalarSelector` (which bails via `Object.is`) re-renders only
+// the one DiffFileEntry whose comments changed — never the others, and never
+// the memoized DiffStack. This is what keeps adding a comment on file A from
+// re-rendering (and re-highlighting) file B.
+type ReviewState = Record<number, Record<string, ReviewComment[]>>;
+const commentStore = new ScalarStore<ReviewState>({});
+
+function loadReview(sessionId: number): Record<string, ReviewComment[]> {
+  try {
+    const raw = localStorage.getItem(COMMENTS_KEY_PREFIX + sessionId);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, ReviewComment[]>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveReview(sessionId: number, byPath: Record<string, ReviewComment[]>): void {
+  try {
+    localStorage.setItem(COMMENTS_KEY_PREFIX + sessionId, JSON.stringify(byPath));
+  } catch {
+    // ignore (private mode / quota)
+  }
+}
+
+// Load a session's persisted comments into the store. Idempotent — runs on
+// mount and whenever the panel is reused for a new session id.
+function hydrateReview(sessionId: number): void {
+  commentStore.set((prev) => ({ ...prev, [sessionId]: loadReview(sessionId) }));
+}
+
+function addReviewComment(sessionId: number, comment: ReviewComment): void {
+  commentStore.set((prev) => {
+    const session = prev[sessionId] ?? {};
+    const path = comment.anchor.path;
+    const next = { ...session, [path]: [...(session[path] ?? EMPTY_COMMENTS), comment] };
+    saveReview(sessionId, next);
+    return { ...prev, [sessionId]: next };
+  });
+}
+
+// Rebuild a session's path map, touching only the path that owns `id` so every
+// other path's array keeps its identity (and its DiffFileEntry stays put).
+function mutateReview(
+  sessionId: number,
+  id: string,
+  fn: (list: ReviewComment[]) => ReviewComment[],
+): void {
+  commentStore.set((prev) => {
+    const session = prev[sessionId];
+    if (!session) return prev;
+    let changed = false;
+    const next: Record<string, ReviewComment[]> = {};
+    for (const [path, list] of Object.entries(session)) {
+      if (list.some((c) => c.id === id)) {
+        const updated = fn(list);
+        if (updated.length > 0) next[path] = updated;
+        changed = true;
+      } else {
+        next[path] = list;
+      }
+    }
+    if (!changed) return prev;
+    saveReview(sessionId, next);
+    return { ...prev, [sessionId]: next };
+  });
+}
+
+function updateReviewComment(sessionId: number, id: string, body: string): void {
+  mutateReview(sessionId, id, (list) => list.map((c) => (c.id === id ? { ...c, body } : c)));
+}
+
+function deleteReviewComment(sessionId: number, id: string): void {
+  mutateReview(sessionId, id, (list) => list.filter((c) => c.id !== id));
+}
+
+// How many of a range's code lines to show before eliding the middle, so a
+// comment on a 200-line range doesn't paste an unreadable wall of code.
+const SNIPPET_HEAD = 12;
+const SNIPPET_TAIL = 8;
+
+// Render code lines [start, end] (1-based, inclusive) with line-number prefixes,
+// matching the fenced block in the copied review. Long ranges are elided.
+function snippetForRange(lines: string[], start: number, end: number): string {
+  const lo = Math.max(1, start);
+  const hi = Math.min(lines.length, end);
+  if (hi < lo) return "";
+  const fmt = (i: number) => `${i}  ${lines[i - 1]}`;
+  const total = hi - lo + 1;
+  if (total <= SNIPPET_HEAD + SNIPPET_TAIL + 1) {
+    const out: string[] = [];
+    for (let i = lo; i <= hi; i++) out.push(fmt(i));
+    return out.join("\n");
+  }
+  const head: string[] = [];
+  for (let i = lo; i < lo + SNIPPET_HEAD; i++) head.push(fmt(i));
+  const tail: string[] = [];
+  for (let i = hi - SNIPPET_TAIL + 1; i <= hi; i++) tail.push(fmt(i));
+  return [...head, `… (${total - SNIPPET_HEAD - SNIPPET_TAIL} more lines)`, ...tail].join("\n");
+}
+
+// buildReviewText turns the session's comments into the single plaintext block
+// copied to the clipboard. One block per comment, sorted by path then line, with
+// the referenced code fenced inline and a trailing instruction for the agent.
+function buildReviewText(
+  session: Session,
+  ticket: Ticket | undefined,
+  comments: ReviewComment[],
+): string {
+  const sorted = [...comments].sort((a, b) => {
+    const byPath = a.anchor.path.localeCompare(b.anchor.path);
+    return byPath !== 0 ? byPath : a.anchor.startLine - b.anchor.startLine;
+  });
+  const header = [
+    `Code review — ${ticket?.title ?? "(untitled)"}`,
+    `Branch: ${session.branch_name}`,
+  ];
+  const blocks = sorted.map((c) => {
+    const parts = [`Path: ${c.anchor.path}`, `Line: ${lineRangeLabel(c.anchor)}`, ""];
+    if (c.snippet) parts.push("```", c.snippet, "```", "");
+    parts.push(c.body);
+    return parts.join("\n");
+  });
+  const footer = "How can I resolve these? If you propose a fix, please make it concise.";
+  return [header.join("\n"), ...blocks, footer].join("\n\n---\n\n");
 }
 
 // Per-file change-type marker. The app's token palette has no green/yellow/blue,
@@ -409,6 +569,40 @@ export function DiffPanel({ session }: { session: Session }) {
     [scrollToFile, session.id],
   );
 
+  // Review comments for this session, grouped by path. Read here only to drive
+  // the sidebar's "Copy review" button + count; the per-file comment boxes
+  // subscribe independently inside DiffFileEntry, so a comment change never
+  // re-renders the memoized DiffStack.
+  const reviewByPath = useScalarSelector(
+    commentStore,
+    useCallback((v: ReviewState) => v[session.id], [session.id]),
+  );
+  const allComments = useMemo(
+    () => (reviewByPath ? Object.values(reviewByPath).flat() : EMPTY_COMMENTS),
+    [reviewByPath],
+  );
+
+  // Load persisted comments into the store on mount and whenever the panel is
+  // reused for a new session (mirrors the "Viewed" re-hydrate above).
+  useEffect(() => {
+    hydrateReview(session.id);
+  }, [session.id]);
+
+  // Stable across polls (depend only on session.id, like toggleViewed) so
+  // threading them through DiffStack never busts its memo.
+  const onAddComment = useCallback(
+    (c: ReviewComment) => addReviewComment(session.id, c),
+    [session.id],
+  );
+  const onUpdateComment = useCallback(
+    (id: string, body: string) => updateReviewComment(session.id, id, body),
+    [session.id],
+  );
+  const onDeleteComment = useCallback(
+    (id: string) => deleteReviewComment(session.id, id),
+    [session.id],
+  );
+
   if (diffQ.isLoading) {
     return <p className="p-4 text-sm text-fg-muted">Loading diff…</p>;
   }
@@ -439,16 +633,21 @@ export function DiffPanel({ session }: { session: Session }) {
               Changed files
             </h2>
             <span className="ml-2 text-xs text-fg-muted">{orderedFiles.length}</span>
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              title="Hide changed files"
-              aria-label="Hide changed files"
-              aria-expanded={true}
-              className="ml-auto rounded px-1 text-fg-muted hover:bg-surface-2 hover:text-fg"
-            >
-              <span aria-hidden>◀</span>
-            </button>
+            <div className="ml-auto flex items-center gap-1">
+              {allComments.length > 0 && (
+                <CopyReviewButton session={session} comments={allComments} />
+              )}
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                title="Hide changed files"
+                aria-label="Hide changed files"
+                aria-expanded={true}
+                className="rounded px-1 text-fg-muted hover:bg-surface-2 hover:text-fg"
+              >
+                <span aria-hidden>◀</span>
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto [scrollbar-gutter:stable]">
             <TreeRows
@@ -478,6 +677,9 @@ export function DiffPanel({ session }: { session: Session }) {
             viewedPaths={viewedPaths}
             onToggleView={toggleFileView}
             onToggleViewed={toggleViewed}
+            onAddComment={onAddComment}
+            onUpdateComment={onUpdateComment}
+            onDeleteComment={onDeleteComment}
             registerRef={registerRef}
           />
         )}
@@ -494,6 +696,14 @@ export function DiffPanel({ session }: { session: Session }) {
 // leaving the other files' FileDiff instances (and their Shiki highlight)
 // untouched. Both `onToggle*` callbacks are stable across polls, so a fresh
 // diff poll on its own never re-renders the stack.
+// Stable callbacks for the review layer. Kept separate from FileEntryProps so
+// FileBlob (which has no comment UI) doesn't inherit them.
+type ReviewCallbacks = {
+  onAddComment: (comment: ReviewComment) => void;
+  onUpdateComment: (id: string, body: string) => void;
+  onDeleteComment: (id: string) => void;
+};
+
 const DiffStack = memo(function DiffStack({
   files,
   sessionId,
@@ -503,6 +713,9 @@ const DiffStack = memo(function DiffStack({
   viewedPaths,
   onToggleView,
   onToggleViewed,
+  onAddComment,
+  onUpdateComment,
+  onDeleteComment,
   registerRef,
 }: {
   files: FileDiffMetadata[];
@@ -514,7 +727,7 @@ const DiffStack = memo(function DiffStack({
   onToggleView: (path: string) => void;
   onToggleViewed: (path: string) => void;
   registerRef: (el: HTMLElement | null) => void;
-}) {
+} & ReviewCallbacks) {
   return (
     <>
       {files.map((f) => (
@@ -533,6 +746,9 @@ const DiffStack = memo(function DiffStack({
             viewed={viewedPaths.has(f.name)}
             onToggleView={onToggleView}
             onToggleViewed={onToggleViewed}
+            onAddComment={onAddComment}
+            onUpdateComment={onUpdateComment}
+            onDeleteComment={onDeleteComment}
           />
         </div>
       ))}
@@ -566,7 +782,10 @@ function DiffFileEntry({
   viewed,
   onToggleView,
   onToggleViewed,
-}: FileEntryProps & { viewed: boolean }) {
+  onAddComment,
+  onUpdateComment,
+  onDeleteComment,
+}: FileEntryProps & { viewed: boolean } & ReviewCallbacks) {
   const canView = file.type !== "deleted" && file.hunks.length > 0;
   const viewedToggle = <ViewedToggle viewed={viewed} onToggle={() => onToggleViewed(file.name)} />;
 
@@ -603,6 +822,159 @@ function DiffFileEntry({
     }
   }, [pairQ.data, oldName, file.name]);
 
+  // --- Review comments (live diff view only) ---
+  // This file's comments, read from the shared store with a per-path selector.
+  // The selector returns a stable array reference for files that didn't change,
+  // so a comment edit on another file never re-renders (or re-highlights) this
+  // one. EMPTY_COMMENTS keeps the no-comment case referentially stable too.
+  const fileComments = useScalarSelector(
+    commentStore,
+    useCallback(
+      (v: ReviewState) => v[sessionId]?.[file.name] ?? EMPTY_COMMENTS,
+      [sessionId, file.name],
+    ),
+  );
+  // The pending new-comment anchor (gutter click/drag). Local + ephemeral, so it
+  // never touches the store or re-renders sibling files.
+  const [draft, setDraft] = useState<ReviewAnchor | null>(null);
+
+  // Controlled line-selection highlight. We drive it ourselves (rather than
+  // letting the library own it) so the highlight can be cleared the moment the
+  // drag ends — otherwise the blue selection would linger and never "blur" when
+  // you click elsewhere. The library only renders the highlight from this
+  // controlled value, so we feed `onLineSelectionChange` back into it for live
+  // feedback during the drag, then clear it on release (see commitDraft).
+  const [selection, setSelection] = useState<SelectedLineRange | null>(null);
+
+  // One annotation per (side, line) carrying a comment or the draft. Memoized so
+  // the array identity is stable across unrelated re-renders (e.g. the 4s poll);
+  // a fresh array would make @pierre/diffs treat annotations as "changed" and
+  // needlessly re-lay-out the file.
+  const annotations = useMemo<DiffLineAnnotation[]>(() => {
+    const seen = new Set<string>();
+    const out: DiffLineAnnotation[] = [];
+    const add = (side: ReviewSide, lineNumber: number) => {
+      const key = `${side}:${lineNumber}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push({ side, lineNumber });
+    };
+    // Anchor at the range's end line so the box renders after the last selected
+    // line (GitHub-style), instead of splitting the selection in the middle.
+    for (const c of fileComments) add(c.anchor.side, c.anchor.endLine);
+    if (draft) add(draft.side, draft.endLine);
+    return out.length > 0 ? out : EMPTY_ANNOTATIONS;
+  }, [fileComments, draft]);
+
+  // Capture the code under a range at save time so the copied review carries the
+  // exact lines reviewed. Prefer the full base/head contents already fetched for
+  // expansion (pairQ) or derived (enriched); fall back to the one-sided patch
+  // arrays for new/deleted files.
+  const captureSnippet = useCallback(
+    (anchor: ReviewAnchor): string => {
+      const lines =
+        anchor.side === "additions"
+          ? pairQ.data
+            ? pairQ.data.new_contents.split("\n")
+            : (enriched?.additionLines ?? (file.type === "new" ? file.additionLines : null))
+          : pairQ.data
+            ? pairQ.data.old_contents.split("\n")
+            : (enriched?.deletionLines ?? (file.type === "deleted" ? file.deletionLines : null));
+      return lines ? snippetForRange(lines, anchor.startLine, anchor.endLine) : "";
+    },
+    [pairQ.data, enriched, file.type, file.additionLines, file.deletionLines],
+  );
+
+  // Open a draft comment over a selected range. Shared by both entry points:
+  // the gutter "+" (click a line, or drag the gutter) and dragging across the
+  // line-number column (which the library highlights live, since
+  // `enableLineSelection` is on). Stable across polls (depends only on
+  // file.name) so the FileDiff `options` object stays shallow-equal and never
+  // forces a re-highlight.
+  const openDraftFromRange = useCallback(
+    (range: SelectedLineRange | null) => {
+      if (!range) return;
+      const side: ReviewSide = range.side ?? range.endSide ?? "additions";
+      setDraft({
+        path: file.name,
+        side,
+        startLine: Math.min(range.start, range.end),
+        endLine: Math.max(range.start, range.end),
+      });
+    },
+    [file.name],
+  );
+
+  // End of a selection gesture (line-number drag or gutter "+"): open the draft
+  // and keep the range highlighted while the comment box is open, so you can see
+  // exactly which lines you're commenting on. The highlight is cleared when the
+  // draft closes (see the save/cancel handlers in renderAnnotation).
+  const commitDraft = useCallback(
+    (range: SelectedLineRange | null) => {
+      setSelection(range);
+      openDraftFromRange(range);
+    },
+    [openDraftFromRange],
+  );
+
+  // Close the draft and drop its highlight together.
+  const closeDraft = useCallback(() => {
+    setDraft(null);
+    setSelection(null);
+  }, []);
+
+  // Renders the inline comment box(es) for one annotated line: any saved comments
+  // there, plus the draft editor if the draft sits on this line.
+  const renderAnnotation = useCallback(
+    (a: DiffLineAnnotation) => {
+      const here = fileComments.filter(
+        (c) => c.anchor.side === a.side && c.anchor.endLine === a.lineNumber,
+      );
+      const draftHere =
+        draft && draft.side === a.side && draft.endLine === a.lineNumber ? draft : null;
+      return (
+        <>
+          {here.map((c) => (
+            <InlineCommentBox
+              key={c.id}
+              comment={c}
+              anchor={c.anchor}
+              onSave={(body) => onUpdateComment(c.id, body)}
+              onDelete={() => onDeleteComment(c.id)}
+            />
+          ))}
+          {draftHere && (
+            <InlineCommentBox
+              key="draft"
+              comment={null}
+              anchor={draftHere}
+              onSave={(body) => {
+                onAddComment({
+                  id: crypto.randomUUID(),
+                  anchor: draftHere,
+                  body,
+                  snippet: captureSnippet(draftHere),
+                  createdAt: Date.now(),
+                });
+                closeDraft();
+              }}
+              onCancel={closeDraft}
+            />
+          )}
+        </>
+      );
+    },
+    [
+      fileComments,
+      draft,
+      onAddComment,
+      onUpdateComment,
+      onDeleteComment,
+      captureSnippet,
+      closeDraft,
+    ],
+  );
+
   if (file.hunks.length === 0) {
     return (
       <div>
@@ -634,6 +1006,9 @@ function DiffFileEntry({
     <FileDiff
       fileDiff={enriched ?? file}
       className={viewed ? "diff-collapsed" : undefined}
+      lineAnnotations={annotations}
+      renderAnnotation={renderAnnotation}
+      selectedLines={selection}
       options={{
         diffStyle: "split",
         theme,
@@ -641,6 +1016,17 @@ function DiffFileEntry({
         stickyHeader: true,
         expansionLineCount: EXPAND_CONTEXT_LINES,
         unsafeCSS: DIFF_UNSAFE_CSS,
+        // Two ways to start a comment: the gutter "+" (click a line, or drag the
+        // gutter), and dragging across the line-number column. enableLineSelection
+        // gives the drag a live highlight; it only starts on the number column, so
+        // selecting code text to copy still works. We control the selection
+        // (selectedLines above) so it can be cleared on release: onLineSelectionChange
+        // feeds the live highlight, commitDraft opens the box and clears it.
+        enableGutterUtility: true,
+        onGutterUtilityClick: commitDraft,
+        enableLineSelection: true,
+        onLineSelectionChange: setSelection,
+        onLineSelectionEnd: commitDraft,
       }}
       renderHeaderMetadata={() => (
         <div className="flex items-center gap-1">
@@ -793,6 +1179,32 @@ function ViewedToggle({ viewed, onToggle }: { viewed: boolean; onToggle: () => v
       />
       Viewed
     </label>
+  );
+}
+
+// CopyReviewButton copies every review comment in the session — each with its
+// path, line range, the referenced code, and a trailing instruction — as one
+// plaintext block to paste into an agent. Lives in the sidebar header and only
+// renders when the session has at least one comment.
+function CopyReviewButton({ session, comments }: { session: Session; comments: ReviewComment[] }) {
+  const { copied, markCopied } = useCopyFeedback(1500);
+  const ticket = useTicket(session.ticket_id);
+  const onCopy = () => {
+    navigator.clipboard.writeText(buildReviewText(session, ticket, comments));
+    markCopied();
+  };
+  const plural = comments.length === 1 ? "" : "s";
+  return (
+    <button
+      type="button"
+      onClick={onCopy}
+      title={copied ? "Copied!" : `Copy review (${comments.length} comment${plural})`}
+      aria-label={`Copy review (${comments.length} comment${plural})`}
+      className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-muted hover:bg-surface-2 hover:text-fg"
+    >
+      {copied ? <CheckIcon size={12} /> : <CopyIcon size={12} />}
+      <span>{comments.length}</span>
+    </button>
   );
 }
 

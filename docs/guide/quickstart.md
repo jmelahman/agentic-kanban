@@ -34,7 +34,7 @@ When you save, the ticket appears as a card in `Backlog`.
 
 ## 4. Start the session
 
-Open the ticket. The detail panel has four tabs — **agent**, **terminal**, **tasks**, **info**. Click **Start session**. Kanban will:
+Open the ticket. The detail panel has tabs — **agent**, **terminal**, **tasks**, **info**, plus a **diff** tab once the session has a worktree. Click **Start session**. Kanban will:
 
 1. Create a git worktree off your base branch.
 2. Spawn the worktree's devcontainer.
@@ -42,7 +42,22 @@ Open the ticket. The detail panel has four tabs — **agent**, **terminal**, **t
 
 The harness's terminal streams into the **agent** tab; the **terminal** tab gives you a regular shell inside the same container.
 
-## 5. Sync and merge
+## 5. Review the changes
+
+The **diff** tab shows the session's changes as a GitHub-style split diff: a
+changed-files sidebar, per-file **View file** and **Viewed** toggles, and
+expandable context.
+
+You can also leave a code review for the agent. Hover a line and click the
+**+** in the gutter to comment on it, or drag across the line numbers to select
+a range (the selected lines highlight as you drag) and comment on the whole
+span. Comments are saved per-session in your browser, so they survive tab
+switches and reloads. When you're done, the **Copy review** button in the
+sidebar header copies every comment — each with its file path, line range, and
+the referenced code — as one block you can paste straight back into the agent
+session for it to address.
+
+## 6. Sync and merge
 
 When the agent's done, the **Sync** menu offers to rebase or merge your base branch into the worktree (whichever you've allowed in `.kanban.toml`). The **Merge** menu sends the work back to the base branch via merge commit, squash, or rebase — again, configurable.
 
