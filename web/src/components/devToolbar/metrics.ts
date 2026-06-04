@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import type { QueryClient } from "@tanstack/react-query";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { inflightRequests, sseStatus, type SseStatus } from "@/api/runtimeSignals";
 
 // Live metric sources for the developer toolbar. Each sampler only runs while
@@ -56,14 +56,20 @@ export type RuntimeSamples = {
   heapTotal: number | null;
   heapLimit: number | null;
   domNodes: number;
+  // Growth of domNodes since the baseline captured when the toolbar opened.
+  domNodesDelta: number;
   queryCacheCount: number;
+  // Growth of queryCacheCount since that same baseline.
+  queryCacheDelta: number;
 };
+
+type RawSamples = Omit<RuntimeSamples, "domNodesDelta" | "queryCacheDelta">;
 
 type PerfWithMemory = Performance & {
   memory?: { usedJSHeapSize: number; totalJSHeapSize: number; jsHeapSizeLimit: number };
 };
 
-function readSamples(qc: QueryClient): RuntimeSamples {
+function readSamples(qc: QueryClient): RawSamples {
   const mem = (performance as PerfWithMemory).memory;
   return {
     heapUsed: mem ? mem.usedJSHeapSize : null,
@@ -75,17 +81,64 @@ function readSamples(qc: QueryClient): RuntimeSamples {
 }
 
 // useRuntimeSamples polls heap usage (Chromium-only performance.memory), live
-// DOM node count, and React Query cache size once per second while active.
+// DOM node count, and React Query cache size once per second while active. It
+// also reports each count's growth from a baseline captured on the first sample
+// (i.e. when the toolbar opened), so a steadily climbing count — the cheap,
+// cross-browser leak signal — is visible without any byte-precise measurement.
 export function useRuntimeSamples(active: boolean): RuntimeSamples {
   const qc = useQueryClient();
-  const [samples, setSamples] = useState<RuntimeSamples>(() => readSamples(qc));
+  const baseline = useRef<{ domNodes: number; queryCacheCount: number } | null>(null);
+  const withDelta = useCallback((raw: RawSamples): RuntimeSamples => {
+    if (baseline.current === null) {
+      baseline.current = { domNodes: raw.domNodes, queryCacheCount: raw.queryCacheCount };
+    }
+    return {
+      ...raw,
+      domNodesDelta: raw.domNodes - baseline.current.domNodes,
+      queryCacheDelta: raw.queryCacheCount - baseline.current.queryCacheCount,
+    };
+  }, []);
+  const [samples, setSamples] = useState<RuntimeSamples>(() => withDelta(readSamples(qc)));
   useEffect(() => {
     if (!active) return;
-    setSamples(readSamples(qc));
-    const id = setInterval(() => setSamples(readSamples(qc)), 1000);
+    setSamples(withDelta(readSamples(qc)));
+    const id = setInterval(() => setSamples(withDelta(readSamples(qc))), 1000);
     return () => clearInterval(id);
-  }, [active, qc]);
+  }, [active, qc, withDelta]);
   return samples;
+}
+
+// readAssetBytes sums the decoded body size of every resource in the
+// Performance resource-timing buffer plus the navigation document — a
+// cross-browser footprint *estimate*, not a heap reading. Caveats: cross-origin
+// resources without a Timing-Allow-Origin header report 0, and the buffer
+// evicts old entries, so treat the result as a ballpark rather than an exact
+// total.
+export function readAssetBytes(): number | null {
+  if (typeof performance === "undefined" || typeof performance.getEntriesByType !== "function") {
+    return null;
+  }
+  let total = 0;
+  for (const e of performance.getEntriesByType("navigation")) {
+    total += (e as PerformanceResourceTiming).decodedBodySize || 0;
+  }
+  for (const e of performance.getEntriesByType("resource")) {
+    total += (e as PerformanceResourceTiming).decodedBodySize || 0;
+  }
+  return total;
+}
+
+// useAssetBytes snapshots readAssetBytes() each time the section becomes active.
+// It deliberately does not poll: the resource buffer changes slowly and
+// re-summing it every second is exactly the per-tick overhead this toolbar
+// is built to avoid.
+export function useAssetBytes(active: boolean): number | null {
+  const [bytes, setBytes] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) return;
+    setBytes(readAssetBytes());
+  }, [active]);
+  return bytes;
 }
 
 export function useInflightRequests(): number {

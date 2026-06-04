@@ -62,8 +62,10 @@ board_name = "kanban-errors"
 # Opt in to the in-app developer toolbar. Off by default. When enabled, a
 # "Developer" tab appears in App Settings with a "Show developer toolbar"
 # toggle for a small corner widget showing live frontend health: FPS / worst
-# frame time, JS heap usage (Chromium only), DOM node count, React Query cache +
-# fetch/mutation activity, SSE connection status, and in-flight request count.
+# frame time, JS heap usage (Chromium only) plus a cross-browser loaded-asset
+# size estimate, DOM node and React Query cache counts (with growth deltas that
+# flag possible leaks), fetch/mutation activity, SSE connection status, and
+# in-flight request count.
 # Which sections show and where the widget pins are per-browser preferences
 # (localStorage), so this flag only controls whether the feature is available at
 # all.

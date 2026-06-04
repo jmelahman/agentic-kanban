@@ -4,6 +4,7 @@ import type { SseStatus } from "@/api/runtimeSignals";
 import { GaugeIcon, XIcon } from "@/icons";
 import {
   formatBytes,
+  useAssetBytes,
   useFrameStats,
   useInflightRequests,
   useRuntimeSamples,
@@ -40,6 +41,12 @@ const SSE_TONE: Record<SseStatus, string> = {
   closed: "text-fg-muted",
 };
 
+// Heuristic growth thresholds: a count this far above the baseline taken when
+// the toolbar opened is a likely leak worth a look. Deliberately generous to
+// avoid flagging normal navigation churn; tune per app.
+const DOM_NODE_WARN_DELTA = 4000;
+const QUERY_CACHE_WARN_DELTA = 50;
+
 // DevToolbar is an opt-in corner overlay of live frontend health metrics. It is
 // only mounted when the `dev_toolbar.enabled` config flag is on AND the user has
 // toggled it open, so its samplers never run for normal users.
@@ -49,6 +56,7 @@ export function DevToolbar() {
 
   const frame = useFrameStats(prefs.sections.fps);
   const samples = useRuntimeSamples(prefs.sections.memory || prefs.sections.domReact);
+  const assetBytes = useAssetBytes(prefs.sections.memory);
   const isFetching = useIsFetching();
   const isMutating = useIsMutating();
   const inflight = useInflightRequests();
@@ -119,16 +127,40 @@ export function DevToolbar() {
 
         {prefs.sections.memory && (
           <Section title={SECTION_LABELS.memory}>
-            <Row label="heap" value={formatBytes(samples.heapUsed)} />
-            <Row label="total" value={formatBytes(samples.heapTotal)} />
-            <Row label="limit" value={formatBytes(samples.heapLimit)} />
+            {samples.heapUsed != null ? (
+              <>
+                <Row label="heap" value={formatBytes(samples.heapUsed)} />
+                <Row label="total" value={formatBytes(samples.heapTotal)} />
+                <Row label="limit" value={formatBytes(samples.heapLimit)} />
+              </>
+            ) : (
+              // Firefox/Safari expose no JS heap API — show an honest note
+              // instead of three dead "n/a" rows.
+              <div className="py-0.5 text-[10px] leading-tight text-fg-muted/60">
+                no JS heap API in this browser
+              </div>
+            )}
+            <Row
+              label="assets"
+              value={assetBytes == null ? "n/a" : `≈ ${formatBytes(assetBytes)}`}
+            />
           </Section>
         )}
 
         {prefs.sections.domReact && (
           <Section title={SECTION_LABELS.domReact}>
-            <Row label="dom nodes" value={samples.domNodes.toLocaleString()} />
-            <Row label="queries" value={samples.queryCacheCount} />
+            <Row
+              label="dom nodes"
+              value={<CountWithDelta value={samples.domNodes} delta={samples.domNodesDelta} />}
+              warn={samples.domNodesDelta > DOM_NODE_WARN_DELTA}
+            />
+            <Row
+              label="queries"
+              value={
+                <CountWithDelta value={samples.queryCacheCount} delta={samples.queryCacheDelta} />
+              }
+              warn={samples.queryCacheDelta > QUERY_CACHE_WARN_DELTA}
+            />
             <Row label="fetching" value={isFetching} warn={isFetching > 0} />
             <Row label="mutating" value={isMutating} warn={isMutating > 0} />
           </Section>
@@ -181,6 +213,18 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       <div className="text-[10px] uppercase tracking-wider text-fg-muted/70">{title}</div>
       {children}
     </div>
+  );
+}
+
+// CountWithDelta renders a live count plus a muted "(+N)" indicator of how far
+// it has grown past the session baseline. Only positive growth is shown — that's
+// the direction that matters for spotting a leak.
+function CountWithDelta({ value, delta }: { value: number; delta: number }) {
+  return (
+    <span>
+      {value.toLocaleString()}
+      {delta > 0 && <span className="ml-1 text-fg-muted/60">(+{delta.toLocaleString()})</span>}
+    </span>
   );
 }
 
