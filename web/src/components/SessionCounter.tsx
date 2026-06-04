@@ -16,20 +16,17 @@ const ROWS: { key: keyof SessionSummary; status: string; label: string; always: 
 const DOMINANT_ORDER: (keyof SessionSummary)[] = ["working", "awaiting_perm", "starting", "idle"];
 
 // SessionCounter is a header applet showing the instance-wide number of running
-// containers broken down by status: a colored status dot next to each count.
-// It polls the cheap /api/sessions/summary aggregate every few seconds.
+// containers, polling the cheap /api/sessions/summary aggregate every few
+// seconds. It has two responsive forms that share one query and swap via CSS at
+// the `lg` breakpoint — the same point the rest of the header gains text labels:
 //
-// In `compact` mode (mobile) it collapses to a single button — one dot tinted by
-// the dominant status plus the total running count — so the header doesn't wrap.
-// `onActivate` fires on tap; the header points it at the Overview, where the
-// per-session breakdown lives.
-export function SessionCounter({
-  compact = false,
-  onActivate,
-}: {
-  compact?: boolean;
-  onActivate?: () => void;
-} = {}) {
+//   - below `lg` (mobile + medium widths): a single button — one dot tinted by
+//     the dominant status plus the total running count — so the header stays on
+//     one line. `onActivate` fires on click; the header points it at the
+//     Overview, where the per-session breakdown lives.
+//   - at `lg` and up: the full per-status breakdown, a colored dot + count for
+//     each status, once the header has room to be verbose.
+export function SessionCounter({ onActivate }: { onActivate?: () => void } = {}) {
   const { data } = useQuery({
     queryKey: ["session-summary"],
     queryFn: api.sessionSummary,
@@ -41,16 +38,16 @@ export function SessionCounter({
     running === 0
       ? "No running sessions"
       : `${running} running — ${data?.working ?? 0} working, ${data?.awaiting_perm ?? 0} awaiting, ${data?.idle ?? 0} idle`;
+  const dominant = DOMINANT_ORDER.find((key) => (data?.[key] ?? 0) > 0);
 
-  if (compact) {
-    const dominant = DOMINANT_ORDER.find((key) => (data?.[key] ?? 0) > 0);
-    return (
+  return (
+    <>
       <button
         type="button"
         onClick={onActivate}
         title={title}
         aria-label={title}
-        className="inline-flex items-center gap-1.5 rounded bg-surface-2 px-2 py-1 text-xs tabular-nums text-fg transition-colors duration-150 hover:bg-surface-3"
+        className="inline-flex items-center gap-1.5 rounded bg-surface-2 px-2 py-1 text-xs tabular-nums text-fg transition-colors duration-150 hover:bg-surface-3 lg:hidden"
       >
         <span
           aria-hidden
@@ -58,29 +55,29 @@ export function SessionCounter({
         />
         {running}
       </button>
-    );
-  }
-
-  return (
-    <div className="mr-2 inline-flex items-center gap-2.5 text-xs tabular-nums" title={title}>
-      {ROWS.filter((row) => row.always || (data?.[row.key] ?? 0) > 0).map((row) => {
-        const count = data?.[row.key] ?? 0;
-        return (
-          <span
-            key={row.key}
-            className={`inline-flex items-center gap-1 ${count === 0 ? "text-fg-muted" : "text-fg"}`}
-          >
+      <div
+        className="mr-2 hidden items-center gap-2.5 text-xs tabular-nums lg:inline-flex"
+        title={title}
+      >
+        {ROWS.filter((row) => row.always || (data?.[row.key] ?? 0) > 0).map((row) => {
+          const count = data?.[row.key] ?? 0;
+          return (
             <span
-              aria-hidden
-              className={`h-2 w-2 rounded-full ${STATUS_BG[row.status] ?? "bg-fg-muted"} ${
-                count === 0 ? "opacity-40" : ""
-              }`}
-            />
-            <span className="sr-only">{row.label} </span>
-            {count}
-          </span>
-        );
-      })}
-    </div>
+              key={row.key}
+              className={`inline-flex items-center gap-1 ${count === 0 ? "text-fg-muted" : "text-fg"}`}
+            >
+              <span
+                aria-hidden
+                className={`h-2 w-2 rounded-full ${STATUS_BG[row.status] ?? "bg-fg-muted"} ${
+                  count === 0 ? "opacity-40" : ""
+                }`}
+              />
+              <span className="sr-only">{row.label} </span>
+              {count}
+            </span>
+          );
+        })}
+      </div>
+    </>
   );
 }

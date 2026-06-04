@@ -175,7 +175,7 @@ export default function App() {
         )}
         {isMobile ? (
           <div className="ml-auto flex shrink-0 items-center gap-2">
-            <SessionCounter compact onActivate={() => setView("overview")} />
+            <SessionCounter onActivate={() => setView("overview")} />
             <HeaderMobileMenu
               onNewBoard={() => setCreateBoardOpen(true)}
               onArchived={view === "board" && activeId != null ? () => setShowArchived(true) : null}
@@ -186,7 +186,7 @@ export default function App() {
           </div>
         ) : (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <SessionCounter />
+            <SessionCounter onActivate={() => setView("overview")} />
             <Button
               variant="neutral"
               size="icon"
