@@ -198,18 +198,6 @@ export function GaugeIcon(props: IconProps) {
   );
 }
 
-// ContainersIcon — stacked boxes, used by the running-session counter applet.
-export function ContainersIcon(props: IconProps) {
-  return (
-    <svg {...baseProps(props)}>
-      <rect x="3" y="3" width="8" height="8" rx="1" />
-      <rect x="13" y="3" width="8" height="8" rx="1" />
-      <rect x="3" y="13" width="8" height="8" rx="1" />
-      <rect x="13" y="13" width="8" height="8" rx="1" />
-    </svg>
-  );
-}
-
 export function FullscreenEnterIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>
