@@ -59,13 +59,14 @@ closed_column = "Done"
 enabled    = false
 board_name = "kanban-errors"
 
-# Opt in to the in-app developer toolbar. Off by default. When enabled, a gauge
-# button appears in the web header (next to App Settings) that toggles a small
-# corner widget showing live frontend health: FPS / worst frame time, JS heap
-# usage (Chromium only), DOM node count, React Query cache + fetch/mutation
-# activity, SSE connection status, and in-flight request count. Which sections
-# show and where the widget pins are per-browser preferences (localStorage), so
-# this flag only controls whether the feature is available at all.
+# Opt in to the in-app developer toolbar. Off by default. When enabled, a
+# "Developer" tab appears in App Settings with a "Show developer toolbar"
+# toggle for a small corner widget showing live frontend health: FPS / worst
+# frame time, JS heap usage (Chromium only), DOM node count, React Query cache +
+# fetch/mutation activity, SSE connection status, and in-flight request count.
+# Which sections show and where the widget pins are per-browser preferences
+# (localStorage), so this flag only controls whether the feature is available at
+# all.
 [dev_toolbar]
 enabled = false
 

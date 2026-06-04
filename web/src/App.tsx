@@ -10,7 +10,7 @@ import { BoardSettings } from "@/components/BoardSettings";
 import { Button } from "@/components/Button";
 import { CreateBoardModal } from "@/components/CreateBoardForm";
 import { DevToolbar } from "@/components/devToolbar/DevToolbar";
-import { setDevToolbarPrefs, useDevToolbarPrefs } from "@/components/devToolbar/preferences";
+import { useDevToolbarPrefs } from "@/components/devToolbar/preferences";
 import { HeaderMobileMenu } from "@/components/HeaderMobileMenu";
 import { Overview } from "@/components/Overview/Overview";
 import { SessionCounter } from "@/components/SessionCounter";
@@ -22,7 +22,7 @@ import { useContrast } from "@/hooks/useContrast";
 import { useDevToolbarEnabled } from "@/hooks/useDevToolbarEnabled";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useThemeMode } from "@/hooks/useThemeMode";
-import { ArchiveIcon, CogIcon, GaugeIcon, HelpIcon, MenuIcon, PlusIcon } from "@/icons";
+import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon, PlusIcon } from "@/icons";
 import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
@@ -65,12 +65,10 @@ export default function App() {
   const [createBoardOpen, setCreateBoardOpen] = useState(false);
   const isMobile = useMediaQuery("(max-width: 639px)");
   // Opt-in developer toolbar: the config flag (from `.kanban.toml`) gates
-  // whether the header button and widget exist at all; the persisted `open`
-  // pref controls whether the widget is currently shown.
+  // whether the Settings toggle and widget exist at all; the persisted `open`
+  // pref (flipped from Settings → Developer) controls whether the widget shows.
   const devToolbarEnabled = useDevToolbarEnabled();
   const devToolbarPrefs = useDevToolbarPrefs();
-  const toggleDevToolbar = () =>
-    setDevToolbarPrefs({ ...devToolbarPrefs, open: !devToolbarPrefs.open });
 
   const onBoardCreated = (b: { id: number }) => {
     qc.invalidateQueries({ queryKey: queryKeys.boards });
@@ -151,13 +149,13 @@ export default function App() {
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
+      <header className="flex flex-nowrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2 sm:flex-wrap">
         <h1
           className={`hidden text-lg font-semibold sm:block ${isPrideMonth() ? "rainbow-text" : ""}`}
         >
           Kanban
         </h1>
-        <nav className="flex self-stretch -my-2">
+        <nav className="flex shrink-0 self-stretch -my-2">
           <Tab active={view === "overview"} onClick={() => setView("overview")} label="overview" />
           <Tab active={view === "board"} onClick={() => setView("board")} label="board" />
         </nav>
@@ -176,20 +174,19 @@ export default function App() {
           </select>
         )}
         {isMobile ? (
-          <div className="ml-auto flex items-center gap-2">
-            <SessionCounter />
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <SessionCounter onActivate={() => setView("overview")} />
             <HeaderMobileMenu
               onNewBoard={() => setCreateBoardOpen(true)}
               onArchived={view === "board" && activeId != null ? () => setShowArchived(true) : null}
               onBoardSettings={view === "board" && activeBoard ? () => setShowSettings(true) : null}
               onAppSettings={() => setShowAppSettings(true)}
-              onDevToolbar={devToolbarEnabled ? toggleDevToolbar : null}
               suggestRepoLink={!!suggestRepoLink}
             />
           </div>
         ) : (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-            <SessionCounter />
+            <SessionCounter onActivate={() => setView("overview")} />
             <Button
               variant="neutral"
               size="icon"
@@ -256,18 +253,6 @@ export default function App() {
             >
               <MenuIcon />
             </Button>
-            {devToolbarEnabled && (
-              <Button
-                variant={devToolbarPrefs.open ? "primary" : "neutral"}
-                size="icon"
-                onClick={toggleDevToolbar}
-                aria-label="Developer toolbar"
-                aria-pressed={devToolbarPrefs.open}
-                title="Developer toolbar"
-              >
-                <GaugeIcon />
-              </Button>
-            )}
           </div>
         )}
       </header>

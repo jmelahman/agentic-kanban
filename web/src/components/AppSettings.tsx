@@ -2,8 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import { queryKeys } from "@/api/keys";
+import { setDevToolbarPrefs, useDevToolbarPrefs } from "@/components/devToolbar/preferences";
 import { ACCENTS, type Accent, setAccent, useAccent } from "@/hooks/useAccent";
 import { type Contrast, setContrast, useContrast } from "@/hooks/useContrast";
+import { useDevToolbarEnabled } from "@/hooks/useDevToolbarEnabled";
 import { setThemeMode, type ThemeMode, useThemeMode } from "@/hooks/useThemeMode";
 import {
   setTerminalOrientation,
@@ -29,7 +31,7 @@ const ACCENT_LABELS: Record<Accent, string> = {
   pink: "Pink",
 };
 
-type SettingsTab = "general" | "appearance" | "shortcuts";
+type SettingsTab = "general" | "appearance" | "shortcuts" | "developer";
 
 export function AppSettings({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
@@ -60,6 +62,8 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
   const { mode } = useThemeMode();
   const contrast = useContrast();
   const accent = useAccent();
+  const devToolbarEnabled = useDevToolbarEnabled();
+  const devToolbarPrefs = useDevToolbarPrefs();
 
   useEffect(() => {
     if (settingsQ.data) {
@@ -125,6 +129,9 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
           label="appearance"
         />
         <Tab active={tab === "shortcuts"} onClick={() => setTab("shortcuts")} label="shortcuts" />
+        {devToolbarEnabled && (
+          <Tab active={tab === "developer"} onClick={() => setTab("developer")} label="developer" />
+        )}
       </div>
       <form
         className="flex min-h-[420px] flex-col gap-3 p-4 text-sm"
@@ -233,6 +240,23 @@ export function AppSettings({ open, onClose }: { open: boolean; onClose: () => v
           </fieldset>
         )}
         {tab === "shortcuts" && <KeybindingsSettings />}
+        {tab === "developer" && devToolbarEnabled && (
+          <fieldset className="flex flex-col gap-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={devToolbarPrefs.open}
+                onChange={(e) => setDevToolbarPrefs({ ...devToolbarPrefs, open: e.target.checked })}
+              />
+              <span>Show developer toolbar</span>
+            </label>
+            <span className="text-xs text-fg-muted">
+              Floating overlay of live frontend health metrics — FPS, JS heap, DOM / React Query
+              activity, and SSE status. Use the toolbar's own controls to reposition it or choose
+              which sections show.
+            </span>
+          </fieldset>
+        )}
         <div className="mt-auto flex items-center justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
             cancel
