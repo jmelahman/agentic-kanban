@@ -80,6 +80,8 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/tickets/{id}/merge", h.mergeTicket)
 	mux.HandleFunc("POST /api/tickets/{id}/done", h.doneTicket)
 
+	mux.HandleFunc("GET /api/sessions/summary", h.sessionSummary)
+
 	mux.HandleFunc("POST /api/tickets/{id}/session", h.ensureSession)
 	mux.HandleFunc("POST /api/sessions/{id}/start", h.startSession)
 	mux.HandleFunc("POST /api/sessions/{id}/stop", h.stopSession)

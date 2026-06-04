@@ -92,6 +92,80 @@ func assertSchema(t *testing.T, store *db.Store) {
 	}
 }
 
+func TestCountSessionsByStatus(t *testing.T) {
+	store, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("db.Open(:memory:): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := t.Context()
+
+	// Empty DB → empty map.
+	got, err := store.CountSessionsByStatus(ctx)
+	if err != nil {
+		t.Fatalf("CountSessionsByStatus (empty): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("empty count = %v; want empty map", got)
+	}
+
+	b := &db.Board{Name: "Counts", Slug: "counts", BaseBranch: "main", RepoPath: "/tmp/x"}
+	if err := store.CreateBoard(ctx, b); err != nil {
+		t.Fatalf("CreateBoard: %v", err)
+	}
+	cols, err := store.ListColumns(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("ListColumns: %v", err)
+	}
+
+	// One session per ticket (ticket_id is UNIQUE), spread across statuses.
+	statuses := []string{
+		db.SessionStatusWorking,
+		db.SessionStatusWorking,
+		db.SessionStatusIdle,
+		db.SessionStatusAwaitingPerm,
+		db.SessionStatusStarting,
+		db.SessionStatusStopped,
+		db.SessionStatusError,
+	}
+	for i, st := range statuses {
+		tk := &db.Ticket{BoardID: b.ID, ColumnID: cols[0].ID, Title: "t", Slug: "t"}
+		if err := store.CreateTicket(ctx, tk); err != nil {
+			t.Fatalf("CreateTicket[%d]: %v", i, err)
+		}
+		sess := &db.Session{
+			TicketID:     tk.ID,
+			WorktreePath: "/tmp/wt",
+			BranchName:   "kanban/test",
+			Status:       st,
+		}
+		if err := store.UpsertSession(ctx, sess); err != nil {
+			t.Fatalf("UpsertSession[%d]: %v", i, err)
+		}
+	}
+
+	got, err = store.CountSessionsByStatus(ctx)
+	if err != nil {
+		t.Fatalf("CountSessionsByStatus: %v", err)
+	}
+	want := map[string]int{
+		db.SessionStatusWorking:      2,
+		db.SessionStatusIdle:         1,
+		db.SessionStatusAwaitingPerm: 1,
+		db.SessionStatusStarting:     1,
+		db.SessionStatusStopped:      1,
+		db.SessionStatusError:        1,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("count = %v; want %v", got, want)
+	}
+	for status, n := range want {
+		if got[status] != n {
+			t.Errorf("count[%q] = %d; want %d (full: %v)", status, got[status], n, got)
+		}
+	}
+}
+
 func assertBoardLifecycle(t *testing.T, store *db.Store) {
 	t.Helper()
 	ctx := t.Context()

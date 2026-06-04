@@ -331,6 +331,56 @@ func TestTickets_Lifecycle(t *testing.T) {
 
 // ---------- Sessions ----------
 
+func TestSessionSummary(t *testing.T) {
+	e := newEnv(t)
+
+	t.Run("empty_is_zero", func(t *testing.T) {
+		resp := e.get("/api/sessions/summary")
+		assertStatus(t, resp, 200)
+		got := decodeJSON[map[string]int](t, resp)
+		for _, k := range []string{"running", "working", "awaiting_perm", "idle", "starting"} {
+			if got[k] != 0 {
+				t.Errorf("%s = %d; want 0 (full: %v)", k, got[k], got)
+			}
+		}
+	})
+
+	t.Run("counts_active_states_instance_wide", func(t *testing.T) {
+		board := e.seedBoard("SummaryCounts")
+		statuses := []string{
+			db.SessionStatusWorking,
+			db.SessionStatusWorking,
+			db.SessionStatusIdle,
+			db.SessionStatusAwaitingPerm,
+			db.SessionStatusStarting,
+			db.SessionStatusStopped, // excluded from running
+			db.SessionStatusError,   // excluded from running
+		}
+		for i, st := range statuses {
+			tk := e.seedTicket(board, fmt.Sprintf("summary-%d", i))
+			sess := e.seedSession(tk)
+			if err := e.store.UpdateSessionStatus(context.Background(), sess.ID, st); err != nil {
+				t.Fatalf("UpdateSessionStatus[%d]: %v", i, err)
+			}
+		}
+		resp := e.get("/api/sessions/summary")
+		assertStatus(t, resp, 200)
+		got := decodeJSON[map[string]int](t, resp)
+		want := map[string]int{
+			"working":       2,
+			"awaiting_perm": 1,
+			"idle":          1,
+			"starting":      1,
+			"running":       5, // working*2 + awaiting + idle + starting; stopped/error excluded
+		}
+		for k, v := range want {
+			if got[k] != v {
+				t.Errorf("%s = %d; want %d (full: %v)", k, got[k], v, got)
+			}
+		}
+	})
+}
+
 func TestSessions(t *testing.T) {
 	e := newEnv(t)
 	board := e.seedBoard("Sessions")

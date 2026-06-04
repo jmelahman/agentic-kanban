@@ -13,6 +13,7 @@ import { DevToolbar } from "@/components/devToolbar/DevToolbar";
 import { setDevToolbarPrefs, useDevToolbarPrefs } from "@/components/devToolbar/preferences";
 import { HeaderMobileMenu } from "@/components/HeaderMobileMenu";
 import { Overview } from "@/components/Overview/Overview";
+import { SessionCounter } from "@/components/SessionCounter";
 import { Tab } from "@/components/Tab";
 import { TerminalsRoot } from "@/components/TerminalsRoot";
 import { useAccent } from "@/hooks/useAccent";
@@ -175,7 +176,8 @@ export default function App() {
           </select>
         )}
         {isMobile ? (
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <SessionCounter />
             <HeaderMobileMenu
               onNewBoard={() => setCreateBoardOpen(true)}
               onArchived={view === "board" && activeId != null ? () => setShowArchived(true) : null}
@@ -187,6 +189,7 @@ export default function App() {
           </div>
         ) : (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+            <SessionCounter />
             <Button
               variant="neutral"
               size="icon"

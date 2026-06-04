@@ -817,6 +817,36 @@ func (h *handlers) publishSessionUpdated(ctx context.Context, sessionID int64) {
 	h.bus.Publish(t.BoardID, "session_updated", sess)
 }
 
+// sessionSummaryResp is an instance-wide count of running sessions, broken
+// down by status. Running is the sum of the four active states; stopped and
+// error sessions are excluded.
+type sessionSummaryResp struct {
+	Running      int `json:"running"`
+	Working      int `json:"working"`
+	AwaitingPerm int `json:"awaiting_perm"`
+	Idle         int `json:"idle"`
+	Starting     int `json:"starting"`
+}
+
+// sessionSummary returns the count of currently-running containers across all
+// boards, grouped by status. The frontend header polls this for an at-a-glance
+// indicator, so it stays a single cheap GROUP BY rather than a per-board scan.
+func (h *handlers) sessionSummary(w http.ResponseWriter, r *http.Request) {
+	counts, err := h.store.CountSessionsByStatus(r.Context())
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	resp := sessionSummaryResp{
+		Working:      counts[db.SessionStatusWorking],
+		AwaitingPerm: counts[db.SessionStatusAwaitingPerm],
+		Idle:         counts[db.SessionStatusIdle],
+		Starting:     counts[db.SessionStatusStarting],
+	}
+	resp.Running = resp.Working + resp.AwaitingPerm + resp.Idle + resp.Starting
+	writeJSON(w, 200, resp)
+}
+
 type updateSessionStatusReq struct {
 	Status string `json:"status"`
 }

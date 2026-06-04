@@ -135,6 +135,7 @@ handshake. The web UI uses this for every board subscription.
 
 Sessions are the running container + worktree + harness for a ticket. The most useful endpoints:
 
+- `GET /api/sessions/summary` — instance-wide count of running containers across every board, for the header indicator. Returns `{ "running": <int>, "working": <int>, "awaiting_perm": <int>, "idle": <int>, "starting": <int> }`, where `running` is the sum of the four active states. Stopped and errored sessions are excluded. Computed as a single `GROUP BY status` aggregate, so it's cheap to poll.
 - `POST /api/tickets/{id}/session` — ensure a session exists for the ticket.
 - `POST /api/sessions/{id}/start` / `stop` / `restart`
 - `PATCH /api/sessions/{id}/status` — used by the harness to report state changes.

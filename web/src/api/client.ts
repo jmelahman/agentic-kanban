@@ -55,6 +55,17 @@ export type Session = {
   claude_session_id?: string;
 };
 
+// SessionSummary is an instance-wide count of running containers, broken down
+// by status. `running` is the sum of the four active states (working, awaiting,
+// idle, starting); stopped and error sessions are excluded.
+export type SessionSummary = {
+  running: number;
+  working: number;
+  awaiting_perm: number;
+  idle: number;
+  starting: number;
+};
+
 export type PRReviewDecision = "approved" | "changes_requested" | "review_required" | "";
 
 export type PRCheckEntry = { name: string; url?: string };
@@ -266,6 +277,8 @@ export const api = {
       body: JSON.stringify({ strategy }),
     }),
   doneTicket: (id: number) => request<void>(`/api/tickets/${id}/done`, { method: "POST" }),
+
+  sessionSummary: () => request<SessionSummary>("/api/sessions/summary"),
 
   ensureSession: (ticketId: number) =>
     request<Session>(`/api/tickets/${ticketId}/session`, { method: "POST" }),

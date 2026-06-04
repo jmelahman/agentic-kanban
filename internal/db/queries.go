@@ -560,6 +560,28 @@ func (s *Store) DeleteSession(ctx context.Context, id int64) error {
 	return err
 }
 
+// CountSessionsByStatus returns an instance-wide count of sessions grouped by
+// their status string (e.g. "idle", "working"). Statuses with no sessions are
+// omitted from the map. Used by the running-session summary endpoint.
+func (s *Store) CountSessionsByStatus(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT status, COUNT(*) FROM sessions GROUP BY status`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	counts := map[string]int{}
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return nil, err
+		}
+		counts[status] = n
+	}
+	return counts, rows.Err()
+}
+
 // Port allocations
 
 func (s *Store) CreatePort(ctx context.Context, p *PortAllocation) error {
