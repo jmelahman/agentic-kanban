@@ -151,13 +151,13 @@ export default function App() {
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2">
+      <header className="flex flex-nowrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2 sm:flex-wrap">
         <h1
           className={`hidden text-lg font-semibold sm:block ${isPrideMonth() ? "rainbow-text" : ""}`}
         >
           Kanban
         </h1>
-        <nav className="flex self-stretch -my-2">
+        <nav className="flex shrink-0 self-stretch -my-2">
           <Tab active={view === "overview"} onClick={() => setView("overview")} label="overview" />
           <Tab active={view === "board"} onClick={() => setView("board")} label="board" />
         </nav>
@@ -176,8 +176,8 @@ export default function App() {
           </select>
         )}
         {isMobile ? (
-          <div className="ml-auto flex items-center gap-2">
-            <SessionCounter />
+          <div className="ml-auto flex shrink-0 items-center gap-2">
+            <SessionCounter compact onActivate={() => setView("overview")} />
             <HeaderMobileMenu
               onNewBoard={() => setCreateBoardOpen(true)}
               onArchived={view === "board" && activeId != null ? () => setShowArchived(true) : null}

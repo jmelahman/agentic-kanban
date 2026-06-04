@@ -11,10 +11,25 @@ const ROWS: { key: keyof SessionSummary; status: string; label: string; always: 
   { key: "starting", status: "starting", label: "starting", always: false },
 ];
 
+// Highest-signal status wins the single dot in compact mode: a working session
+// is more interesting than one awaiting perms, which beats starting, then idle.
+const DOMINANT_ORDER: (keyof SessionSummary)[] = ["working", "awaiting_perm", "starting", "idle"];
+
 // SessionCounter is a header applet showing the instance-wide number of running
 // containers broken down by status: a colored status dot next to each count.
 // It polls the cheap /api/sessions/summary aggregate every few seconds.
-export function SessionCounter() {
+//
+// In `compact` mode (mobile) it collapses to a single button — one dot tinted by
+// the dominant status plus the total running count — so the header doesn't wrap.
+// `onActivate` fires on tap; the header points it at the Overview, where the
+// per-session breakdown lives.
+export function SessionCounter({
+  compact = false,
+  onActivate,
+}: {
+  compact?: boolean;
+  onActivate?: () => void;
+} = {}) {
   const { data } = useQuery({
     queryKey: ["session-summary"],
     queryFn: api.sessionSummary,
@@ -26,6 +41,25 @@ export function SessionCounter() {
     running === 0
       ? "No running sessions"
       : `${running} running — ${data?.working ?? 0} working, ${data?.awaiting_perm ?? 0} awaiting, ${data?.idle ?? 0} idle`;
+
+  if (compact) {
+    const dominant = DOMINANT_ORDER.find((key) => (data?.[key] ?? 0) > 0);
+    return (
+      <button
+        type="button"
+        onClick={onActivate}
+        title={title}
+        aria-label={title}
+        className="inline-flex items-center gap-1.5 rounded bg-surface-2 px-2 py-1 text-xs tabular-nums text-fg transition-colors duration-150 hover:bg-surface-3"
+      >
+        <span
+          aria-hidden
+          className={`h-2 w-2 rounded-full ${dominant ? STATUS_BG[dominant] : "bg-fg-muted opacity-40"}`}
+        />
+        {running}
+      </button>
+    );
+  }
 
   return (
     <div className="mr-2 inline-flex items-center gap-2.5 text-xs tabular-nums" title={title}>
