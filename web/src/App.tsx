@@ -10,7 +10,7 @@ import { BoardSettings } from "@/components/BoardSettings";
 import { Button } from "@/components/Button";
 import { CreateBoardModal } from "@/components/CreateBoardForm";
 import { DevToolbar } from "@/components/devToolbar/DevToolbar";
-import { setDevToolbarPrefs, useDevToolbarPrefs } from "@/components/devToolbar/preferences";
+import { useDevToolbarPrefs } from "@/components/devToolbar/preferences";
 import { HeaderMobileMenu } from "@/components/HeaderMobileMenu";
 import { Overview } from "@/components/Overview/Overview";
 import { SessionCounter } from "@/components/SessionCounter";
@@ -22,7 +22,7 @@ import { useContrast } from "@/hooks/useContrast";
 import { useDevToolbarEnabled } from "@/hooks/useDevToolbarEnabled";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useThemeMode } from "@/hooks/useThemeMode";
-import { ArchiveIcon, CogIcon, GaugeIcon, HelpIcon, MenuIcon, PlusIcon } from "@/icons";
+import { ArchiveIcon, CogIcon, HelpIcon, MenuIcon, PlusIcon } from "@/icons";
 import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
@@ -65,12 +65,10 @@ export default function App() {
   const [createBoardOpen, setCreateBoardOpen] = useState(false);
   const isMobile = useMediaQuery("(max-width: 639px)");
   // Opt-in developer toolbar: the config flag (from `.kanban.toml`) gates
-  // whether the header button and widget exist at all; the persisted `open`
-  // pref controls whether the widget is currently shown.
+  // whether the Settings toggle and widget exist at all; the persisted `open`
+  // pref (flipped from Settings → Developer) controls whether the widget shows.
   const devToolbarEnabled = useDevToolbarEnabled();
   const devToolbarPrefs = useDevToolbarPrefs();
-  const toggleDevToolbar = () =>
-    setDevToolbarPrefs({ ...devToolbarPrefs, open: !devToolbarPrefs.open });
 
   const onBoardCreated = (b: { id: number }) => {
     qc.invalidateQueries({ queryKey: queryKeys.boards });
@@ -183,7 +181,6 @@ export default function App() {
               onArchived={view === "board" && activeId != null ? () => setShowArchived(true) : null}
               onBoardSettings={view === "board" && activeBoard ? () => setShowSettings(true) : null}
               onAppSettings={() => setShowAppSettings(true)}
-              onDevToolbar={devToolbarEnabled ? toggleDevToolbar : null}
               suggestRepoLink={!!suggestRepoLink}
             />
           </div>
@@ -256,18 +253,6 @@ export default function App() {
             >
               <MenuIcon />
             </Button>
-            {devToolbarEnabled && (
-              <Button
-                variant={devToolbarPrefs.open ? "primary" : "neutral"}
-                size="icon"
-                onClick={toggleDevToolbar}
-                aria-label="Developer toolbar"
-                aria-pressed={devToolbarPrefs.open}
-                title="Developer toolbar"
-              >
-                <GaugeIcon />
-              </Button>
-            )}
           </div>
         )}
       </header>
