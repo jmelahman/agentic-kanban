@@ -627,9 +627,9 @@ export function DiffPanel({ session }: { session: Session }) {
           <span aria-hidden>▶</span>
         </button>
       ) : (
-        <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-surface text-sm">
-          <div className="sticky top-0 z-10 flex items-center border-b border-border bg-surface px-3 py-2">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+        <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-bg text-sm">
+          <div className="sticky top-0 z-10 flex min-h-11 items-center border-b border-border bg-bg px-3">
+            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-fg-muted">
               Changed files
             </h2>
             <span className="ml-2 text-xs text-fg-muted">{orderedFiles.length}</span>
@@ -1268,7 +1268,7 @@ function DirRow({
         type="button"
         onClick={() => setOpen((o) => !o)}
         style={{ paddingLeft: depth * 12 + 8 }}
-        className="flex w-full items-center gap-1 py-1 pr-2 text-left text-fg-muted hover:bg-bg"
+        className="flex w-full items-center gap-1 py-1 pr-2 text-left text-fg-muted hover:bg-surface-2"
         title={dir.path}
       >
         <span aria-hidden className="w-3 shrink-0 text-center text-[10px]">
@@ -1311,8 +1311,8 @@ function FileRow({
       onClick={() => onSelect(leaf.path)}
       title={leaf.file.prevName ? `${leaf.file.prevName} → ${leaf.path}` : leaf.path}
       style={{ paddingLeft: depth * 12 + 8 }}
-      className={`flex w-full items-center gap-2 py-1 pr-2 text-left hover:bg-bg ${
-        active ? "bg-bg font-medium" : ""
+      className={`flex w-full items-center gap-2 py-1 pr-2 text-left hover:bg-surface-2 ${
+        active ? "bg-surface-2 font-medium" : ""
       }`}
     >
       <span className={`w-3 shrink-0 text-center text-[10px] font-bold ${marker.cls}`}>
