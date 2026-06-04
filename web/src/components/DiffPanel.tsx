@@ -1,9 +1,13 @@
 import {
   type DiffLineAnnotation,
+  type DiffsThemeNames,
+  getFiletypeFromFileName,
   parseDiffFromFile,
   parsePatchFiles,
+  preloadHighlighter,
   type FileDiffMetadata,
   type SelectedLineRange,
+  type SupportedLanguages,
 } from "@pierre/diffs";
 import { File, FileDiff } from "@pierre/diffs/react";
 import { useQuery } from "@tanstack/react-query";
@@ -42,6 +46,17 @@ const VIEWED_KEY_PREFIX = "diff.viewed.";
 // Stable empty list so `useDeferredValue`'s initial value never changes identity
 // and the first-mount defer below fires reliably.
 const EMPTY_FILES: FileDiffMetadata[] = [];
+
+// A file's full-contents fetch (pairQ in DiffFileEntry) is gated on this set:
+// only files that have scrolled within REVEAL_MARGIN of the viewport reveal and
+// fetch. Opening a large diff therefore doesn't fire one whole-file fetch (and a
+// second Shiki highlight pass) for every changed file at once — just the ones
+// the user actually scrolls near. Sticky: a revealed path never drops, so
+// scrolling a file out and back never re-fetches or re-highlights it.
+const EMPTY_REVEALED: ReadonlySet<string> = new Set();
+// Reveal a file ~1.5 screens before it enters view, so its full-context fetch
+// and re-highlight usually finish before the user reaches it.
+const REVEAL_MARGIN = "1200px 0px";
 
 // Lines revealed per click on a collapsed-context "expand" separator. The
 // library defaults to 100, which reveals most gaps in a single click and shoves
@@ -377,6 +392,28 @@ export function DiffPanel({ session }: { session: Session }) {
   const tree = useMemo(() => buildTree(files), [files]);
   const orderedFiles = useMemo(() => flattenLeaves(tree), [tree]);
 
+  // The distinct Shiki languages in this diff, as a stable comma-joined key.
+  // `files` gets a fresh array identity on every 4s poll even when unchanged, so
+  // keying the preload effect on this string (compared by value) keeps it from
+  // re-firing each poll — it only runs when the set of languages actually shifts.
+  const langKey = useMemo(() => {
+    const set = new Set<SupportedLanguages>();
+    for (const f of files) set.add(getFiletypeFromFileName(f.name));
+    return Array.from(set).sort().join(",");
+  }, [files]);
+
+  // Warm the Shiki grammar + theme (and the Oniguruma WASM) for every language
+  // in this diff as soon as the file list is known — in parallel, before the
+  // deferred highlight pass below needs them. Otherwise each ~170 KB language
+  // grammar chunk loads lazily mid-highlight, serially gating first paint of
+  // highlighted code on the slowest grammar. The shared highlighter dedupes, so
+  // this fetches each grammar once and the FileDiff renders reuse it.
+  useEffect(() => {
+    if (!langKey) return;
+    const langs = langKey.split(",") as SupportedLanguages[];
+    void preloadHighlighter({ themes: [theme as DiffsThemeNames], langs });
+  }, [langKey, theme]);
+
   // Path → current metadata, for resolving a file by path when (un)marking it
   // viewed and when reconciling the persisted viewed set against a fresh poll.
   const byPath = useMemo(() => {
@@ -458,6 +495,15 @@ export function DiffPanel({ session }: { session: Session }) {
   const fileRefs = useRef<Map<string, HTMLElement>>(new Map());
   const rafRef = useRef(0);
 
+  // Paths that have scrolled near the viewport; gates each file's full-contents
+  // fetch (see EMPTY_REVEALED / REVEAL_MARGIN). A ScalarStore (not state) so a
+  // reveal re-renders only the one DiffFileEntry that just came into view — via
+  // its useScalarSelector — and never the memoized DiffStack. Survives the
+  // cross-session panel reuse; a stale path just means a same-named file in the
+  // next session reveals eagerly (harmless — pairQ is keyed by session+signature).
+  const [revealStore] = useState(() => new ScalarStore<ReadonlySet<string>>(EMPTY_REVEALED));
+  const revealObserverRef = useRef<IntersectionObserver | null>(null);
+
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
       const next = !prev;
@@ -472,11 +518,56 @@ export function DiffPanel({ session }: { session: Session }) {
 
   // A single stable ref callback keyed off `data-path`, so the memoized diff
   // stack never sees a changing prop. Stale entries for removed files are never
-  // read (we only iterate the current `orderedFiles`).
-  const registerRef = useCallback((el: HTMLElement | null) => {
-    const path = el?.dataset.path;
-    if (el && path) fileRefs.current.set(path, el);
-  }, []);
+  // read (we only iterate the current `orderedFiles`). `revealStore` is stable
+  // (useState), so depending on it keeps this callback's identity stable too.
+  const registerRef = useCallback(
+    (el: HTMLElement | null) => {
+      const path = el?.dataset.path;
+      if (!el || !path) return;
+      fileRefs.current.set(path, el);
+      // Watch newly-mounted wrappers for viewport entry. Already-revealed paths
+      // are sticky (the observer unobserves on first hit), so skip re-observing.
+      if (!revealStore.get().has(path)) revealObserverRef.current?.observe(el);
+    },
+    [revealStore],
+  );
+
+  // One IntersectionObserver per panel, rooted at the scroll container, that
+  // flips a file's path into `revealStore` the first time it nears the
+  // viewport. registerRef observes wrappers as they mount; this also sweeps any
+  // already mounted when the effect runs, since the deferred file stack can
+  // commit on either side of it. Sticky: unobserve on first intersection so a
+  // file scrolled out and back never re-fetches.
+  useEffect(() => {
+    const root = scrollRef.current;
+    if (!root) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const cur = revealStore.get();
+        let next: Set<string> | null = null;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const el = entry.target as HTMLElement;
+          const path = el.dataset.path;
+          if (!path) continue;
+          obs.unobserve(el);
+          if (cur.has(path)) continue;
+          if (!next) next = new Set(cur);
+          next.add(path);
+        }
+        if (next) revealStore.set(next);
+      },
+      { root, rootMargin: REVEAL_MARGIN },
+    );
+    revealObserverRef.current = obs;
+    for (const el of fileRefs.current.values()) {
+      if (!revealStore.get().has(el.dataset.path ?? "")) obs.observe(el);
+    }
+    return () => {
+      obs.disconnect();
+      revealObserverRef.current = null;
+    };
+  }, [revealStore]);
 
   // Mark the last file whose top has reached (or passed) the viewport top as
   // active — same behavior as GitHub's "Files changed" sidebar.
@@ -681,6 +772,7 @@ export function DiffPanel({ session }: { session: Session }) {
             onUpdateComment={onUpdateComment}
             onDeleteComment={onDeleteComment}
             registerRef={registerRef}
+            revealStore={revealStore}
           />
         )}
       </div>
@@ -717,6 +809,7 @@ const DiffStack = memo(function DiffStack({
   onUpdateComment,
   onDeleteComment,
   registerRef,
+  revealStore,
 }: {
   files: FileDiffMetadata[];
   sessionId: number;
@@ -727,6 +820,7 @@ const DiffStack = memo(function DiffStack({
   onToggleView: (path: string) => void;
   onToggleViewed: (path: string) => void;
   registerRef: (el: HTMLElement | null) => void;
+  revealStore: ScalarStore<ReadonlySet<string>>;
 } & ReviewCallbacks) {
   return (
     <>
@@ -749,6 +843,7 @@ const DiffStack = memo(function DiffStack({
             onAddComment={onAddComment}
             onUpdateComment={onUpdateComment}
             onDeleteComment={onDeleteComment}
+            revealStore={revealStore}
           />
         </div>
       ))}
@@ -785,9 +880,22 @@ function DiffFileEntry({
   onAddComment,
   onUpdateComment,
   onDeleteComment,
-}: FileEntryProps & { viewed: boolean } & ReviewCallbacks) {
+  revealStore,
+}: FileEntryProps & {
+  viewed: boolean;
+  revealStore: ScalarStore<ReadonlySet<string>>;
+} & ReviewCallbacks) {
   const canView = file.type !== "deleted" && file.hunks.length > 0;
   const viewedToggle = <ViewedToggle viewed={viewed} onToggle={() => onToggleViewed(file.name)} />;
+
+  // Has this file scrolled near the viewport yet? Gates the full-contents fetch
+  // below so a large diff doesn't fetch (and re-highlight) every file on open.
+  // The selector returns a boolean, so this re-renders only on the open→revealed
+  // flip — once — and never for reveals of other files.
+  const revealed = useScalarSelector(
+    revealStore,
+    useCallback((v: ReadonlySet<string>) => v.has(file.name), [file.name]),
+  );
 
   // A modified (or renamed-and-modified) text file has content on both sides, so
   // we can rebuild its diff from the full base+head contents and hand the library
@@ -796,15 +904,16 @@ function DiffFileEntry({
   // binary/no-hunks files have no diff, so both keep the cheap patch-derived
   // metadata. The fetch is keyed by the file's signature (see fileSignature), so
   // it only re-runs when the file actually changes — not on every 4s diff poll —
-  // and is gated to the live diff view so a blob/collapsed file never pays the
-  // whole-file highlight cost. Until it lands (or if it fails) we render the
+  // and is gated to the live diff view (and to files scrolled near the viewport,
+  // via `revealed`) so a blob/collapsed/far-offscreen file never pays the fetch
+  // + whole-file highlight cost. Until it lands (or if it fails) we render the
   // patch metadata, so the diff still shows immediately, just without expansion.
   const expandable = file.hunks.length > 0 && file.type !== "new" && file.type !== "deleted";
   const oldName = file.prevName ?? file.name;
   const pairQ = useQuery({
     queryKey: queryKeys.sessionFileDiff(sessionId, file.name, fileSignature(file)),
     queryFn: () => api.getSessionFileDiff(sessionId, file.name, file.prevName ?? undefined),
-    enabled: expandable && !viewFile && !viewed,
+    enabled: expandable && !viewFile && !viewed && revealed,
     staleTime: Number.POSITIVE_INFINITY,
   });
   const enriched = useMemo(() => {

@@ -1,8 +1,24 @@
 import { useEffect, useRef } from "react";
-import { init, Terminal, type ITheme } from "ghostty-web";
+import type { ITheme, Terminal as GhosttyTerminal } from "ghostty-web";
 import { APPEARANCE_EVENT } from "@/hooks/useThemeMode";
 
-const ghosttyReady = init();
+// ghostty-web is a ~600 KB WASM module. Both importing it (which pulls the WASM
+// chunk) and init() (which compiles it) used to run at module-eval of this
+// file — and this file sits in the eager App → TerminalsRoot import graph, so
+// the terminal WASM downloaded and compiled on every page load, even for users
+// who never open a terminal. Defer both to the first PtyTerminal mount via a
+// memoized promise, so concurrent terminals share one module load + one init
+// and the weight stays off the initial page load.
+let ghosttyReady: Promise<typeof import("ghostty-web")> | null = null;
+function loadGhostty(): Promise<typeof import("ghostty-web")> {
+  if (!ghosttyReady) {
+    ghosttyReady = import("ghostty-web").then(async (mod) => {
+      await mod.init();
+      return mod;
+    });
+  }
+  return ghosttyReady;
+}
 
 function getTerminalTheme(): ITheme {
   const cs = getComputedStyle(document.documentElement);
@@ -22,7 +38,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const fitRef = useRef<(() => void) | null>(null);
-  const termRef = useRef<Terminal | null>(null);
+  const termRef = useRef<GhosttyTerminal | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +59,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
     hostRef.current = host;
     getOffscreenContainer().appendChild(wrapper);
 
-    ghosttyReady.then(() => {
+    loadGhostty().then(({ Terminal }) => {
       if (cancelled) return;
 
       const term = new Terminal({
@@ -192,7 +208,7 @@ export function PtyTerminal({ sessionId, kind, mountTarget }: Props) {
 }
 
 function createTerminalControls(
-  term: Terminal,
+  term: GhosttyTerminal,
   onClear: () => void,
 ): {
   element: HTMLDivElement;
