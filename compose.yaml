@@ -49,10 +49,11 @@ services:
       KANBAN_PROMETHEUS_URL: http://prometheus:9090
     volumes:
       - ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock
-      # Agent config dir. Claude Code reads ~/.claude; for other
-      # harnesses (e.g. pi/Ollama) substitute or add the relevant path.
+      # Agent config dirs. Claude Code reads ~/.claude; pi reads ~/.pi/agent.
+      # For other harnesses (e.g. Ollama) substitute or add the relevant path.
       - ${HOME}/.claude:${HOME}/.claude
       - ${HOME}/.claude.json:${HOME}/.claude.json
+      - ${HOME}/.pi/agent:${HOME}/.pi/agent
       - ${HOME}/code:${HOME}/code
       - ${HOME}/.local/share/kanban:${HOME}/.local/share/kanban
       - ${HOME}/.config/kanban:${HOME}/.config/kanban

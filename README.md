@@ -84,6 +84,7 @@ docker run -d --name kanban \
   -v ${DOCKER_SOCK_PATH:-/var/run/docker.sock}:/var/run/docker.sock \
   -v $HOME/.claude:$HOME/.claude \
   -v $HOME/.claude.json:$HOME/.claude.json \
+  -v $HOME/.pi/agent:$HOME/.pi/agent \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
   -v $HOME/.gitconfig:$HOME/.gitconfig:ro \
   -v $HOME/.config/git:$HOME/.config/git:ro \

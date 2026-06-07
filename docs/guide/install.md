@@ -12,7 +12,7 @@ This installs the binary to `~/.local/bin/kanban`. Make sure that's on your `PAT
 
 ## With Docker
 
-The Docker image is the most "batteries-included" option — it ships with a Docker socket mount so kanban can spawn session containers, and it pre-mounts `~/.claude` so the Claude Code harness picks up your existing credentials.
+The Docker image is the most "batteries-included" option — it ships with a Docker socket mount so kanban can spawn session containers, and it pre-mounts agent config dirs (`~/.claude` for Claude Code, `~/.pi/agent` for pi) so the harness picks up your existing credentials.
 
 The image entrypoint runs as the unprivileged `nonroot` user (UID/GID `65532`), not root. That means two things you need to plan for at run time:
 
@@ -31,6 +31,7 @@ docker run -d --name kanban \
   -v $DOCKER_SOCK_PATH:/var/run/docker.sock \
   -v $HOME/.claude:$HOME/.claude \
   -v $HOME/.claude.json:$HOME/.claude.json \
+  -v $HOME/.pi/agent:$HOME/.pi/agent \
   -v $HOME/.local/share/kanban:$HOME/.local/share/kanban \
   -v $HOME/.gitconfig:$HOME/.gitconfig:ro \
   -v $HOME/.config/git:$HOME/.config/git:ro \
