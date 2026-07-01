@@ -505,6 +505,85 @@ func TestSessions(t *testing.T) {
 			map[string]any{"claude_session_id": "abcdef01-2345-6789-abcd-0123456789ab"})
 		assertStatus(t, resp, 404)
 	})
+
+	t.Run("branch_repoint_clears_pr_and_broadcasts", func(t *testing.T) {
+		other := e.seedTicket(board, "Repoint")
+		sess := e.seedSession(other)
+		// Populate pr_* so we can assert the re-point clears them.
+		prNum := int64(7)
+		if err := e.store.UpdateSessionPR(context.Background(), sess.ID, "open", &prNum,
+			"https://example.com/pull/7", "old pr"); err != nil {
+			t.Fatalf("UpdateSessionPR: %v", err)
+		}
+
+		events := e.subscribeBoardEvents(board.ID)
+		defer events.close()
+		events.waitReady(t)
+
+		resp := e.patch(fmt.Sprintf("/api/sessions/%d/branch", sess.ID),
+			map[string]any{"branch_name": "kanban/pivoted"})
+		assertStatus(t, resp, 200)
+		updated := decodeJSON[db.Session](t, resp)
+		if updated.BranchName != "kanban/pivoted" {
+			t.Errorf("response branch_name = %q; want %q", updated.BranchName, "kanban/pivoted")
+		}
+		if updated.PRState != "" || updated.PRNumber != nil || updated.PRURL != "" || updated.PRTitle != "" {
+			t.Errorf("response pr_* not cleared: %+v", updated)
+		}
+
+		got, err := e.store.GetSession(context.Background(), sess.ID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if got.BranchName != "kanban/pivoted" {
+			t.Errorf("persisted branch_name = %q; want %q", got.BranchName, "kanban/pivoted")
+		}
+		if got.PRNumber != nil {
+			t.Errorf("persisted pr_number = %v; want nil", got.PRNumber)
+		}
+
+		ev := events.next(t)
+		if ev.Type != "session_updated" {
+			t.Fatalf("expected session_updated event, got %q", ev.Type)
+		}
+	})
+
+	t.Run("branch_no_op_keeps_pr", func(t *testing.T) {
+		other := e.seedTicket(board, "RepointNoOp")
+		sess := e.seedSession(other)
+		prNum := int64(9)
+		if err := e.store.UpdateSessionPR(context.Background(), sess.ID, "open", &prNum,
+			"https://example.com/pull/9", "keep me"); err != nil {
+			t.Fatalf("UpdateSessionPR: %v", err)
+		}
+		// Re-saving the existing branch must not clear the cached PR fields.
+		resp := e.patch(fmt.Sprintf("/api/sessions/%d/branch", sess.ID),
+			map[string]any{"branch_name": sess.BranchName})
+		assertStatus(t, resp, 200)
+		got, err := e.store.GetSession(context.Background(), sess.ID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if got.PRNumber == nil || *got.PRNumber != 9 {
+			t.Errorf("pr_number = %v; want 9 (no-op should not clear)", got.PRNumber)
+		}
+	})
+
+	t.Run("branch_rejects_empty_and_malformed", func(t *testing.T) {
+		other := e.seedTicket(board, "RepointBad")
+		sess := e.seedSession(other)
+		for _, bad := range []string{"", "   ", "has space", "-leading-dash", "a..b"} {
+			resp := e.patch(fmt.Sprintf("/api/sessions/%d/branch", sess.ID),
+				map[string]any{"branch_name": bad})
+			assertStatus(t, resp, 400)
+		}
+	})
+
+	t.Run("branch_unknown_session_404", func(t *testing.T) {
+		resp := e.patch("/api/sessions/9999/branch",
+			map[string]any{"branch_name": "kanban/whatever"})
+		assertStatus(t, resp, 404)
+	})
 }
 
 // ---------- Tasks ----------

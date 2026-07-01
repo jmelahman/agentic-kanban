@@ -938,6 +938,67 @@ func (h *handlers) updateClaudeSessionID(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(204)
 }
 
+type updateSessionBranchReq struct {
+	BranchName string `json:"branch_name"`
+}
+
+// updateSessionBranch re-points a session at a different git branch. The use
+// case is a session that pivots onto a new branch (the agent pushes a new
+// branch and opens a PR from it) — re-pointing makes kanban surface that PR's
+// GitHub events on the ticket. This is a metadata-only re-point of
+// branch_name, not a git rename; kanban never touches GitHub. Because the
+// GitHub poller associates sessions to PRs purely by branch name, the DB layer
+// clears the cached pr_* fields so the stale old-branch PR disappears and the
+// poller repopulates fresh data for the new branch on its next tick.
+func (h *handlers) updateSessionBranch(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	req, err := decodeBody[updateSessionBranchReq](r)
+	if err != nil {
+		h.httpError(w, err, 400)
+		return
+	}
+	branch := strings.TrimSpace(req.BranchName)
+	if branch == "" {
+		h.httpError(w, fmt.Errorf("branch_name cannot be empty"), 400)
+		return
+	}
+	// Lightweight format guard. We don't require the branch to exist locally or
+	// remotely (the agent may not have pushed yet), but reject values git would
+	// never accept as a ref name so a typo can't wedge the poller's matching.
+	if strings.ContainsAny(branch, " \t") || strings.HasPrefix(branch, "-") || strings.Contains(branch, "..") {
+		h.httpError(w, fmt.Errorf("branch_name is not a valid branch name"), 400)
+		return
+	}
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	// No-op when unchanged: re-saving the same value shouldn't needlessly clear
+	// the cached pr_* fields and trigger a poll round-trip to repopulate them.
+	if branch == sess.BranchName {
+		writeJSON(w, 200, sess)
+		return
+	}
+	if err := h.store.RepointSessionBranch(r.Context(), id, branch); err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			h.httpError(w, err, 404)
+			return
+		}
+		h.httpError(w, err, 500)
+		return
+	}
+	// Push the re-pointed session out over SSE so other clients' InfoPanels
+	// reflect the new branch (and the now-cleared PR section) without a reload.
+	h.publishSessionUpdated(r.Context(), id)
+	fresh, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, fresh)
+}
+
 // Tasks
 
 type taskInfo struct {

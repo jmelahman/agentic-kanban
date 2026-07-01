@@ -1,6 +1,7 @@
 package db_test
 
 import (
+	"errors"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -163,6 +164,66 @@ func TestCountSessionsByStatus(t *testing.T) {
 		if got[status] != n {
 			t.Errorf("count[%q] = %d; want %d (full: %v)", status, got[status], n, got)
 		}
+	}
+}
+
+func TestRepointSessionBranch(t *testing.T) {
+	store, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("db.Open(:memory:): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := t.Context()
+
+	b := &db.Board{Name: "Repoint", Slug: "repoint", BaseBranch: "main", RepoPath: "/tmp/x"}
+	if err := store.CreateBoard(ctx, b); err != nil {
+		t.Fatalf("CreateBoard: %v", err)
+	}
+	cols, err := store.ListColumns(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("ListColumns: %v", err)
+	}
+	tk := &db.Ticket{BoardID: b.ID, ColumnID: cols[0].ID, Title: "t", Slug: "t"}
+	if err := store.CreateTicket(ctx, tk); err != nil {
+		t.Fatalf("CreateTicket: %v", err)
+	}
+
+	// Seed a session with the pr_* fields populated so we can assert the
+	// re-point clears them (the poller will repopulate for the new branch).
+	prNum := int64(42)
+	sess := &db.Session{
+		TicketID:     tk.ID,
+		WorktreePath: "/tmp/wt",
+		BranchName:   "kanban/old",
+		Status:       db.SessionStatusStopped,
+		PRState:      "open",
+		PRNumber:     &prNum,
+		PRURL:        "https://github.com/x/y/pull/42",
+		PRTitle:      "old pr",
+	}
+	if err := store.UpsertSession(ctx, sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	if err := store.RepointSessionBranch(ctx, sess.ID, "kanban/new"); err != nil {
+		t.Fatalf("RepointSessionBranch: %v", err)
+	}
+
+	got, err := store.GetSession(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if got.BranchName != "kanban/new" {
+		t.Errorf("branch_name = %q; want %q", got.BranchName, "kanban/new")
+	}
+	if got.PRState != "" || got.PRNumber != nil || got.PRURL != "" || got.PRTitle != "" {
+		t.Errorf("pr_* not cleared: state=%q number=%v url=%q title=%q",
+			got.PRState, got.PRNumber, got.PRURL, got.PRTitle)
+	}
+
+	// Unknown id → ErrNotFound.
+	if err := store.RepointSessionBranch(ctx, 9999, "kanban/whatever"); !errors.Is(err, db.ErrNotFound) {
+		t.Errorf("RepointSessionBranch(unknown) error = %v; want ErrNotFound", err)
 	}
 }
 

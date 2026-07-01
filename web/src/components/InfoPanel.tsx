@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   api,
+  formatApiError,
   PR_STATE_COLOR,
   type PRDetail,
   type PRReviewDecision,
@@ -12,7 +13,7 @@ import {
 } from "@/api/client";
 import { queryKeys } from "@/api/keys";
 import { useCopyFeedback } from "@/hooks/useCopyFeedback";
-import { ticketStore, useTicket } from "@/store";
+import { sessionStore, ticketStore, useTicket } from "@/store";
 import { MARKDOWN_COMPONENTS } from "./markdownComponents";
 
 export function InfoPanel({ session }: { session: Session }) {
@@ -66,7 +67,7 @@ export function InfoPanel({ session }: { session: Session }) {
       </Section>
 
       <Section title="Workspace">
-        <Row label="Branch" value={<Copyable text={session.branch_name} />} />
+        <BranchRow session={session} />
         <Row label="Worktree" value={<Copyable text={session.worktree_path} />} />
       </Section>
 
@@ -202,6 +203,99 @@ function DescriptionSection({ ticketId, body }: { ticketId: number; body: string
 function autosize(el: HTMLTextAreaElement) {
   el.style.height = "auto";
   el.style.height = `${el.scrollHeight}px`;
+}
+
+// BranchRow shows the session's tracked git branch and lets the user re-point
+// it at a different branch. This is a metadata re-point (sessions.branch_name),
+// not a git rename: when a session pivots onto a new branch, saving that branch
+// here makes the GitHub poller re-associate the ticket with the new branch's PR
+// (and its events) on its next tick. The backend clears the cached PR fields so
+// the stale PR section disappears immediately. Mirrors DescriptionSection's
+// inline-edit affordance.
+function BranchRow({ session }: { session: Session }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(session.branch_name);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const saveMut = useMutation({
+    mutationFn: (next: string) => api.repointSessionBranch(session.id, next),
+    onSuccess: (updated) => {
+      sessionStore.set(updated.id, updated);
+      setEditing(false);
+    },
+  });
+
+  useEffect(() => {
+    if (!editing) return;
+    setDraft(session.branch_name);
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.select();
+    });
+  }, [editing, session.branch_name]);
+
+  const submit = () => {
+    const next = draft.trim();
+    if (next === "" || next === session.branch_name) {
+      setEditing(false);
+      return;
+    }
+    saveMut.mutate(next);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-baseline gap-3">
+        <span className="w-24 shrink-0 text-xs text-fg-muted">Branch</span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setEditing(false);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            onBlur={submit}
+            disabled={saveMut.isPending}
+            spellCheck={false}
+            className="w-full rounded bg-surface px-2 py-1 font-mono text-xs outline-none ring-1 ring-border focus:ring-accent-500"
+          />
+          {saveMut.isError ? (
+            <p className="text-xs text-red-400">{formatApiError(saveMut.error)}</p>
+          ) : (
+            <p className="text-xs text-fg-muted">Enter to save · Esc to cancel</p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-baseline gap-3">
+      <span className="w-24 shrink-0 text-xs text-fg-muted">Branch</span>
+      <span className="flex min-w-0 flex-1 items-baseline gap-2">
+        {session.branch_name ? <Copyable text={session.branch_name} /> : <Muted>none</Muted>}
+        {session.branch_name && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            title="re-point branch"
+            className="shrink-0 text-xs text-fg-muted hover:text-accent-500"
+          >
+            ✎
+          </button>
+        )}
+      </span>
+    </div>
+  );
 }
 
 function Section({

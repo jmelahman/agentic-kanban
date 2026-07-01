@@ -518,6 +518,25 @@ func (s *Store) UpdateSessionPR(ctx context.Context, id int64, prState string, p
 	return err
 }
 
+// RepointSessionBranch re-points a session at a different git branch, used when
+// a session pivots onto a new branch and the user wants the ticket to track it.
+// It clears the cached pr_* fields in the same UPDATE so the now-irrelevant
+// old-branch PR disappears from the UI immediately; the GitHub poller matches
+// sessions to PRs by branch name and repopulates pr_* for the new branch on its
+// next tick. Column-scoped (branch_name + pr_*) so it doesn't clobber the
+// session-manager-owned lifecycle columns — see the "sessions row has multiple
+// writers" note in REGRESSIONS.md. Returns ErrNotFound when no row matches.
+func (s *Store) RepointSessionBranch(ctx context.Context, id int64, branch string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET branch_name=?, pr_state=NULL, pr_number=NULL, pr_url=NULL, pr_title=NULL WHERE id=?`,
+		branch, id,
+	)
+	if err != nil {
+		return err
+	}
+	return affectedOrNotFound(res)
+}
+
 func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 	sess, err := scanSession(s.db.QueryRowContext(ctx,
 		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id FROM sessions WHERE id=?`, id))

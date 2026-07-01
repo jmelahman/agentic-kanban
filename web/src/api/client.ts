@@ -286,6 +286,11 @@ export const api = {
   stopSession: (id: number) => request<void>(`/api/sessions/${id}/stop`, { method: "POST" }),
   restartSession: (id: number) =>
     request<Session>(`/api/sessions/${id}/restart`, { method: "POST" }),
+  repointSessionBranch: (id: number, branch_name: string) =>
+    request<Session>(`/api/sessions/${id}/branch`, {
+      method: "PATCH",
+      body: JSON.stringify({ branch_name }),
+    }),
 
   discoverTasks: (sessionId: number) =>
     request<DiscoverTasksResult>(`/api/sessions/${sessionId}/discover-tasks`),

@@ -88,6 +88,7 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("POST /api/sessions/{id}/restart", h.restartSession)
 	mux.HandleFunc("PATCH /api/sessions/{id}/status", h.updateSessionStatus)
 	mux.HandleFunc("PATCH /api/sessions/{id}/claude-session", h.updateClaudeSessionID)
+	mux.HandleFunc("PATCH /api/sessions/{id}/branch", h.updateSessionBranch)
 
 	mux.HandleFunc("GET /api/sessions/{id}/plans", h.listSessionPlans)
 	mux.HandleFunc("GET /api/sessions/{id}/plans/{name}", h.getSessionPlan)
