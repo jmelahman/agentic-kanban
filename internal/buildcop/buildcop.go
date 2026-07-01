@@ -646,9 +646,10 @@ type jobStats struct {
 	GreenStreak    int
 	LastFailureURL string
 	LastFailureAt  time.Time
-	// FlakyRetries counts events where this job failed in an earlier
-	// attempt of a workflow run that ultimately succeeded — i.e., a
-	// pass-on-retry against the same head_sha.
+	// FlakyRetries counts distinct commits (workflow runs) in the window
+	// where this job failed in an earlier attempt but the run ultimately
+	// succeeded — one flake per head_sha regardless of how many attempts
+	// it took to get green.
 	FlakyRetries int
 	LastFlakyURL string
 	LastFlakyAt  time.Time
@@ -687,15 +688,33 @@ func aggregate(runs []ghRun, jobsByRun map[int64][]ghJob,
 		// Attribute flake events first so streakBroken is set before the
 		// current attempt's success is counted. A job that only passes on
 		// retry doesn't extend the leading green streak.
+		//
+		// Dedupe by job name within a single run: FlakyRetries counts
+		// distinct commits where the job needed a retry. A run with three
+		// attempts where the same job failed twice before passing is one
+		// flaky incident against one head_sha, not two.
 		if r.RunAttempt > 1 && classifyConclusion(r.Conclusion) == "success" {
-			currentJobNames := make(map[string]struct{}, len(jobsByRun[r.ID]))
+			// A flake is failed-then-passed against the same head_sha. Require
+			// the job to have SUCCEEDED on the current attempt — a job that
+			// failed in both attempts (e.g. under continue-on-error, or a
+			// matrix cell that stayed red while the run reported success) is
+			// a real failure, not a flake. Skipped jobs on the retry also
+			// don't qualify.
+			currentSucceeded := make(map[string]struct{}, len(jobsByRun[r.ID]))
 			for _, j := range jobsByRun[r.ID] {
-				currentJobNames[j.Name] = struct{}{}
+				if classifyConclusion(j.Conclusion) == "success" {
+					currentSucceeded[j.Name] = struct{}{}
+				}
 			}
+			seenThisRun := make(map[string]struct{})
 			for _, failedJob := range priorFailedJobs[r.ID] {
-				if _, ok := currentJobNames[failedJob.Name]; !ok {
+				if _, ok := currentSucceeded[failedJob.Name]; !ok {
 					continue
 				}
+				if _, dup := seenThisRun[failedJob.Name]; dup {
+					continue
+				}
+				seenThisRun[failedJob.Name] = struct{}{}
 				k := aggKey{Workflow: workflow, Job: failedJob.Name}
 				e, ok := byKey[k]
 				if !ok {
