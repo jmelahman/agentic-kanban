@@ -34,6 +34,7 @@ type BoardConfig struct {
 	MinRuns             int     // default 5
 	GreenStreakRequired int     // default 10
 	WindowDays          int     // default 7
+	FlakyThreshold      int     // default 3
 }
 
 // MatchesAllBranches reports whether this board accepts every head_branch.
@@ -79,6 +80,7 @@ func resolveBoard(in kanbantoml.BuildCopBoard) BoardConfig {
 		MinRuns:             5,
 		GreenStreakRequired: 10,
 		WindowDays:          7,
+		FlakyThreshold:      3,
 	}
 	if in.RepoPath != nil {
 		out.RepoPath = *in.RepoPath
@@ -103,6 +105,9 @@ func resolveBoard(in kanbantoml.BuildCopBoard) BoardConfig {
 	}
 	if in.WindowDays != nil && *in.WindowDays > 0 {
 		out.WindowDays = *in.WindowDays
+	}
+	if in.FlakyThreshold != nil && *in.FlakyThreshold > 0 {
+		out.FlakyThreshold = *in.FlakyThreshold
 	}
 	return out
 }

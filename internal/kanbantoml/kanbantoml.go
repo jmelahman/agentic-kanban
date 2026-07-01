@@ -93,6 +93,7 @@ type BuildCopBoard struct {
 	MinRuns             *int     `json:"min_runs,omitempty" toml:"min_runs"`
 	GreenStreakRequired *int     `json:"green_streak_required,omitempty" toml:"green_streak_required"`
 	WindowDays          *int     `json:"window_days,omitempty" toml:"window_days"`
+	FlakyThreshold      *int     `json:"flaky_threshold,omitempty" toml:"flaky_threshold"`
 }
 
 // DevToolbarSection toggles the in-app developer metrics widget — a small

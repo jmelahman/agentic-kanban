@@ -11,7 +11,7 @@ import (
 	"github.com/jmelahman/kanban/internal/slug"
 )
 
-func toBoardSection(name, repoPath, branch string, threshold *float64, minRuns, streak, window *int) kanbantoml.BuildCopBoard {
+func toBoardSection(name, repoPath, branch string, threshold *float64, minRuns, streak, window, flaky *int) kanbantoml.BuildCopBoard {
 	out := kanbantoml.BuildCopBoard{}
 	if name != "" {
 		out.Name = &name
@@ -26,6 +26,7 @@ func toBoardSection(name, repoPath, branch string, threshold *float64, minRuns, 
 	out.MinRuns = minRuns
 	out.GreenStreakRequired = streak
 	out.WindowDays = window
+	out.FlakyThreshold = flaky
 	return out
 }
 
@@ -80,7 +81,7 @@ func TestClassifyConclusion(t *testing.T) {
 }
 
 func TestShouldFile(t *testing.T) {
-	cfg := BoardConfig{FailureThreshold: 0.10, MinRuns: 5}
+	cfg := BoardConfig{FailureThreshold: 0.10, MinRuns: 5, FlakyThreshold: 3}
 	cases := []struct {
 		name string
 		s    jobStats
@@ -91,6 +92,25 @@ func TestShouldFile(t *testing.T) {
 		{name: "min_runs and above threshold", s: jobStats{Total: 10, Failures: 2}, want: true},         // 20%
 		{name: "at min_runs boundary, above threshold", s: jobStats{Total: 5, Failures: 1}, want: true}, // 20%
 		{name: "zero total", s: jobStats{Total: 0, Failures: 0}, want: false},
+	}
+	for _, c := range cases {
+		if got := shouldFile(c.s, cfg); got != c.want {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+func TestShouldFileFlaky(t *testing.T) {
+	cfg := BoardConfig{FailureThreshold: 0.10, MinRuns: 5, FlakyThreshold: 3}
+	cases := []struct {
+		name string
+		s    jobStats
+		want bool
+	}{
+		{name: "flakes meet threshold, failure rate below", s: jobStats{Total: 10, Failures: 0, FlakyRetries: 3}, want: true},
+		{name: "flakes above threshold", s: jobStats{Total: 20, Failures: 1, FlakyRetries: 5}, want: true},
+		{name: "flakes below threshold, failure rate below", s: jobStats{Total: 10, Failures: 0, FlakyRetries: 2}, want: false},
+		{name: "flakes below threshold but Total below min_runs", s: jobStats{Total: 4, Failures: 0, FlakyRetries: 3}, want: false},
 	}
 	for _, c := range cases {
 		if got := shouldFile(c.s, cfg); got != c.want {
@@ -154,7 +174,7 @@ func TestAggregateGreenStreak(t *testing.T) {
 		4: {jobAt("lint", "success", "")},
 		5: {jobAt("lint", "success", "")},
 	}
-	stats := aggregate(runs, jobsByRun)
+	stats := aggregate(runs, jobsByRun, nil)
 	s, ok := stats["CI:lint"]
 	if !ok {
 		t.Fatalf("missing CI:lint, got %v", stats)
@@ -176,7 +196,7 @@ func TestAggregateSplitsByWorkflowAndJob(t *testing.T) {
 		1: {jobAt("lint", "success", ""), jobAt("test", "failure", "")},
 		2: {jobAt("lint", "failure", "")},
 	}
-	stats := aggregate(runs, jobsByRun)
+	stats := aggregate(runs, jobsByRun, nil)
 	if len(stats) != 3 {
 		t.Fatalf("expected 3 keys, got %d: %v", len(stats), keysOf(stats))
 	}
@@ -193,7 +213,7 @@ func TestAggregateSkipsCancelled(t *testing.T) {
 		1: {jobAt("lint", "cancelled", "")},
 		2: {jobAt("lint", "success", "")},
 	}
-	stats := aggregate(runs, jobsByRun)
+	stats := aggregate(runs, jobsByRun, nil)
 	s := stats["CI:lint"]
 	if s.Total != 1 {
 		t.Errorf("Total = %d, want 1 (cancelled skipped)", s.Total)
@@ -209,7 +229,7 @@ func TestAggregateAllFailures(t *testing.T) {
 		1: {jobAt("lint", "failure", "https://example.com/old")},
 		2: {jobAt("lint", "failure", "https://example.com/new")},
 	}
-	stats := aggregate(runs, jobsByRun)
+	stats := aggregate(runs, jobsByRun, nil)
 	s := stats["CI:lint"]
 	if s.GreenStreak != 0 {
 		t.Errorf("GreenStreak = %d, want 0", s.GreenStreak)
@@ -233,8 +253,97 @@ func TestTitleFor(t *testing.T) {
 	}
 }
 
+func TestTitleForFlaky(t *testing.T) {
+	// Flaky only (no failures on latest attempts).
+	only := jobStats{Workflow: "CI", Job: "lint", Total: 20, Failures: 0, FlakyRetries: 4}
+	got := titleFor(only)
+	if !strings.Contains(got, "flaky") {
+		t.Errorf("flaky-only title should mention flaky: %q", got)
+	}
+	if strings.Contains(got, "failing+flaky") {
+		t.Errorf("flaky-only title should not read as failing+flaky: %q", got)
+	}
+	if !strings.Contains(got, "4 passes-on-retry") {
+		t.Errorf("flaky-only title should count retries: %q", got)
+	}
+
+	// Failing + flaky.
+	both := jobStats{Workflow: "CI", Job: "lint", Total: 20, Failures: 3, FlakyRetries: 2}
+	got = titleFor(both)
+	if !strings.Contains(got, "failing+flaky") {
+		t.Errorf("failing+flaky title missing composite marker: %q", got)
+	}
+	if !strings.Contains(got, "15%") {
+		t.Errorf("failing+flaky title missing rate: %q", got)
+	}
+	if !strings.Contains(got, "2 retries") {
+		t.Errorf("failing+flaky title missing retry count: %q", got)
+	}
+}
+
+// runAttempt returns a run with a specific attempt number and conclusion.
+func runAttempt(id int64, workflow string, m, attempt int, conclusion string) ghRun {
+	r := runAt(id, workflow, m)
+	r.RunAttempt = attempt
+	r.Conclusion = conclusion
+	return r
+}
+
+func TestAggregateFlaky(t *testing.T) {
+	// One run that succeeded on attempt 2; on attempt 1 the "lint" job
+	// failed. Expect FlakyRetries=1, Failures=0, GreenStreak=0 (flake breaks
+	// green streak), LastFlakyURL matching the failed prior-attempt job.
+	runs := []ghRun{runAttempt(10, "CI", 1, 2, "success")}
+	jobsByRun := map[int64][]ghJob{
+		10: {jobAt("lint", "success", "")},
+	}
+	prior := map[int64][]ghJob{
+		10: {jobAt("lint", "failure", "https://example.com/jobs/prior")},
+	}
+	stats := aggregate(runs, jobsByRun, prior)
+	s, ok := stats["CI:lint"]
+	if !ok {
+		t.Fatalf("missing CI:lint, got %v", keysOf(stats))
+	}
+	if s.FlakyRetries != 1 {
+		t.Errorf("FlakyRetries = %d, want 1", s.FlakyRetries)
+	}
+	if s.Failures != 0 {
+		t.Errorf("Failures = %d, want 0 (flake should not increment Failures)", s.Failures)
+	}
+	if s.GreenStreak != 0 {
+		t.Errorf("GreenStreak = %d, want 0 (flake breaks streak)", s.GreenStreak)
+	}
+	if s.LastFlakyURL != "https://example.com/jobs/prior" {
+		t.Errorf("LastFlakyURL = %q", s.LastFlakyURL)
+	}
+	if s.LastFlakyAt.IsZero() {
+		t.Errorf("LastFlakyAt not set")
+	}
+}
+
+func TestAggregateFlakyJobRemoved(t *testing.T) {
+	// Prior attempt failed a job that no longer exists in the current
+	// attempt (renamed or removed between attempts). Do not credit a flake.
+	runs := []ghRun{runAttempt(11, "CI", 1, 2, "success")}
+	jobsByRun := map[int64][]ghJob{
+		11: {jobAt("test", "success", "")},
+	}
+	prior := map[int64][]ghJob{
+		11: {jobAt("lint", "failure", "https://example.com/jobs/gone")},
+	}
+	stats := aggregate(runs, jobsByRun, prior)
+	if s, ok := stats["CI:lint"]; ok {
+		t.Errorf("removed job should not appear, got %+v", s)
+	}
+	s := stats["CI:test"]
+	if s.FlakyRetries != 0 {
+		t.Errorf("current job with no matching prior failure should have 0 flakes, got %d", s.FlakyRetries)
+	}
+}
+
 func TestResolveBoardDefaults(t *testing.T) {
-	got := resolveBoard(toBoardSection("", "", "", nil, nil, nil, nil))
+	got := resolveBoard(toBoardSection("", "", "", nil, nil, nil, nil, nil))
 	if got.FailureThreshold != 0.10 {
 		t.Errorf("FailureThreshold default = %v", got.FailureThreshold)
 	}
@@ -247,6 +356,9 @@ func TestResolveBoardDefaults(t *testing.T) {
 	if got.WindowDays != 7 {
 		t.Errorf("WindowDays default = %d", got.WindowDays)
 	}
+	if got.FlakyThreshold != 3 {
+		t.Errorf("FlakyThreshold default = %d", got.FlakyThreshold)
+	}
 	if !got.MatchesAllBranches() {
 		t.Errorf("empty branch should match all")
 	}
@@ -254,7 +366,7 @@ func TestResolveBoardDefaults(t *testing.T) {
 
 func TestResolveBoardNameFallback(t *testing.T) {
 	master := "master"
-	got := resolveBoard(toBoardSection("", "", master, nil, nil, nil, nil))
+	got := resolveBoard(toBoardSection("", "", master, nil, nil, nil, nil, nil))
 	if !strings.Contains(got.Name, "master") {
 		t.Errorf("name should derive from branch: %q", got.Name)
 	}

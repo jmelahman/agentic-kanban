@@ -73,16 +73,17 @@ board_name = "kanban-errors"
 enabled = false
 
 # Build Cop polls GitHub Actions on a schedule and files tickets when a job's
-# failure rate over a rolling window exceeds the threshold. Off by default.
+# failure rate over a rolling window exceeds the threshold, or when the same
+# job passes on retry too often (a flake signal — see below). Off by default.
 # Each [[buildcop.boards]] entry produces one auto-managed board scoped to
 # the given branch filter; columns are "Failing" / "Investigating" / "Fixed" /
 # "Won't fix". A job auto-moves to "Fixed" once it has `green_streak_required`
-# consecutive successful runs. Drag a ticket to "Won't fix" to silence a job
-# you've decided not to address (a known-flaky test, an infra failure): the
-# poller never touches a ticket parked there — it won't re-open it on continued
-# failure or auto-move it to "Fixed" on recovery — until you move it out
-# yourself. ("Won't fix" is backfilled onto boards created before it existed
-# on the next poll.)
+# consecutive successful runs — flake events count as non-green for that
+# purpose. Drag a ticket to "Won't fix" to silence a job you've decided not to
+# address (a known-flaky test, an infra failure): the poller never touches a
+# ticket parked there — it won't re-open it on continued failure or auto-move
+# it to "Fixed" on recovery — until you move it out yourself. ("Won't fix" is
+# backfilled onto boards created before it existed on the next poll.)
 [buildcop]
 enabled  = false
 interval = "2m"  # poll cadence; default 2m. Each tick lists completed runs
@@ -99,6 +100,7 @@ failure_threshold     = 0.10                 # rate (0..1) above which a ticket 
 min_runs              = 5                    # minimum runs in the window before evaluating
 green_streak_required = 10                   # consecutive green runs to auto-move to Fixed
 window_days           = 7                    # rolling window in days
+flaky_threshold       = 3                    # passes-on-retry in the window that trigger a flake ticket
 
 # Extra knobs layered onto the worktree's devcontainer.json at session spawn.
 # `mounts` and `run_args` append to whatever the devcontainer.json declares;
@@ -132,6 +134,12 @@ container_port = 3000
 label = "Start Backend"
 container_port = 8080
 ```
+
+### Build Cop flake detection
+
+The GitHub Actions runs API only returns the *latest* attempt of each workflow run, so a job that fails on attempt 1 and passes on attempt 2 looks green to a naive poller. Build Cop closes that gap: for every workflow run in the window with `run_attempt > 1` ending in `success`, it fetches each prior attempt's jobs and records a *pass-on-retry* for every job that failed earlier and still exists in the successful attempt. Because all attempts of a single run share `head_sha`, the code didn't change between attempts — the failure is a flake.
+
+When `flaky_threshold` passes-on-retry accumulate for a `(workflow, job)` pair inside `window_days`, a ticket is filed in the `Failing` column with a title like `CI / lint flaky (3 passes-on-retry over 40 runs)`. If the same job also fails outright often enough to trip `failure_threshold`, the ticket title becomes `failing+flaky` and lists both counts. Flake events also break the green streak: a flaky job can only reach `Fixed` after `green_streak_required` consecutive clean, non-flaky runs.
 
 ### Build Cop authentication
 

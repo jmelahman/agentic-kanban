@@ -63,11 +63,22 @@ type Poller struct {
 	// refetch of the jobs endpoint every tick.
 	jobsMu    sync.Mutex
 	jobsCache map[string][]ghJob
+
+	// attemptCache memoizes job lists for prior (non-latest) workflow-run
+	// attempts. Completed attempts are immutable, so entries are never
+	// evicted — the working set is bounded by the rolling window.
+	cacheMu      sync.Mutex
+	attemptCache map[attemptKey][]ghJob
 }
 
 type boardCache struct {
 	ID   int64
 	Cols map[string]int64
+}
+
+type attemptKey struct {
+	RunID   int64
+	Attempt int
 }
 
 // NewPoller constructs a poller. interval defaults to 2 minutes when <=0:
@@ -87,8 +98,9 @@ func NewPoller(store *db.Store, bus eventbus.Publisher, cfg Config, interval tim
 			Timeout:   30 * time.Second,
 			Transport: metrics.WrapGitHubTransport(nil),
 		},
-		boards:    make(map[string]boardCache),
-		jobsCache: make(map[string][]ghJob),
+		boards:       make(map[string]boardCache),
+		jobsCache:    make(map[string][]ghJob),
+		attemptCache: make(map[attemptKey][]ghJob),
 	}
 }
 
@@ -253,7 +265,31 @@ func (p *Poller) syncBoard(ctx context.Context, cfg BoardConfig) (map[int64]stru
 		p.putCachedJobs(cfg.RepoPath, r.ID, jobs)
 	}
 
-	stats := aggregate(runs, jobsByRun)
+	// For each run that succeeded on retry, fetch the prior attempts' jobs
+	// so flake events can be attributed to the specific job that failed
+	// then passed. Prior attempts are immutable, so fetchPriorAttemptJobs
+	// memoizes results across ticks.
+	priorFailedJobs := make(map[int64][]ghJob)
+	for _, r := range runs {
+		if r.RunAttempt <= 1 || classifyConclusion(r.Conclusion) != "success" {
+			continue
+		}
+		for attempt := 1; attempt < r.RunAttempt; attempt++ {
+			jobs, err := p.fetchPriorAttemptJobs(ctx, cfg.RepoPath, r.ID, attempt)
+			if err != nil {
+				log.Printf("buildcop: board %q: prior attempt jobs run %d attempt %d: %v",
+					cfg.Name, r.ID, attempt, err)
+				continue
+			}
+			for _, j := range jobs {
+				if classifyConclusion(j.Conclusion) == "failure" {
+					priorFailedJobs[r.ID] = append(priorFailedJobs[r.ID], j)
+				}
+			}
+		}
+	}
+
+	stats := aggregate(runs, jobsByRun, priorFailedJobs)
 	if err := p.reconcile(ctx, cfg, cache, stats); err != nil {
 		return nil, err
 	}
@@ -460,10 +496,12 @@ type ghRun struct {
 	Name       string    `json:"name"`
 	WorkflowID int64     `json:"workflow_id"`
 	HeadBranch string    `json:"head_branch"`
+	HeadSHA    string    `json:"head_sha"`
 	Status     string    `json:"status"`
 	Conclusion string    `json:"conclusion"`
 	HTMLURL    string    `json:"html_url"`
 	CreatedAt  time.Time `json:"created_at"`
+	RunAttempt int       `json:"run_attempt"`
 }
 
 type ghRunsResp struct {
@@ -550,6 +588,48 @@ func (p *Poller) listJobs(ctx context.Context, repoPath string, runID int64) ([]
 	return all, nil
 }
 
+// fetchPriorAttemptJobs returns the jobs from a non-latest workflow-run
+// attempt. Completed attempts are immutable, so results are cached in
+// attemptCache and reused across ticks.
+func (p *Poller) fetchPriorAttemptJobs(ctx context.Context, repoPath string, runID int64, attempt int) ([]ghJob, error) {
+	key := attemptKey{RunID: runID, Attempt: attempt}
+	p.cacheMu.Lock()
+	if cached, ok := p.attemptCache[key]; ok {
+		p.cacheMu.Unlock()
+		return cached, nil
+	}
+	p.cacheMu.Unlock()
+
+	owner, repo, host, err := github.ParseGitHubRepo(repoPath)
+	if err != nil {
+		return nil, err
+	}
+	apiBase := github.APIBaseFor(host)
+	tok := github.Token(host)
+
+	cctx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+
+	next := fmt.Sprintf("%s/repos/%s/%s/actions/runs/%d/attempts/%d/jobs?per_page=100",
+		apiBase, url.PathEscape(owner), url.PathEscape(repo), runID, attempt)
+
+	var all []ghJob
+	for page := 0; page < 3 && next != ""; page++ {
+		var resp ghJobsResp
+		link, err := github.GetJSONPage(cctx, p.http, tok, next, &resp)
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Jobs...)
+		next = link
+	}
+
+	p.cacheMu.Lock()
+	p.attemptCache[key] = all
+	p.cacheMu.Unlock()
+	return all, nil
+}
+
 // Aggregation --------------------------------------------------------------
 
 type aggKey struct {
@@ -566,12 +646,27 @@ type jobStats struct {
 	GreenStreak    int
 	LastFailureURL string
 	LastFailureAt  time.Time
+	// FlakyRetries counts events where this job failed in an earlier
+	// attempt of a workflow run that ultimately succeeded — i.e., a
+	// pass-on-retry against the same head_sha.
+	FlakyRetries int
+	LastFlakyURL string
+	LastFlakyAt  time.Time
 }
 
 // aggregate folds the runs+jobs into per-(workflow,job) statistics. Runs are
 // processed newest-first so GreenStreak — number of leading consecutive
 // successes before the first failure — is computed in one pass.
-func aggregate(runs []ghRun, jobsByRun map[int64][]ghJob) map[string]jobStats {
+//
+// priorFailedJobs maps a run ID to the jobs that failed in earlier attempts
+// of that same run when the run ultimately succeeded on retry. Each such job
+// is counted as a flake for the (workflow, job) pair — provided the job
+// still exists in the successful attempt (matched by name) — and breaks the
+// green streak, since a job that only passes after retry is not reliably
+// green.
+func aggregate(runs []ghRun, jobsByRun map[int64][]ghJob,
+	priorFailedJobs map[int64][]ghJob,
+) map[string]jobStats {
 	sortedRuns := append([]ghRun(nil), runs...)
 	sort.SliceStable(sortedRuns, func(i, j int) bool {
 		return sortedRuns[i].CreatedAt.After(sortedRuns[j].CreatedAt)
@@ -584,14 +679,46 @@ func aggregate(runs []ghRun, jobsByRun map[int64][]ghJob) map[string]jobStats {
 	byKey := make(map[aggKey]*entry)
 
 	for _, r := range sortedRuns {
+		workflow := r.Name
+		if workflow == "" {
+			workflow = fmt.Sprintf("workflow %d", r.WorkflowID)
+		}
+
+		// Attribute flake events first so streakBroken is set before the
+		// current attempt's success is counted. A job that only passes on
+		// retry doesn't extend the leading green streak.
+		if r.RunAttempt > 1 && classifyConclusion(r.Conclusion) == "success" {
+			currentJobNames := make(map[string]struct{}, len(jobsByRun[r.ID]))
+			for _, j := range jobsByRun[r.ID] {
+				currentJobNames[j.Name] = struct{}{}
+			}
+			for _, failedJob := range priorFailedJobs[r.ID] {
+				if _, ok := currentJobNames[failedJob.Name]; !ok {
+					continue
+				}
+				k := aggKey{Workflow: workflow, Job: failedJob.Name}
+				e, ok := byKey[k]
+				if !ok {
+					e = &entry{stats: jobStats{Workflow: workflow, Job: failedJob.Name}}
+					byKey[k] = e
+				}
+				e.stats.FlakyRetries++
+				if e.stats.LastFlakyAt.IsZero() {
+					e.stats.LastFlakyAt = r.CreatedAt
+					if failedJob.HTMLURL != "" {
+						e.stats.LastFlakyURL = failedJob.HTMLURL
+					} else {
+						e.stats.LastFlakyURL = r.HTMLURL
+					}
+				}
+				e.streakBroken = true
+			}
+		}
+
 		for _, j := range jobsByRun[r.ID] {
 			class := classifyConclusion(j.Conclusion)
 			if class == "skip" {
 				continue
-			}
-			workflow := r.Name
-			if workflow == "" {
-				workflow = fmt.Sprintf("workflow %d", r.WorkflowID)
 			}
 			k := aggKey{Workflow: workflow, Job: j.Name}
 			e, ok := byKey[k]
@@ -654,7 +781,10 @@ func shouldFile(s jobStats, cfg BoardConfig) bool {
 		return false
 	}
 	rate := float64(s.Failures) / float64(s.Total)
-	return rate > cfg.FailureThreshold
+	if rate > cfg.FailureThreshold {
+		return true
+	}
+	return s.FlakyRetries >= cfg.FlakyThreshold
 }
 
 func shouldFix(s jobStats, cfg BoardConfig) bool {
@@ -665,6 +795,16 @@ func titleFor(s jobStats) string {
 	rate := 0.0
 	if s.Total > 0 {
 		rate = float64(s.Failures) / float64(s.Total) * 100
+	}
+	hasFail := s.Failures > 0
+	hasFlake := s.FlakyRetries > 0
+	switch {
+	case hasFail && hasFlake:
+		return fmt.Sprintf("%s / %s failing+flaky (%d%% over %d runs, %d retries)",
+			s.Workflow, s.Job, int(math.Round(rate)), s.Total, s.FlakyRetries)
+	case hasFlake && !hasFail:
+		return fmt.Sprintf("%s / %s flaky (%d passes-on-retry over %d runs)",
+			s.Workflow, s.Job, s.FlakyRetries, s.Total)
 	}
 	return fmt.Sprintf("%s / %s failing (%d%% over %d runs)",
 		s.Workflow, s.Job, int(math.Round(rate)), s.Total)
@@ -682,11 +822,20 @@ func bodyFor(s jobStats) string {
 	if s.GreenStreak > 0 {
 		fmt.Fprintf(&b, "**green streak:** %d\n", s.GreenStreak)
 	}
+	if s.FlakyRetries > 0 {
+		fmt.Fprintf(&b, "**flaky retries:** %d\n", s.FlakyRetries)
+	}
 	if !s.LastFailureAt.IsZero() {
 		fmt.Fprintf(&b, "**last failure:** %s\n", s.LastFailureAt.UTC().Format(time.RFC3339))
 	}
+	if !s.LastFlakyAt.IsZero() {
+		fmt.Fprintf(&b, "**last flaky run:** %s\n", s.LastFlakyAt.UTC().Format(time.RFC3339))
+	}
 	if s.LastFailureURL != "" {
 		fmt.Fprintf(&b, "\n[Most recent failing job](%s)\n", s.LastFailureURL)
+	}
+	if s.LastFlakyURL != "" {
+		fmt.Fprintf(&b, "\n[Most recent flaky job (prior attempt)](%s)\n", s.LastFlakyURL)
 	}
 	return b.String()
 }
