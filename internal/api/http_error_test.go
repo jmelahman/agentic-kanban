@@ -73,3 +73,32 @@ func TestHTTPError_ReportsNonCanceled(t *testing.T) {
 		t.Fatalf("expected 1 ticket from real 5xx; got %d", len(tickets))
 	}
 }
+
+// TestHTTPError_SkipsBadGateway pins that a 502 (the code prDetail returns when
+// the GitHub API is unreachable) still writes its error response but does not
+// file a ticket. A GitHub outage or the operator going offline is a transient
+// upstream failure, not a server bug — reporting it just spams the errors board.
+func TestHTTPError_SkipsBadGateway(t *testing.T) {
+	store, err := db.Open(filepath.Join(t.TempDir(), "kanban.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	reporter := errreport.New(store, errreport.Config{Enabled: true, BoardName: "Errors"})
+	h := &handlers{store: store, reporter: reporter}
+
+	rec := httptest.NewRecorder()
+	h.httpError(rec, errors.New("github unreachable: dial tcp: no route to host"), 502)
+
+	if rec.Code != 502 {
+		t.Fatalf("status = %d; want 502 (client still gets the error)", rec.Code)
+	}
+	board, err := store.GetBoardBySlug(context.Background(), "errors")
+	if err == nil && board != nil {
+		tickets, _ := store.ListTickets(context.Background(), board.ID)
+		if len(tickets) != 0 {
+			t.Fatalf("502 must not file a ticket; got %d", len(tickets))
+		}
+	}
+}

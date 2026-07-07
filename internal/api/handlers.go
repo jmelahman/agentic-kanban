@@ -1481,6 +1481,11 @@ func writeSSEHeaders(w http.ResponseWriter) {
 // httpError writes a JSON error response and, for 5xx codes, files a kanban
 // ticket via the reporter (a no-op when the reporter is disabled or nil).
 // 4xx codes are user/client errors and are not reported.
+//
+// 502 Bad Gateway is the one 5xx we skip: it means an upstream dependency (the
+// GitHub API) was unreachable — a transient outage or the operator being
+// offline, not a server bug. Reporting it just spams the errors board with a
+// recurring ticket every time GitHub hiccups.
 func (h *handlers) httpError(w http.ResponseWriter, err error, code int) {
 	// Client disconnected mid-request — nobody to respond to, and not a
 	// server bug worth reporting.
@@ -1489,7 +1494,7 @@ func (h *handlers) httpError(w http.ResponseWriter, err error, code int) {
 	}
 	log.Printf("http %d: %v", code, err)
 	writeJSON(w, code, map[string]string{"error": err.Error()})
-	if code >= 500 && h.reporter != nil {
+	if code >= 500 && code != http.StatusBadGateway && h.reporter != nil {
 		h.reporter.Capture(context.Background(), "http", err)
 	}
 }
