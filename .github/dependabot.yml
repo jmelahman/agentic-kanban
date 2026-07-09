@@ -39,3 +39,13 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - "dependabot:docker"
+
+  - package-ecosystem: "docker"
+    directory: "/build/devcontainer"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 3
+    labels:
+      - "dependabot:docker"
