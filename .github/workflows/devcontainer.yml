@@ -15,6 +15,14 @@ on:
         description: "Build without cache"
         type: boolean
         default: true
+  # TODO(kanban/upgrade-devcontainer): temporary trigger so the workflow
+  # registers and runs before landing on master; workflow_dispatch-only
+  # workflows can't be dispatched until they exist on the default branch.
+  push:
+    branches:
+      - kanban/upgrade-devcontainer
+    paths:
+      - .github/workflows/devcontainer.yml
 
 permissions: {}
 
@@ -42,7 +50,7 @@ jobs:
           platforms: linux/amd64
           push: true
           pull: true
-          no-cache: ${{ inputs.no-cache }}
+          no-cache: ${{ github.event_name != 'workflow_dispatch' || inputs.no-cache }}
           tags: lahmanja/devcontainer:latest
       - env:
           DIGEST: ${{ steps.build.outputs.digest }}
