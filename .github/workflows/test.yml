@@ -12,7 +12,7 @@ jobs:
   detect-modules:
     runs-on: ubuntu-latest
     container:
-      image: lahmanja/devcontainer@sha256:09421374d40512ab4c69a3ffb6bb3f6ff5b1528cbd4594f5a8576a6121e44159
+      image: lahmanja/devcontainer@sha256:f3f954bc31d635f8a2c574a8ba2f46278f77bde02e0a7137cd4891b4e72c6e2a
       options: --user root
     outputs:
       modules: ${{ steps.set-modules.outputs.modules }}
@@ -28,7 +28,7 @@ jobs:
     needs: detect-modules
     runs-on: ubuntu-latest
     container:
-      image: lahmanja/devcontainer@sha256:09421374d40512ab4c69a3ffb6bb3f6ff5b1528cbd4594f5a8576a6121e44159
+      image: lahmanja/devcontainer@sha256:f3f954bc31d635f8a2c574a8ba2f46278f77bde02e0a7137cd4891b4e72c6e2a
       options: --user root
     strategy:
       matrix:
@@ -57,7 +57,7 @@ jobs:
   pre-commit:
     runs-on: ubuntu-latest
     container:
-      image: lahmanja/devcontainer@sha256:09421374d40512ab4c69a3ffb6bb3f6ff5b1528cbd4594f5a8576a6121e44159
+      image: lahmanja/devcontainer@sha256:f3f954bc31d635f8a2c574a8ba2f46278f77bde02e0a7137cd4891b4e72c6e2a
       options: --user root
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
