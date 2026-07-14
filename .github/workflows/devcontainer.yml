@@ -15,13 +15,11 @@ on:
         description: "Build without cache"
         type: boolean
         default: true
-  # TODO(kanban/upgrade-devcontainer): temporary trigger so the workflow
-  # registers and runs before landing on master; workflow_dispatch-only
-  # workflows can't be dispatched until they exist on the default branch.
   push:
     branches:
-      - kanban/upgrade-devcontainer
+      - master
     paths:
+      - .devcontainer/**
       - .github/workflows/devcontainer.yml
 
 permissions: {}

@@ -34,6 +34,24 @@ devcontainer up --workspace-folder .
 devcontainer exec --workspace-folder . bash
 ```
 
+## Rebuilding the image
+
+The image is published to Docker Hub as `lahmanja/devcontainer` and pinned by
+digest in `devcontainer.json` plus the CI container images in
+`.github/workflows/test.yml` and `.github/workflows/release.yml`.
+
+The `Devcontainer` GitHub workflow (`.github/workflows/devcontainer.yml`)
+rebuilds and pushes it — automatically when anything under `.devcontainer/`
+changes on `master` (always `--no-cache`), or on demand:
+
+```bash
+gh workflow run devcontainer.yml
+```
+
+The run's summary prints the new `lahmanja/devcontainer@sha256:...` digest;
+update the pins listed above with it. Dependabot bumps the `FROM` base image
+in the `Dockerfile` weekly, but the digest pins are only advanced by hand.
+
 ## Host integration
 
 The container bind-mounts a few things from the host so it feels like a normal shell session:
