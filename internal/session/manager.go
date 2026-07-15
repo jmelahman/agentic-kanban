@@ -176,6 +176,18 @@ func (m *Manager) Start(ctx context.Context, sessionID int64, onPullProgress doc
 		worktreeMount = sess.WorktreePath
 	}
 
+	// Board-level env vars (decrypted from the DB) ride along in ExtraEnv so
+	// they land in the container environment. A failure here must not block
+	// the launch — the session just starts without them.
+	boardEnv := map[string]string{}
+	if board != nil {
+		if vars, err := m.store.GetBoardEnvVars(ctx, board.ID); err != nil {
+			log.Printf("session %d: load board %d env vars: %v", sess.ID, board.ID, err)
+		} else {
+			boardEnv = vars
+		}
+	}
+
 	res, err := m.docker.Spawn(ctx, cfg, docker.SpawnOptions{
 		WorktreePath:     sess.WorktreePath,
 		MountPath:        paths.MountPath,
@@ -183,10 +195,13 @@ func (m *Manager) Start(ctx context.Context, sessionID int64, onPullProgress doc
 		SourceRepoPath:   paths.RepoPath,
 		ContainerName:    containerName,
 		Ports:            mappings,
-		ExtraEnv: map[string]string{
+		// mergeEnv keeps the KANBAN_* system vars authoritative even if a
+		// board var collides (patchBoardEnv rejects the prefix, but rows may
+		// predate that check or come from other writers).
+		ExtraEnv: mergeEnv(boardEnv, map[string]string{
 			"KANBAN_SESSION_ID": fmt.Sprintf("%d", sess.ID),
 			"KANBAN_API_URL":    m.apiBase,
-		},
+		}),
 		AttachNetwork:  docker.KanbanNetworkName,
 		OnPullProgress: onPullProgress,
 	})
@@ -256,6 +271,21 @@ func resolveBranchPrefix(board *db.Board, repoPath string) string {
 // agent the equivalent of root on the host. Users who want sessions to
 // drive Docker (e.g. `docker compose up` in an agent task) can opt in
 // with `[devcontainer].docker_socket = true` in .kanban.toml.
+// mergeEnv combines base with protect; protect entries win on collision.
+// buildContainerConfig appends ExtraEnv after the devcontainer/.kanban.toml
+// ContainerEnv and Docker resolves duplicates last-value-wins, so the overall
+// precedence is: container_env < board env vars < KANBAN_* system vars.
+func mergeEnv(base, protect map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(protect))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range protect {
+		out[k] = v
+	}
+	return out
+}
+
 func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanbantoml.DevcontainerSection, claudeConfigOverride *bool) {
 	if cfg == nil {
 		return

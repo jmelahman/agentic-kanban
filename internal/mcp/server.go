@@ -257,6 +257,49 @@ func toolDefinitions() []map[string]any {
 			},
 		},
 		{
+			"name":        "list_board_env",
+			"description": "List the environment variable KEY NAMES configured on a board. Values are write-only secrets and are never returned.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+				},
+				"required": []string{"board"},
+			},
+		},
+		{
+			"name":        "set_board_env",
+			"description": "Set one or more environment variables on a board. They are injected into the board's session containers at the next session start/restart. Values are encrypted at rest and write-only: they cannot be read back through any API.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+					"vars": map[string]any{
+						"type":                 "object",
+						"description":          "Map of NAME to value. Names must match [A-Za-z_][A-Za-z0-9_]*; the KANBAN_ prefix is reserved.",
+						"additionalProperties": map[string]any{"type": "string"},
+					},
+				},
+				"required": []string{"board", "vars"},
+			},
+		},
+		{
+			"name":        "unset_board_env",
+			"description": "Remove one or more environment variables from a board by key name. Removing a missing key is a no-op.",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"board": boardIdentSchema(),
+					"keys": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "Key names to remove",
+					},
+				},
+				"required": []string{"board", "keys"},
+			},
+		},
+		{
 			"name":        "list_archived",
 			"description": "List archived tickets on a board.",
 			"inputSchema": map[string]any{
@@ -507,27 +550,29 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 	// unmarshal args into a single big shape; tools only read the fields
 	// they care about.
 	var a struct {
-		Board          string          `json:"board"`
-		Name           string          `json:"name"`
-		RepoPath       string          `json:"repo_path"`
-		MountPath      string          `json:"mount_path"`
-		WorktreeRoot   string          `json:"worktree_root"`
-		BaseBranch     string          `json:"base_branch"`
-		BranchPrefix   string          `json:"branch_prefix"`
-		GitAuthorName  string          `json:"git_author_name"`
-		GitAuthorEmail string          `json:"git_author_email"`
-		NamePtr        *string         `json:"-"`
-		Title          string          `json:"title"`
-		Body           string          `json:"body"`
-		Column         string          `json:"column"`
-		Ticket         int64           `json:"ticket"`
-		ColumnID       int64           `json:"column_id"`
-		Position       int             `json:"position"`
-		Strategy       string          `json:"strategy"`
-		Session        int64           `json:"session"`
-		Key            string          `json:"key"`
-		Value          json.RawMessage `json:"value"`
-		Scope          string          `json:"scope"`
+		Board          string            `json:"board"`
+		Name           string            `json:"name"`
+		RepoPath       string            `json:"repo_path"`
+		MountPath      string            `json:"mount_path"`
+		WorktreeRoot   string            `json:"worktree_root"`
+		BaseBranch     string            `json:"base_branch"`
+		BranchPrefix   string            `json:"branch_prefix"`
+		GitAuthorName  string            `json:"git_author_name"`
+		GitAuthorEmail string            `json:"git_author_email"`
+		NamePtr        *string           `json:"-"`
+		Title          string            `json:"title"`
+		Body           string            `json:"body"`
+		Column         string            `json:"column"`
+		Ticket         int64             `json:"ticket"`
+		ColumnID       int64             `json:"column_id"`
+		Position       int               `json:"position"`
+		Strategy       string            `json:"strategy"`
+		Session        int64             `json:"session"`
+		Key            string            `json:"key"`
+		Value          json.RawMessage   `json:"value"`
+		Scope          string            `json:"scope"`
+		Vars           map[string]string `json:"vars"`
+		Keys           []string          `json:"keys"`
 	}
 	if len(p.Arguments) > 0 {
 		if err := json.Unmarshal(p.Arguments, &a); err != nil {
@@ -622,6 +667,30 @@ func (s *server) callTool(ctx context.Context, params json.RawMessage) (map[stri
 			return errRes, nil
 		}
 		raw, err := s.client.BoardState(ctx, id)
+		return rawOrError(raw, err), nil
+
+	case "list_board_env":
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
+		}
+		raw, err := s.client.ListBoardEnv(ctx, id)
+		return rawOrError(raw, err), nil
+
+	case "set_board_env":
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
+		}
+		raw, err := s.client.PatchBoardEnv(ctx, id, client.PatchBoardEnvArgs{Set: a.Vars})
+		return rawOrError(raw, err), nil
+
+	case "unset_board_env":
+		id, errRes := s.boardID(ctx, a.Board)
+		if errRes != nil {
+			return errRes, nil
+		}
+		raw, err := s.client.PatchBoardEnv(ctx, id, client.PatchBoardEnvArgs{Unset: a.Keys})
 		return rawOrError(raw, err), nil
 
 	case "list_archived":

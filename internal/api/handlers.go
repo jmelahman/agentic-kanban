@@ -251,6 +251,96 @@ func (h *handlers) getBoard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, board)
 }
 
+// Board env vars — write-only secrets injected into session containers at
+// launch. Responses carry key names only; values never leave the server.
+
+// envKeyRe matches POSIX-style environment variable names.
+var envKeyRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// reservedEnvPrefix guards the system-injected KANBAN_* variables
+// (KANBAN_SESSION_ID, KANBAN_API_URL) from being shadowed by board vars.
+const reservedEnvPrefix = "KANBAN_"
+
+type boardEnvResp struct {
+	Keys []string `json:"keys"`
+}
+
+type patchBoardEnvReq struct {
+	Set   map[string]string `json:"set"`
+	Unset []string          `json:"unset"`
+}
+
+func (h *handlers) listBoardEnv(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	if _, err := h.store.GetBoard(r.Context(), id); err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	keys, err := h.store.ListBoardEnvVarKeys(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, boardEnvResp{Keys: keys})
+}
+
+func (h *handlers) patchBoardEnv(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	if _, err := h.store.GetBoard(r.Context(), id); err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	req, err := decodeBody[patchBoardEnvReq](r)
+	if err != nil {
+		h.httpError(w, err, 400)
+		return
+	}
+	if len(req.Set) == 0 && len(req.Unset) == 0 {
+		h.httpError(w, fmt.Errorf("nothing to set or unset"), 400)
+		return
+	}
+	for key := range req.Set {
+		if err := validateEnvKey(key); err != nil {
+			h.httpError(w, err, 400)
+			return
+		}
+	}
+	for _, key := range req.Unset {
+		if err := validateEnvKey(key); err != nil {
+			h.httpError(w, err, 400)
+			return
+		}
+	}
+	for key, value := range req.Set {
+		if err := h.store.SetBoardEnvVar(r.Context(), id, key, value); err != nil {
+			h.httpError(w, err, 500)
+			return
+		}
+	}
+	for _, key := range req.Unset {
+		if err := h.store.DeleteBoardEnvVar(r.Context(), id, key); err != nil {
+			h.httpError(w, err, 500)
+			return
+		}
+	}
+	keys, err := h.store.ListBoardEnvVarKeys(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, boardEnvResp{Keys: keys})
+}
+
+func validateEnvKey(key string) error {
+	if !envKeyRe.MatchString(key) {
+		return fmt.Errorf("invalid env var key %q", key)
+	}
+	if strings.HasPrefix(strings.ToUpper(key), reservedEnvPrefix) {
+		return fmt.Errorf("key %q is reserved (%s prefix)", key, reservedEnvPrefix)
+	}
+	return nil
+}
+
 type boardStateResp struct {
 	Board       *db.Board    `json:"board"`
 	Columns     []db.Column  `json:"columns"`

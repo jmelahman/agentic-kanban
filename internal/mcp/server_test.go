@@ -17,6 +17,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/secrets"
 	"github.com/jmelahman/kanban/internal/session"
 )
 
@@ -76,6 +77,7 @@ func TestRun_CreateTicketFlow(t *testing.T) {
 		"archive_column_tickets",
 		"ensure_session", "start_session", "stop_session", "restart_session",
 		"list_config", "get_config", "set_config", "unset_config",
+		"list_board_env", "set_board_env", "unset_board_env",
 	}
 	for _, name := range expectTools {
 		if !strings.Contains(string(listResp["result"]), `"`+name+`"`) {
@@ -208,6 +210,40 @@ func TestCallTool_LifecycleCoverage(t *testing.T) {
 	if len(archived) != 0 {
 		t.Errorf("delete_archived: %d archived left", len(archived))
 	}
+
+	// Board env vars: set → list (keys only, never the value) → unset.
+	out := call("set_board_env", map[string]any{"board": board.Slug, "vars": map[string]string{"MY_API_KEY": "s3cret-value"}})
+	if text := toolText(t, out); strings.Contains(text, "s3cret-value") {
+		t.Errorf("set_board_env leaked the value: %s", text)
+	}
+	out = call("list_board_env", map[string]any{"board": board.Slug})
+	text := toolText(t, out)
+	if !strings.Contains(text, "MY_API_KEY") {
+		t.Errorf("list_board_env missing key: %s", text)
+	}
+	if strings.Contains(text, "s3cret-value") {
+		t.Errorf("list_board_env leaked the value: %s", text)
+	}
+	vars, err := store.GetBoardEnvVars(ctx, board.ID)
+	if err != nil || vars["MY_API_KEY"] != "s3cret-value" {
+		t.Errorf("set_board_env did not persist: vars=%v err=%v", vars, err)
+	}
+
+	out = call("unset_board_env", map[string]any{"board": board.Slug, "keys": []string{"MY_API_KEY"}})
+	if text := toolText(t, out); strings.Contains(text, "MY_API_KEY") {
+		t.Errorf("unset_board_env still lists key: %s", text)
+	}
+}
+
+// toolText extracts the text payload from a callTool result.
+func toolText(t *testing.T, out map[string]any) string {
+	t.Helper()
+	content, ok := out["content"].([]map[string]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("tool result has no content: %v", out)
+	}
+	text, _ := content[0]["text"].(string)
+	return text
 }
 
 // TestCallTool_Config exercises the config tools through callTool, asserting
@@ -271,6 +307,16 @@ func newKanbanTestServer(t *testing.T) (*httptest.Server, *db.Store, *db.Board) 
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
+
+	envKey, err := secrets.NewRandomKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := secrets.NewBox(envKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.SetEnvCipher(box)
 
 	dockerCli, err := docker.NewClient()
 	if err != nil {

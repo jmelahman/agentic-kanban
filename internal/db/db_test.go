@@ -13,6 +13,7 @@ import (
 // fresh open. If schema.sql gains a table, this list goes with it; the test
 // then guards against accidental schema drift.
 var expectedTables = []string{
+	"board_env_vars",
 	"boards",
 	"columns",
 	"hook_configs",

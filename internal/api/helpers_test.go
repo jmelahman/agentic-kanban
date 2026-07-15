@@ -20,6 +20,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/secrets"
 	"github.com/jmelahman/kanban/internal/session"
 )
 
@@ -51,6 +52,18 @@ func newEnv(t *testing.T) *testEnv {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
+
+	// Board env var values are encrypted inside the Store; production wires
+	// a key in run(), tests get an ephemeral one.
+	envKey, err := secrets.NewRandomKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := secrets.NewBox(envKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.SetEnvCipher(box)
 
 	cfg := &config.Config{DataDir: dir, PortRangeStart: 13000, PortRangeEnd: 13099}
 	dockerCli, err := docker.NewClient()

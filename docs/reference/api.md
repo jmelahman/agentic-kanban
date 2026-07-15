@@ -93,6 +93,31 @@ Fetch a single board.
 
 Get the full hydrated board state — columns, tickets, sessions — in one call. The web UI uses this on load.
 
+## Board environment variables
+
+Per-board environment variables injected into the board's session containers at
+launch — intended for secrets such as MCP server API keys. Values are
+**write-only**: every response carries key names only, never values. They are
+encrypted at rest (see the
+[configuration guide](../guide/configuration#per-board-environment-variables)
+for storage and security details) and take effect the next time a session is
+started or restarted.
+
+### `GET /api/boards/{id}/env`
+
+Returns `{"keys": ["MY_API_KEY", …]}` — the sorted key names, always an array
+(never `null`).
+
+### `PATCH /api/boards/{id}/env`
+
+Body: `{"set": {"KEY": "value", …}, "unset": ["OTHER_KEY", …]}`. Either field
+may be omitted, but not both. Unsetting a missing key is a no-op. Returns the
+updated `{"keys": […]}`.
+
+Errors with `400` when a key doesn't match `[A-Za-z_][A-Za-z0-9_]*` or uses the
+reserved `KANBAN_` prefix (case-insensitive), which is kept for
+server-injected variables (`KANBAN_SESSION_ID`, `KANBAN_API_URL`).
+
 ## Live updates (SSE)
 
 ### `GET /api/boards/{id}/events`

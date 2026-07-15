@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api, type Board } from "@/api/client";
 import { queryKeys } from "@/api/keys";
@@ -9,7 +9,7 @@ import { FormField, FormInput } from "./FormField";
 import { ConfirmModal, Modal } from "./Modal";
 import { Tab } from "./Tab";
 
-type BoardSettingsTab = "general" | "git" | "danger";
+type BoardSettingsTab = "general" | "git" | "env" | "danger";
 
 function fieldsFromBoard(board: Board) {
   return {
@@ -22,6 +22,119 @@ function fieldsFromBoard(board: Board) {
     gitAuthorName: board.git_author_name,
     gitAuthorEmail: board.git_author_email,
   };
+}
+
+// BoardEnvEditor manages the write-only per-board env vars. The server only
+// ever returns key names — values can be (over)written or deleted, never read
+// back — so rows render a masked placeholder instead of the stored value.
+// Changes apply immediately per operation (no shared save button).
+function BoardEnvEditor({ boardId, active }: { boardId: number; active: boolean }) {
+  const qc = useQueryClient();
+  const { push } = useToast();
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+
+  const envQuery = useQuery({
+    queryKey: queryKeys.boardEnv(boardId),
+    queryFn: () => api.listBoardEnv(boardId),
+    enabled: active,
+  });
+  const keys = envQuery.data?.keys ?? [];
+
+  const patchMut = useMutation({
+    mutationFn: (input: { set?: Record<string, string>; unset?: string[] }) =>
+      api.patchBoardEnv(boardId, input),
+    onSuccess: (data, input) => {
+      qc.setQueryData(queryKeys.boardEnv(boardId), data);
+      if (input.set) {
+        push("success", `Set ${Object.keys(input.set).join(", ")}.`);
+        setNewKey("");
+        setNewValue("");
+      } else {
+        push("success", `Removed ${(input.unset ?? []).join(", ")}.`);
+      }
+    },
+  });
+
+  const trimmedKey = newKey.trim();
+  const overwriting = keys.includes(trimmedKey);
+  const canAdd = trimmedKey !== "" && !patchMut.isPending;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-xs text-fg-muted">
+        Environment variables injected into this board's session containers — e.g. API keys for MCP
+        servers the agent uses. Values are encrypted at rest and write-only: they can't be viewed
+        after saving, only overwritten or removed. Changes take effect the next time a session
+        starts or restarts.
+      </p>
+      {envQuery.isLoading && <p className="text-xs text-fg-muted">loading…</p>}
+      {keys.length > 0 && (
+        <ul className="flex flex-col divide-y divide-border rounded border border-border">
+          {keys.map((key) => (
+            <li key={key} className="flex items-center gap-2 px-3 py-2">
+              <span className="font-mono text-xs">{key}</span>
+              <span className="font-mono text-xs text-fg-muted">=</span>
+              <span className="select-none font-mono text-xs text-fg-muted">••••••••</span>
+              <Button
+                type="button"
+                variant="ghost"
+                className="ml-auto text-xs text-danger"
+                disabled={patchMut.isPending}
+                onClick={() => patchMut.mutate({ unset: [key] })}
+              >
+                remove
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!envQuery.isLoading && keys.length === 0 && (
+        <p className="text-xs text-fg-muted">No variables set.</p>
+      )}
+      <div className="flex items-end gap-2">
+        <div className="flex-1">
+          <FormField label="Name">
+            <FormInput
+              mono
+              placeholder="MY_API_KEY"
+              value={newKey}
+              onChange={(e) => setNewKey(e.target.value)}
+            />
+          </FormField>
+        </div>
+        <div className="flex-1">
+          <FormField label="Value">
+            <FormInput
+              mono
+              type="password"
+              autoComplete="off"
+              placeholder="value"
+              value={newValue}
+              onChange={(e) => setNewValue(e.target.value)}
+            />
+          </FormField>
+        </div>
+        <Button
+          type="button"
+          variant="primary"
+          disabled={!canAdd}
+          pending={patchMut.isPending && !!patchMut.variables?.set}
+          idleLabel={overwriting ? "overwrite" : "add"}
+          pendingLabel="saving…"
+          onClick={() => {
+            if (!canAdd) return;
+            patchMut.mutate({ set: { [trimmedKey]: newValue } });
+          }}
+        />
+      </div>
+      {overwriting && (
+        <span className="text-xs text-amber-400">
+          {trimmedKey} already exists — saving replaces its value.
+        </span>
+      )}
+    </div>
+  );
 }
 
 export function BoardSettings({
@@ -115,12 +228,14 @@ export function BoardSettings({
       <div className="flex border-b border-border text-sm">
         <Tab active={tab === "general"} onClick={() => setTab("general")} label="general" />
         <Tab active={tab === "git"} onClick={() => setTab("git")} label="git" />
+        <Tab active={tab === "env"} onClick={() => setTab("env")} label="env" />
         <Tab active={tab === "danger"} onClick={() => setTab("danger")} label="danger" />
       </div>
       <form
         className="flex min-h-[420px] flex-col gap-3 p-4 text-sm"
         onSubmit={(e) => {
           e.preventDefault();
+          if (tab === "env") return; // env edits apply per-operation, not via save
           if (!dirty || !valid) return;
           updateMut.mutate();
         }}
@@ -231,6 +346,7 @@ export function BoardSettings({
             )}
           </>
         )}
+        {tab === "env" && <BoardEnvEditor boardId={board.id} active={open && tab === "env"} />}
         {tab === "danger" && (
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-danger">
@@ -253,7 +369,7 @@ export function BoardSettings({
             />
           </div>
         )}
-        {tab !== "danger" && (
+        {tab !== "danger" && tab !== "env" && (
           <div className="mt-auto flex items-center justify-end gap-2">
             <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
               cancel

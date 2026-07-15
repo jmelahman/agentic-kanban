@@ -32,6 +32,7 @@ import (
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 	"github.com/jmelahman/kanban/internal/mcp"
 	"github.com/jmelahman/kanban/internal/metrics"
+	"github.com/jmelahman/kanban/internal/secrets"
 	"github.com/jmelahman/kanban/internal/session"
 )
 
@@ -190,6 +191,24 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 		return fmt.Errorf("open db: %w", err)
 	}
 	defer store.Close()
+
+	// Board env var values are encrypted at rest. The key lives next to the
+	// DB; --in-memory keeps its "no on-disk state" promise with an ephemeral
+	// key (the encrypted rows die with the process anyway).
+	var envKey []byte
+	if inMemory {
+		envKey, err = secrets.NewRandomKey()
+	} else {
+		envKey, err = secrets.LoadOrCreateKey(filepath.Join(cfg.DataDir, "secrets.key"))
+	}
+	if err != nil {
+		return fmt.Errorf("secrets key: %w", err)
+	}
+	envBox, err := secrets.NewBox(envKey)
+	if err != nil {
+		return fmt.Errorf("secrets cipher: %w", err)
+	}
+	store.SetEnvCipher(envBox)
 
 	dockerClient, err := docker.NewClient()
 	if err != nil {

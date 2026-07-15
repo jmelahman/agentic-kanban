@@ -142,6 +142,28 @@ func (c *Client) DeleteBoard(ctx context.Context, id int64) error {
 	return err
 }
 
+// PatchBoardEnvArgs is the request body for PATCH /api/boards/{id}/env.
+// Values are write-only: responses only ever carry key names.
+type PatchBoardEnvArgs struct {
+	Set   map[string]string `json:"set,omitempty"`
+	Unset []string          `json:"unset,omitempty"`
+}
+
+// ListBoardEnv calls GET /api/boards/{id}/env. The response contains env var
+// key names only, never values.
+func (c *Client) ListBoardEnv(ctx context.Context, id int64) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodGet, "/api/boards/"+strconv.FormatInt(id, 10)+"/env", nil, http.StatusOK)
+}
+
+// PatchBoardEnv calls PATCH /api/boards/{id}/env to set and/or unset board
+// env vars. Returns the updated key list.
+func (c *Client) PatchBoardEnv(ctx context.Context, id int64, a PatchBoardEnvArgs) (json.RawMessage, error) {
+	if len(a.Set) == 0 && len(a.Unset) == 0 {
+		return nil, fmt.Errorf("nothing to set or unset")
+	}
+	return c.do(ctx, http.MethodPatch, "/api/boards/"+strconv.FormatInt(id, 10)+"/env", a, http.StatusOK)
+}
+
 // BoardState calls GET /api/boards/{id}/state.
 func (c *Client) BoardState(ctx context.Context, id int64) (json.RawMessage, error) {
 	return c.do(ctx, http.MethodGet, "/api/boards/"+strconv.FormatInt(id, 10)+"/state", nil, http.StatusOK)

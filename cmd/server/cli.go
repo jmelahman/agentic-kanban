@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -20,7 +21,7 @@ import (
 // running `kanban serve`. For dockerized deploys curl against the REST API
 // is friendlier (no host install).
 func addClientCommands(root *cobra.Command) {
-	root.AddCommand(boardCmd(), ticketCmd(), columnCmd(), sessionCmd(), configCmd())
+	root.AddCommand(boardCmd(), ticketCmd(), columnCmd(), sessionCmd(), configCmd(), envCmd())
 }
 
 // resolveURL returns the effective server URL for a leaf command. KANBAN_URL
@@ -646,6 +647,116 @@ func printSessionSummary(out io.Writer, raw json.RawMessage, asJSON bool) error 
 	}
 	fmt.Fprintf(out, "session #%d ticket=%d status=%s branch=%s\n", s.ID, s.TicketID, s.Status, s.Branch)
 	return nil
+}
+
+// ---------- env ----------
+
+// envCmd manages per-board environment variables. Values are write-only
+// secrets: the server encrypts them at rest and only ever returns key names,
+// so no subcommand here can print a value.
+func envCmd() *cobra.Command {
+	var serverURL string
+	parent := &cobra.Command{
+		Use:   "env",
+		Short: "Manage board environment variables (injected into session containers)",
+		Long: "Manage per-board environment variables. They are injected into the board's\n" +
+			"session containers at the next session start/restart. Values are encrypted\n" +
+			"at rest and write-only: they can be set or removed, never read back.",
+	}
+	addServerFlag(parent, &serverURL)
+
+	list := &cobra.Command{
+		Use:   "list <board>",
+		Short: "List env var key names on a board (values are never shown)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runEnvList(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), args[0])
+		},
+	}
+
+	set := &cobra.Command{
+		Use:   "set <board> KEY=VALUE [KEY=VALUE...]",
+		Short: "Set env vars on a board",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runEnvSet(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), args[0], args[1:])
+		},
+	}
+
+	unset := &cobra.Command{
+		Use:   "unset <board> KEY [KEY...]",
+		Short: "Remove env vars from a board",
+		Args:  cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runEnvUnset(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), args[0], args[1:])
+		},
+	}
+
+	parent.AddCommand(list, set, unset)
+	return parent
+}
+
+func runEnvList(ctx context.Context, url string, out io.Writer, ident string) error {
+	c := client.New(url, nil)
+	id, err := c.ResolveBoardID(ctx, ident)
+	if err != nil {
+		return err
+	}
+	raw, err := c.ListBoardEnv(ctx, id)
+	if err != nil {
+		return err
+	}
+	return printEnvKeys(out, raw)
+}
+
+func runEnvSet(ctx context.Context, url string, out io.Writer, ident string, pairs []string) error {
+	set := make(map[string]string, len(pairs))
+	for _, pair := range pairs {
+		key, value, ok := strings.Cut(pair, "=")
+		if !ok || key == "" {
+			return fmt.Errorf("expected KEY=VALUE, got %q", pair)
+		}
+		set[key] = value
+	}
+	c := client.New(url, nil)
+	id, err := c.ResolveBoardID(ctx, ident)
+	if err != nil {
+		return err
+	}
+	raw, err := c.PatchBoardEnv(ctx, id, client.PatchBoardEnvArgs{Set: set})
+	if err != nil {
+		return err
+	}
+	return printEnvKeys(out, raw)
+}
+
+func runEnvUnset(ctx context.Context, url string, out io.Writer, ident string, keys []string) error {
+	c := client.New(url, nil)
+	id, err := c.ResolveBoardID(ctx, ident)
+	if err != nil {
+		return err
+	}
+	raw, err := c.PatchBoardEnv(ctx, id, client.PatchBoardEnvArgs{Unset: keys})
+	if err != nil {
+		return err
+	}
+	return printEnvKeys(out, raw)
+}
+
+func printEnvKeys(out io.Writer, raw json.RawMessage) error {
+	var resp struct {
+		Keys []string `json:"keys"`
+	}
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		_, perr := fmt.Fprintln(out, string(raw))
+		return perr
+	}
+	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(tw, "KEY")
+	for _, k := range resp.Keys {
+		fmt.Fprintln(tw, k)
+	}
+	return tw.Flush()
 }
 
 // parseInt64 wraps strconv.ParseInt with a descriptive error.

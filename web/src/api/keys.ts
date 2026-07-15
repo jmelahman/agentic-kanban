@@ -1,6 +1,7 @@
 export const queryKeys = {
   boards: ["boards"] as const,
   board: (boardId: number) => ["board", boardId] as const,
+  boardEnv: (boardId: number) => ["boardEnv", boardId] as const,
   archived: (boardId: number) => ["archived", boardId] as const,
   tasks: (sessionId: number) => ["tasks", sessionId] as const,
   runs: (sessionId: number) => ["runs", sessionId] as const,

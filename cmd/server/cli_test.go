@@ -16,6 +16,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/hooks"
+	"github.com/jmelahman/kanban/internal/secrets"
 	"github.com/jmelahman/kanban/internal/session"
 )
 
@@ -248,6 +249,47 @@ func TestRunColumnArchiveAll(t *testing.T) {
 	}
 }
 
+func TestRunEnvLifecycle(t *testing.T) {
+	srv, store, board := newKanbanCLITestServer(t)
+
+	var out bytes.Buffer
+	if err := runEnvSet(t.Context(), srv.URL, &out, board.Slug, []string{"MY_API_KEY=s3cret", "OTHER=x"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); strings.Contains(got, "s3cret") {
+		t.Errorf("env set printed a value: %q", got)
+	}
+
+	out.Reset()
+	if err := runEnvList(t.Context(), srv.URL, &out, board.Slug); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "KEY") || !strings.Contains(got, "MY_API_KEY") || !strings.Contains(got, "OTHER") {
+		t.Errorf("env list missing keys: %q", got)
+	}
+	if strings.Contains(got, "s3cret") {
+		t.Errorf("env list printed a value: %q", got)
+	}
+	vars, err := store.GetBoardEnvVars(t.Context(), board.ID)
+	if err != nil || vars["MY_API_KEY"] != "s3cret" {
+		t.Errorf("value not persisted: vars=%v err=%v", vars, err)
+	}
+
+	out.Reset()
+	if err := runEnvUnset(t.Context(), srv.URL, &out, board.Slug, []string{"MY_API_KEY"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); strings.Contains(got, "MY_API_KEY") {
+		t.Errorf("env unset still lists removed key: %q", got)
+	}
+
+	// Malformed pair errors before hitting the server.
+	if err := runEnvSet(t.Context(), srv.URL, &out, board.Slug, []string{"NO_EQUALS"}); err == nil {
+		t.Error("expected error for KEY without =")
+	}
+}
+
 func newKanbanCLITestServer(t *testing.T) (*httptest.Server, *db.Store, *db.Board) {
 	t.Helper()
 	dir := t.TempDir()
@@ -262,6 +304,16 @@ func newKanbanCLITestServer(t *testing.T) (*httptest.Server, *db.Store, *db.Boar
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { store.Close() })
+
+	envKey, err := secrets.NewRandomKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	box, err := secrets.NewBox(envKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.SetEnvCipher(box)
 
 	dockerCli, err := docker.NewClient()
 	if err != nil {

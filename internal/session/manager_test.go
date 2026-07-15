@@ -98,6 +98,37 @@ func TestApplyKanbanDevcontainerOverrides_AppendsAndMergesEnv(t *testing.T) {
 	}
 }
 
+func TestMergeEnv_ProtectedKeysWin(t *testing.T) {
+	base := map[string]string{
+		"MY_API_KEY":        "s3cret",
+		"KANBAN_SESSION_ID": "spoofed", // colliding board var must lose
+	}
+	protect := map[string]string{
+		"KANBAN_SESSION_ID": "42",
+		"KANBAN_API_URL":    "http://kanban:7474",
+	}
+
+	got := mergeEnv(base, protect)
+
+	want := map[string]string{
+		"MY_API_KEY":        "s3cret",
+		"KANBAN_SESSION_ID": "42",
+		"KANBAN_API_URL":    "http://kanban:7474",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("mergeEnv = %v; want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("mergeEnv[%q] = %q; want %q", k, got[k], v)
+		}
+	}
+	// Inputs must not be mutated.
+	if base["KANBAN_SESSION_ID"] != "spoofed" {
+		t.Error("mergeEnv mutated its base map")
+	}
+}
+
 func TestApplyKanbanDevcontainerOverrides_NilDev(t *testing.T) {
 	cfg := &docker.DevcontainerConfig{RunArgs: []string{"--privileged"}}
 	applyKanbanDevcontainerOverrides(cfg, nil, nil)

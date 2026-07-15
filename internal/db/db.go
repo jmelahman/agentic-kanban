@@ -8,6 +8,7 @@ import (
 
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/metrics"
+	"github.com/jmelahman/kanban/internal/secrets"
 )
 
 //go:embed schema.sql
@@ -28,7 +29,15 @@ const onDiskPragmas = "_pragma=journal_mode(WAL)" +
 
 type Store struct {
 	db *sql.DB
+	// envCipher encrypts/decrypts board env var values inside the Store so
+	// plaintext never reaches disk. Set via SetEnvCipher; the env var methods
+	// refuse to run without it (no silent-plaintext fallback).
+	envCipher *secrets.Box
 }
+
+// SetEnvCipher configures the cipher used for board env var values. Must be
+// called before any board env var method is used.
+func (s *Store) SetEnvCipher(box *secrets.Box) { s.envCipher = box }
 
 // Open opens a Store backed by a SQLite database at path, applies the
 // embedded schema, and runs migrations. The sentinel path ":memory:" opens

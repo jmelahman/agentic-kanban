@@ -176,6 +176,46 @@ layers (see [merge semantics](#merge-semantics)), the effective view shows the
 combined value. See the [CLI](/reference/cli#config), [REST](/reference/api#config),
 and [MCP](/reference/mcp#config) references for the full surface.
 
+## Per-board environment variables
+
+Boards can carry environment variables that kanban injects into every session
+container it launches for that board — the place for secrets an agent's
+tooling needs at runtime, such as an API key consumed by an MCP server inside
+the session. Unlike `[devcontainer].container_env` (plaintext in a
+`.kanban.toml` that can end up committed to the repo), board env vars live in
+kanban's local database and are treated as secrets:
+
+- **Write-only.** No API, MCP tool, CLI subcommand, or UI view returns a
+  stored value — only key names. Editing means overwriting or removing a key.
+- **Encrypted at rest.** Values are sealed with AES-256-GCM before they touch
+  the database. The key is generated on first use at `<data-dir>/secrets.key`
+  (mode `0600`). Back that file up together with `kanban.db`; if it's lost,
+  the stored values are unrecoverable and must be re-entered. With
+  `--in-memory` the key is ephemeral and never written to disk.
+- **Applied at container creation.** Changes take effect the next time a
+  session is started or restarted — never inside a running container.
+
+Manage them from the board settings **env** tab in the web UI, the CLI, or
+MCP (`list_board_env` / `set_board_env` / `unset_board_env`):
+
+```sh
+kanban env set playground MY_API_KEY=sk-abc123
+kanban env list playground     # → MY_API_KEY (never the value)
+kanban env unset playground MY_API_KEY
+```
+
+Precedence when the same key is defined in multiple places (lowest to
+highest): `devcontainer.json` `containerEnv` / `[devcontainer].container_env`
+→ board env vars → the server-injected `KANBAN_*` variables. Keys must match
+`[A-Za-z_][A-Za-z0-9_]*`, and the `KANBAN_` prefix is rejected as reserved.
+
+Two limits worth knowing: encryption protects the database file, not the
+running container — anyone who can run `docker inspect` on a session container
+(or read `/proc/<pid>/environ` inside it) can see the values, which is
+inherent to environment-variable delivery. And the agent inside a session can
+of course read its own environment; only give a board secrets its sessions are
+meant to use.
+
 ## Overriding the user-config path
 
 ```sh

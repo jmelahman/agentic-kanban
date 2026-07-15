@@ -86,6 +86,38 @@ is destructive.
 |----------|--------|----------|--------------------------------------|
 | `board`  | string | yes      | Board id or slug.                    |
 
+### Board environment variables
+
+Per-board env vars injected into the board's session containers at the next
+session start/restart. Values are write-only secrets — encrypted at rest and
+never returned by any tool; only key names come back.
+
+#### `list_board_env`
+
+Returns `{"keys": [...]}` — key names only.
+
+| Argument | Type   | Required | Notes                                |
+|----------|--------|----------|--------------------------------------|
+| `board`  | string | yes      | Board id or slug.                    |
+
+#### `set_board_env`
+
+Set (or overwrite) one or more variables. Returns the updated key list.
+
+| Argument | Type   | Required | Notes                                                                 |
+|----------|--------|----------|-----------------------------------------------------------------------|
+| `board`  | string | yes      | Board id or slug.                                                     |
+| `vars`   | object | yes      | Map of NAME → value. Names match `[A-Za-z_][A-Za-z0-9_]*`; the `KANBAN_` prefix is reserved. |
+
+#### `unset_board_env`
+
+Remove variables by key name. Removing a missing key is a no-op.
+
+| Argument | Type     | Required | Notes                                |
+|----------|----------|----------|--------------------------------------|
+| `board`  | string   | yes      | Board id or slug.                    |
+| `keys`   | string[] | yes      | Key names to remove.                 |
+
 ### Tickets
 
 #### `create_ticket`

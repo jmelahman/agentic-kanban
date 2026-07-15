@@ -15,6 +15,10 @@ export type Board = {
   position: number;
 };
 
+// BoardEnv lists env var key names for a board. Values are write-only
+// secrets and never leave the server.
+export type BoardEnv = { keys: string[] };
+
 export type Column = { id: number; board_id: number; name: string; position: number };
 
 export type Ticket = {
@@ -247,6 +251,10 @@ export const api = {
       body: JSON.stringify({ position }),
     }),
   boardState: (id: number) => request<BoardState>(`/api/boards/${id}/state`),
+  // Board env vars are write-only: responses carry key names only, never values.
+  listBoardEnv: (id: number) => request<BoardEnv>(`/api/boards/${id}/env`),
+  patchBoardEnv: (id: number, input: { set?: Record<string, string>; unset?: string[] }) =>
+    request<BoardEnv>(`/api/boards/${id}/env`, { method: "PATCH", body: JSON.stringify(input) }),
 
   createTicket: (boardId: number, input: { column_id: number; title: string; body?: string }) =>
     request<Ticket>(`/api/boards/${boardId}/tickets`, {

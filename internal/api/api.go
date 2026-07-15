@@ -63,6 +63,8 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("PATCH /api/boards/{id}", h.updateBoard)
 	mux.HandleFunc("PATCH /api/boards/{id}/move", h.moveBoard)
 	mux.HandleFunc("DELETE /api/boards/{id}", h.deleteBoard)
+	mux.HandleFunc("GET /api/boards/{id}/env", h.listBoardEnv)
+	mux.HandleFunc("PATCH /api/boards/{id}/env", h.patchBoardEnv)
 	mux.HandleFunc("GET /api/boards/{id}/state", h.boardState)
 	mux.HandleFunc("GET /api/boards/{id}/events", h.boardEvents)
 	mux.HandleFunc("GET /api/events", h.boardsEvents)

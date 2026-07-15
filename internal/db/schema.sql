@@ -82,6 +82,15 @@ CREATE TABLE IF NOT EXISTS task_runs (
   stopped_at INTEGER
 );
 
+CREATE TABLE IF NOT EXISTS board_env_vars (
+  id INTEGER PRIMARY KEY,
+  board_id INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  -- value holds AES-GCM ciphertext (see internal/secrets), never plaintext.
+  value TEXT NOT NULL,
+  UNIQUE(board_id, key)
+);
+
 CREATE TABLE IF NOT EXISTS hook_configs (
   id INTEGER PRIMARY KEY,
   -- board_id NULL means the hook applies to all boards (global).

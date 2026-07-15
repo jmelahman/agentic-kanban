@@ -33,11 +33,15 @@ kanban
 │   ├── start          Start a stopped session
 │   ├── stop           Stop a running session
 │   └── restart        Restart a session
-└── config             Read and write kanban configuration
-    ├── list           List config keys with value and source
-    ├── get            Print one config value
-    ├── set            Set a config key
-    └── unset          Remove a config key
+├── config             Read and write kanban configuration
+│   ├── list           List config keys with value and source
+│   ├── get            Print one config value
+│   ├── set            Set a config key
+│   └── unset          Remove a config key
+└── env                Manage board environment variables (write-only secrets)
+    ├── list           List env var key names on a board
+    ├── set            Set env vars on a board
+    └── unset          Remove env vars from a board
 ```
 
 `kanban --version` prints the build version.
@@ -252,11 +256,36 @@ Booleans accept `true`/`false`; strings pass through; arrays/maps/tables take a 
 
 Removes the key (and prunes any section it leaves empty).
 
+## `env`
+
+Manage per-board environment variables, injected into the board's session
+containers at the next session start/restart. Values are write-only secrets:
+they're encrypted at rest and no subcommand can print one — only key names
+ever come back. See
+[per-board environment variables](/guide/configuration#per-board-environment-variables).
+
+### `env list <board>`
+
+Prints the key names as a table. `<board>` is an id or slug.
+
+### `env set <board> KEY=VALUE [KEY=VALUE...]`
+
+```sh
+kanban env set playground MY_API_KEY=sk-abc123 OTHER_TOKEN=xyz
+```
+
+Sets (or overwrites) variables. Keys must match `[A-Za-z_][A-Za-z0-9_]*`; the
+`KANBAN_` prefix is reserved for server-injected variables.
+
+### `env unset <board> KEY [KEY...]`
+
+Removes variables by key name. Removing a missing key is a no-op.
+
 ## Environment variables
 
 | Variable               | Used by                                       | Notes                                                           |
 | ---------------------- | --------------------------------------------- | --------------------------------------------------------------- |
-| `KANBAN_URL`           | `mcp`, `board`, `ticket`, `column`, `session`, `config` | Default server URL. Overridden by `--server` if explicitly set. |
+| `KANBAN_URL`           | `mcp`, `board`, `ticket`, `column`, `session`, `config`, `env` | Default server URL. Overridden by `--server` if explicitly set. |
 | `KANBAN_CONFIG`        | `serve`                                       | User-level config path. Overridden by `--config` if set.        |
 | `KANBAN_DATA_DIR`      | `serve`                                       | Data directory. Overridden by `--data-dir` if set.              |
 | `KANBAN_WORKTREES_DIR` | `serve`                                       | Worktrees directory. Overridden by `--worktrees-dir` if set.    |
