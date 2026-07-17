@@ -29,6 +29,15 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - "dependabot:npm"
+    groups:
+      # react and react-dom must be bumped in lockstep — a version skew
+      # trips React error #527 ("Incompatible React versions") at startup.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
 
   - package-ecosystem: "docker"
     directory: "/.devcontainer"
