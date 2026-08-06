@@ -20,12 +20,17 @@ for how that works.
 
 ## Onboarding a repo
 
-The board's repo needs a
+The board's repo needs a preview manifest describing how to build and run
+it — either a dedicated
 [`preview.toml`](https://jmelahman.github.io/local-preview/reference/preview-toml)
-at its root describing how to build and run it. That's the only setup —
-kanban registers the repo with the orchestrator automatically on the first
-deploy, and worktree branches are deployable as-is (they share the repo's
-object store).
+at the repo root, or the same schema under a `[previews]` table in the
+`.kanban.toml` the repo may already carry (`[previews.frontend]` /
+`[previews.backend]`; `preview.toml` wins when both exist — this repo's own
+`.kanban.toml` is a working example). That's the only setup — kanban
+registers the repo with the orchestrator automatically on the first deploy,
+and worktree branches are deployable as-is (they share the repo's object
+store). The manifest is always read from the deployed commit, so onboarding
+applies to commits made after it landed.
 
 ## Using it
 

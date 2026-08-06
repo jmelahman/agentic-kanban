@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jmelahman/local-preview/orchestrator"
@@ -46,6 +47,20 @@ func RepoName(b *db.Board) string {
 func AutoDeployEnabled() bool {
 	v := os.Getenv(AutoDeployEnv)
 	return v != "0" && !strings.EqualFold(v, "false")
+}
+
+// WorktreeOnboarded reports whether a checkout carries a preview manifest —
+// a preview.toml, or a [previews] table in .kanban.toml. It's the cheap
+// gate for auto-deploys (the substring probe is a heuristic; the real parse
+// happens at build time, where a malformed manifest fails visibly).
+func WorktreeOnboarded(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "preview.toml")); err == nil {
+		return true
+	}
+	if b, err := os.ReadFile(filepath.Join(dir, ".kanban.toml")); err == nil {
+		return strings.Contains(string(b), "[previews")
+	}
+	return false
 }
 
 // DockerRunner executes preview build steps inside the target repo's

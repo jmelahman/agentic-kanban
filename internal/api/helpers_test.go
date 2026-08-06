@@ -80,6 +80,12 @@ func newEnv(t *testing.T) *testEnv {
 	previews, err := orchestrator.New(orchestrator.Options{
 		DataDir: filepath.Join(dir, "previews"),
 		Addr:    ":7474",
+		// Mirror production wiring (cmd/server): preview.toml or a
+		// [previews] table in .kanban.toml.
+		ManifestSources: []orchestrator.ManifestSource{
+			{Path: "preview.toml"},
+			{Path: ".kanban.toml", Table: "previews"},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
