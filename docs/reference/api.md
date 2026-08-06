@@ -183,6 +183,8 @@ failed to start these endpoints return `503`.
 - `POST /api/sessions/{id}/previews` — registers the board repo with the orchestrator (idempotent) and requests a deploy of the session branch's current tip. Idempotent per commit: re-posting an already-built tip returns the existing deploy. Responds `202` with the deploy. The target repo must have a `preview.toml` at its root (the build fails with a clear error otherwise).
 - `GET /api/previews/{id}/logs` — plain-text snapshot of the deploy's frontend/backend build logs.
 
+Deploys also fire automatically when a session reports idle (the agent finished a work burst), gated on the worktree carrying a `preview.toml` — see [Previews](../guide/previews).
+
 ## Config
 
 A generic read/write surface over the layered kanban config (see [Configuration](../guide/configuration)). Mirrors `git config`: `global` scope targets the user config (`~/.config/kanban/config.toml`), `local` scope targets a board's project `.kanban.toml`. Keys are dotted, e.g. `sync.allow_rebase` or `github.draft_column`. The older `GET`/`PATCH /api/settings` endpoint that backs the web Settings dialog still exists and edits the same files through the same writer.

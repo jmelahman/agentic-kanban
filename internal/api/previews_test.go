@@ -107,6 +107,82 @@ func TestSessionPreviews(t *testing.T) {
 	assertStatus(t, resp, 404)
 }
 
+// TestAutoDeployOnIdle: an agent reporting idle (finished a work burst)
+// triggers a deploy of the branch tip — gated on the worktree carrying a
+// preview.toml.
+func TestAutoDeployOnIdle(t *testing.T) {
+	e := newEnv(t)
+	seedPreviewableRepo(t, e)
+	board := e.seedBoard("Demo Board")
+	ticket := e.seedTicket(board, "Auto feature")
+	sess := e.seedSession(ticket)
+	mustGit(t, e.repoPath, "branch", sess.BranchName)
+
+	// The gate: no preview.toml in the worktree → idle must NOT deploy.
+	if err := os.MkdirAll(sess.WorktreePath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resp := e.patch(fmt.Sprintf("/api/sessions/%d/status", sess.ID), map[string]string{"status": "idle"})
+	assertStatus(t, resp, 204)
+	readBody(t, resp)
+	time.Sleep(300 * time.Millisecond)
+	resp = e.get(fmt.Sprintf("/api/sessions/%d/previews", sess.ID))
+	assertStatus(t, resp, 200)
+	if got := decodeJSON[[]orchestrator.Deploy](t, resp); len(got) != 0 {
+		t.Fatalf("deploy without preview.toml gate: %+v", got)
+	}
+
+	// With preview.toml present, idle deploys the tip.
+	if err := os.WriteFile(filepath.Join(sess.WorktreePath, "preview.toml"), []byte(previewManifest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	resp = e.patch(fmt.Sprintf("/api/sessions/%d/status", sess.ID), map[string]string{"status": "idle"})
+	assertStatus(t, resp, 204)
+	readBody(t, resp)
+
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		resp = e.get(fmt.Sprintf("/api/sessions/%d/previews", sess.ID))
+		assertStatus(t, resp, 200)
+		deploys := decodeJSON[[]orchestrator.Deploy](t, resp)
+		if len(deploys) == 1 && deploys[0].Status == orchestrator.StatusReady {
+			break
+		}
+		if len(deploys) == 1 && deploys[0].Status == orchestrator.StatusFailed {
+			t.Fatalf("auto-deploy failed: %s", deploys[0].Error)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("auto-deploy never became ready: %+v", deploys)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Re-reporting idle with an unchanged tip is a no-op (idempotent per
+	// commit — still exactly one deploy).
+	resp = e.patch(fmt.Sprintf("/api/sessions/%d/status", sess.ID), map[string]string{"status": "idle"})
+	assertStatus(t, resp, 204)
+	readBody(t, resp)
+	time.Sleep(300 * time.Millisecond)
+	resp = e.get(fmt.Sprintf("/api/sessions/%d/previews", sess.ID))
+	deploys := decodeJSON[[]orchestrator.Deploy](t, resp)
+	if len(deploys) != 1 {
+		t.Fatalf("idempotency: %d deploys", len(deploys))
+	}
+
+	// The env kill-switch works.
+	t.Setenv("KANBAN_PREVIEW_AUTO_DEPLOY", "0")
+	mustGit(t, e.repoPath, "commit", "--allow-empty", "-qm", "new tip")
+	mustGit(t, e.repoPath, "branch", "-f", sess.BranchName, "HEAD")
+	resp = e.patch(fmt.Sprintf("/api/sessions/%d/status", sess.ID), map[string]string{"status": "idle"})
+	assertStatus(t, resp, 204)
+	readBody(t, resp)
+	time.Sleep(300 * time.Millisecond)
+	resp = e.get(fmt.Sprintf("/api/sessions/%d/previews", sess.ID))
+	if deploys := decodeJSON[[]orchestrator.Deploy](t, resp); len(deploys) != 1 {
+		t.Fatalf("kill-switch ignored: %d deploys", len(deploys))
+	}
+}
+
 func TestSessionPreviewsRequireRepoAndBranch(t *testing.T) {
 	e := newEnv(t)
 
