@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/jmelahman/local-preview/orchestrator"
@@ -57,8 +55,9 @@ func (h *handlers) previewContext(w http.ResponseWriter, r *http.Request) (sess 
 // maybeAutoDeployPreview requests a preview of the session branch's current
 // tip after an agent finishes a work burst (status → idle). Fire-and-forget:
 // deploys are idempotent per commit, so an unchanged tip is a no-op. Gated
-// on the worktree carrying a preview.toml so boards that haven't onboarded
-// never accumulate failed deploys, and on KANBAN_PREVIEW_AUTO_DEPLOY.
+// on the worktree carrying a preview manifest (preview.toml or a [previews]
+// table in .kanban.toml) so boards that haven't onboarded never accumulate
+// failed deploys, and on KANBAN_PREVIEW_AUTO_DEPLOY.
 func (h *handlers) maybeAutoDeployPreview(sess *db.Session) {
 	if h.previews == nil || sess == nil || sess.BranchName == "" || sess.WorktreePath == "" {
 		return
@@ -66,7 +65,7 @@ func (h *handlers) maybeAutoDeployPreview(sess *db.Session) {
 	if !previews.AutoDeployEnabled() {
 		return
 	}
-	if _, err := os.Stat(filepath.Join(sess.WorktreePath, "preview.toml")); err != nil {
+	if !previews.WorktreeOnboarded(sess.WorktreePath) {
 		return
 	}
 	go func() {

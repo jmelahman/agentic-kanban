@@ -383,6 +383,13 @@ func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool, dock
 		Addr:          addr,
 		PreviewDomain: domain,
 		Runner:        runner,
+		// Repos declare their preview manifest in a dedicated preview.toml
+		// or as a [previews] table in the .kanban.toml they already carry;
+		// preview.toml wins when both exist.
+		ManifestSources: []orchestrator.ManifestSource{
+			{Path: "preview.toml"},
+			{Path: ".kanban.toml", Table: "previews"},
+		},
 	})
 	if err != nil {
 		log.Printf("preview orchestrator disabled: %v", err)

@@ -107,9 +107,61 @@ func TestSessionPreviews(t *testing.T) {
 	assertStatus(t, resp, 404)
 }
 
+// TestSessionPreviewsViaKanbanToml: the manifest can live as a [previews]
+// table inside .kanban.toml instead of a dedicated preview.toml.
+func TestSessionPreviewsViaKanbanToml(t *testing.T) {
+	e := newEnv(t)
+	hosted := "[sync]\nallow_rebase = true\n" +
+		strings.ReplaceAll(previewManifest, "\n[", "\n[previews.")
+	files := map[string]string{
+		".kanban.toml":   hosted,
+		"web/index.html": "<html>via kanban toml</html>",
+		"srv/main.txt":   "backend-ish",
+	}
+	for name, content := range files {
+		p := filepath.Join(e.repoPath, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustGit(t, e.repoPath, "add", "-A")
+	mustGit(t, e.repoPath, "commit", "-qm", "onboard via kanban toml")
+
+	board := e.seedBoard("Toml Board")
+	ticket := e.seedTicket(board, "Feature")
+	sess := e.seedSession(ticket)
+	mustGit(t, e.repoPath, "branch", sess.BranchName)
+
+	resp := e.post(fmt.Sprintf("/api/sessions/%d/previews", sess.ID), nil)
+	assertStatus(t, resp, 202)
+	deploy := decodeJSON[orchestrator.Deploy](t, resp)
+
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		got, err := e.previews.Deploy(deploy.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status == orchestrator.StatusReady {
+			break
+		}
+		if got.Status == orchestrator.StatusFailed {
+			logs, _ := e.previews.DeployLogs(deploy.ID)
+			t.Fatalf("deploy failed: %s\n%s", got.Error, logs)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("deploy never became ready: %+v", got)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 // TestAutoDeployOnIdle: an agent reporting idle (finished a work burst)
 // triggers a deploy of the branch tip — gated on the worktree carrying a
-// preview.toml.
+// preview manifest.
 func TestAutoDeployOnIdle(t *testing.T) {
 	e := newEnv(t)
 	seedPreviewableRepo(t, e)
