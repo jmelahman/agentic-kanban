@@ -298,7 +298,7 @@ func (c *Client) Spawn(ctx context.Context, cfg *DevcontainerConfig, opts SpawnO
 	}
 	cfg.Substitute(NewSubstitutionContext(substSource, cfg.WorkspaceFolder))
 
-	imageRef, err := c.ensureImage(ctx, cfg, opts.WorktreePath, opts.OnPullProgress)
+	imageRef, err := c.ensureImage(ctx, cfg, opts.WorktreePath, filepath.Base(opts.WorktreePath), opts.OnPullProgress)
 	if err != nil {
 		return nil, fmt.Errorf("ensure image: %w", err)
 	}
@@ -514,7 +514,7 @@ func parseMountString(s string) (mount.Mount, error) {
 	return m, nil
 }
 
-func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, worktreePath string, onProgress PullProgressFunc) (string, error) {
+func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, worktreePath, tagBase string, onProgress PullProgressFunc) (string, error) {
 	if cfg.Image != "" {
 		if _, _, err := c.cli.ImageInspectWithRaw(ctx, cfg.Image); err == nil {
 			return cfg.Image, nil
@@ -535,7 +535,7 @@ func (c *Client) ensureImage(ctx context.Context, cfg *DevcontainerConfig, workt
 	}
 	contextDir, dockerfilePath := resolveBuildPaths(cfg, worktreePath)
 
-	tag, err := imageTag(worktreePath, dockerfilePath, cfg.Build.Args)
+	tag, err := imageTag(tagBase, dockerfilePath, cfg.Build.Args)
 	if err != nil {
 		return "", err
 	}
@@ -599,7 +599,11 @@ func resolveBuildPaths(cfg *DevcontainerConfig, worktreePath string) (contextDir
 	return contextDir, dockerfilePath
 }
 
-func imageTag(worktreePath, dockerfilePath string, args map[string]string) (string, error) {
+// imageTag content-addresses a Dockerfile build: same Dockerfile + args
+// under the same base name reuse the cached image. Callers pass a stable
+// base (worktree basename for sessions, repo name for preview builds) so
+// the cache survives across checkouts and scratch dirs.
+func imageTag(base, dockerfilePath string, args map[string]string) (string, error) {
 	data, err := os.ReadFile(dockerfilePath)
 	if err != nil {
 		return "", err
@@ -612,7 +616,6 @@ func imageTag(worktreePath, dockerfilePath string, args map[string]string) (stri
 		h.Write([]byte(v))
 	}
 	digest := hex.EncodeToString(h.Sum(nil))[:12]
-	base := filepath.Base(worktreePath)
 	return fmt.Sprintf("kanban-%s:%s", sanitizeTag(base), digest), nil
 }
 

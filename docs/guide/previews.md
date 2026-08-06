@@ -38,20 +38,36 @@ with no DNS setup.
 Deploys are idempotent per commit — "deploy tip" after new agent commits
 builds only what changed.
 
+## Automatic deploys
+
+When an agent finishes a burst of work (its session transitions to idle),
+kanban automatically deploys the branch tip. Deploys are idempotent per
+commit, so an unchanged tip is a no-op — and the trigger only fires for
+worktrees that carry a `preview.toml`, so boards that haven't onboarded
+never accumulate failed deploys. Disable with
+`KANBAN_PREVIEW_AUTO_DEPLOY=0`.
+
+## Reproducible builds
+
+Build steps run inside the board repo's **devcontainer** by default: the
+devcontainer config is read from the deployed commit's tree (old commits
+build with the environment they shipped with), resolved through kanban's
+content-addressed image cache (unchanged configs reuse the image), and each
+step runs in a one-shot container with the extracted tree mounted. Repos
+without a devcontainer build in the builtin session image. Set
+`KANBAN_PREVIEW_BUILDS=host` to run build steps directly on the kanban host
+instead (or previews fall back to host builds automatically when Docker is
+unavailable).
+
 ## Configuration
 
 | Env var | Default | Description |
 | --- | --- | --- |
 | `KANBAN_PREVIEW_DOMAIN` | `preview.localhost` | Base domain previews are served under. Point a wildcard DNS record at the kanban server to use a real domain. |
+| `KANBAN_PREVIEW_BUILDS` | `devcontainer` | Set to `host` to run build steps on the kanban host instead of in the repo's devcontainer. |
+| `KANBAN_PREVIEW_AUTO_DEPLOY` | on | Set to `0` to disable deploy-on-idle. |
 
 Preview state (builds, artifacts, backend state, its own SQLite) lives under
 `<data-dir>/previews/`. With `--in-memory` it moves to a temp dir and an
 ephemeral DB. If the orchestrator can't start (e.g. `git` missing), kanban
 runs normally and the preview endpoints report unavailable.
-
-## Current limitations
-
-- Builds run on the kanban host with the host's toolchains. Building inside
-  the board repo's devcontainer (for reproducible builds) is planned — the
-  orchestrator already exposes the seam for it.
-- Deploys are manual per tip; auto-deploy on agent commits is planned.

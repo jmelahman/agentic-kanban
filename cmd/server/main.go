@@ -34,6 +34,7 @@ import (
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 	"github.com/jmelahman/kanban/internal/mcp"
 	"github.com/jmelahman/kanban/internal/metrics"
+	"github.com/jmelahman/kanban/internal/previews"
 	"github.com/jmelahman/kanban/internal/secrets"
 	"github.com/jmelahman/kanban/internal/session"
 )
@@ -260,9 +261,9 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 		log.Printf("error-reporting enabled, board=%q", errCfg.BoardName)
 	}
 
-	previews := newPreviewOrchestrator(cfg, addr, inMemory)
-	if previews != nil {
-		defer previews.Close()
+	previewOrch := newPreviewOrchestrator(cfg, addr, inMemory, dockerClient)
+	if previewOrch != nil {
+		defer previewOrch.Close()
 	}
 
 	mux := api.NewMux(api.Deps{
@@ -274,14 +275,14 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 		Bus:      bus,
 		Build:    api.BuildInfo(Build()),
 		Reporter: reporter,
-		Previews: previews,
+		Previews: previewOrch,
 	})
 
 	// Previews are routed by Host header (<sha>.<repo>.<domain>); every other
 	// host falls through to the kanban mux.
 	var root http.Handler = mux
-	if previews != nil {
-		root = previews.WrapHost(mux)
+	if previewOrch != nil {
+		root = previewOrch.WrapHost(mux)
 	}
 
 	pollerCtx, pollerCancel := context.WithCancel(context.Background())
@@ -352,7 +353,7 @@ func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // non-fatal: kanban runs without previews and the preview endpoints report
 // unavailable. With --in-memory the orchestrator's state moves to a temp dir
 // and an ephemeral DB, honoring the no-persistent-state promise.
-func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool) *orchestrator.Orchestrator {
+func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool, dockerClient *docker.Client) *orchestrator.Orchestrator {
 	dataDir := filepath.Join(cfg.DataDir, "previews")
 	dbPath := ""
 	if inMemory {
@@ -364,12 +365,24 @@ func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool) *orc
 		dataDir = tmp
 		dbPath = ":memory:"
 	}
+
+	// Build steps run inside each repo's devcontainer by default —
+	// reproducible toolchains, cached per config content. Opt out with
+	// KANBAN_PREVIEW_BUILDS=host.
+	var runner orchestrator.Runner
+	buildMode := "host"
+	if os.Getenv(previews.BuildsEnv) != "host" && dockerClient != nil {
+		runner = previews.NewDockerRunner(dockerClient)
+		buildMode = "devcontainer"
+	}
+
 	domain := os.Getenv("KANBAN_PREVIEW_DOMAIN")
-	previews, err := orchestrator.New(orchestrator.Options{
+	orch, err := orchestrator.New(orchestrator.Options{
 		DataDir:       dataDir,
 		DBPath:        dbPath,
 		Addr:          addr,
 		PreviewDomain: domain,
+		Runner:        runner,
 	})
 	if err != nil {
 		log.Printf("preview orchestrator disabled: %v", err)
@@ -378,8 +391,8 @@ func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool) *orc
 	if domain == "" {
 		domain = "preview.localhost"
 	}
-	log.Printf("preview orchestrator enabled: previews at *.%s", domain)
-	return previews
+	log.Printf("preview orchestrator enabled: previews at *.%s (builds: %s)", domain, buildMode)
+	return orch
 }
 
 // buildAPIBase returns the base URL session containers should use to call the

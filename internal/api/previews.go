@@ -1,14 +1,19 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
-	"strings"
+	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/jmelahman/local-preview/orchestrator"
 
 	"github.com/jmelahman/kanban/internal/db"
+	"github.com/jmelahman/kanban/internal/previews"
 	"github.com/jmelahman/kanban/internal/session"
 )
 
@@ -17,25 +22,6 @@ import (
 // orchestrator. Deploys build from the committed tree of the board repo's
 // branch (worktree branches share the repo's object store, so agent commits
 // are visible with no extra plumbing).
-
-// previewRepoName derives the orchestrator repo name — a DNS label, since it
-// becomes the subdomain segment — from the board slug.
-func previewRepoName(b *db.Board) string {
-	var sb strings.Builder
-	for _, c := range strings.ToLower(b.Slug) {
-		if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' {
-			sb.WriteRune(c)
-		}
-	}
-	name := strings.Trim(sb.String(), "-")
-	if name == "" {
-		return fmt.Sprintf("board-%d", b.ID)
-	}
-	if len(name) > 63 {
-		name = strings.Trim(name[:63], "-")
-	}
-	return name
-}
 
 // previewContext resolves the session-scoped preview inputs: the session,
 // its board, the orchestrator repo name, and the host repo path. Writes the
@@ -65,7 +51,48 @@ func (h *handlers) previewContext(w http.ResponseWriter, r *http.Request) (sess 
 		h.httpError(w, fmt.Errorf("session has no branch to deploy"), 400)
 		return nil, "", "", false
 	}
-	return sess, previewRepoName(board), paths.RepoPath, true
+	return sess, previews.RepoName(board), paths.RepoPath, true
+}
+
+// maybeAutoDeployPreview requests a preview of the session branch's current
+// tip after an agent finishes a work burst (status → idle). Fire-and-forget:
+// deploys are idempotent per commit, so an unchanged tip is a no-op. Gated
+// on the worktree carrying a preview.toml so boards that haven't onboarded
+// never accumulate failed deploys, and on KANBAN_PREVIEW_AUTO_DEPLOY.
+func (h *handlers) maybeAutoDeployPreview(sess *db.Session) {
+	if h.previews == nil || sess == nil || sess.BranchName == "" || sess.WorktreePath == "" {
+		return
+	}
+	if !previews.AutoDeployEnabled() {
+		return
+	}
+	if _, err := os.Stat(filepath.Join(sess.WorktreePath, "preview.toml")); err != nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		board, err := h.boardForSession(ctx, sess)
+		if err != nil {
+			log.Printf("preview auto-deploy: board for session %d: %v", sess.ID, err)
+			return
+		}
+		paths := session.ResolvePaths(board, sess)
+		if !paths.HasRepo {
+			return
+		}
+		name := previews.RepoName(board)
+		if _, err := h.previews.RegisterRepo(ctx, name, paths.RepoPath); err != nil {
+			log.Printf("preview auto-deploy: register %s: %v", name, err)
+			return
+		}
+		d, err := h.previews.RequestDeploy(ctx, name, sess.BranchName, false)
+		if err != nil {
+			log.Printf("preview auto-deploy: deploy %s@%s: %v", name, sess.BranchName, err)
+			return
+		}
+		log.Printf("preview auto-deploy: %s@%s → deploy %d (%s)", name, sess.BranchName, d.ID, d.Status)
+	}()
 }
 
 // listSessionPreviews returns the session branch's preview deploys, newest

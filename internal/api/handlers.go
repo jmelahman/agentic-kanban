@@ -984,6 +984,11 @@ func (h *handlers) updateSessionStatus(w http.ResponseWriter, r *http.Request) {
 			"ticket_id":  fmt.Sprintf("%d", sess.TicketID),
 		})
 	}
+	// An idle transition means the agent finished a burst of work — the
+	// moment its latest commit is worth a preview.
+	if req.Status == db.SessionStatusIdle {
+		h.maybeAutoDeployPreview(sess)
+	}
 	w.WriteHeader(204)
 }
 
