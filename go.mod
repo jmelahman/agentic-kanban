@@ -6,7 +6,7 @@ require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.7.0
 	github.com/gorilla/websocket v1.5.3
-	github.com/jmelahman/local-preview v0.1.1-0.20260806045620-2b9345fab34f
+	github.com/jmelahman/local-preview v0.1.1
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2

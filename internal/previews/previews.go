@@ -92,13 +92,19 @@ func (r *DockerRunner) buildUser(ctx context.Context) string {
 
 // Run implements orchestrator.Runner.
 func (r *DockerRunner) Run(ctx context.Context, spec orchestrator.RunSpec, out io.Writer) error {
-	cfg, err := docker.LoadDevcontainer(spec.ScratchDir)
-	if err != nil {
-		return fmt.Errorf("load devcontainer config: %w", err)
+	// A manifest-declared image is the repo's explicit contract and beats
+	// devcontainer discovery.
+	cfg := &docker.DevcontainerConfig{Image: spec.Image}
+	if spec.Image == "" {
+		loaded, err := docker.LoadDevcontainer(spec.ScratchDir)
+		if err != nil {
+			return fmt.Errorf("load devcontainer config: %w", err)
+		}
+		cfg = loaded
 	}
 	image, err := r.docker.EnsureBuildImage(ctx, cfg, spec.ScratchDir, "preview-"+spec.RepoName)
 	if err != nil {
-		return fmt.Errorf("resolve devcontainer image: %w", err)
+		return fmt.Errorf("resolve build image: %w", err)
 	}
 	fmt.Fprintf(out, "[devcontainer image: %s]\n", image)
 	if err := r.docker.RunBuildStep(ctx, docker.BuildStep{
