@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 
+	"github.com/jmelahman/local-preview/orchestrator"
+
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
@@ -29,6 +31,9 @@ type Deps struct {
 	Bus      *EventBus
 	Build    BuildInfo
 	Reporter *errreport.Reporter
+	// Previews is the embedded local-preview orchestrator; nil when it
+	// failed to start (endpoints report unavailable).
+	Previews *orchestrator.Orchestrator
 }
 
 // NewMux assembles the HTTP routes and embedded frontend.
@@ -51,6 +56,7 @@ func NewMux(d Deps) http.Handler {
 		bus:      bus,
 		build:    d.Build,
 		reporter: d.Reporter,
+		previews: d.Previews,
 	}
 
 	mux.HandleFunc("GET /health", h.health)
@@ -108,6 +114,10 @@ func NewMux(d Deps) http.Handler {
 	mux.HandleFunc("GET /api/sessions/{id}/ports", h.listPorts)
 	mux.HandleFunc("POST /api/sessions/{id}/ports", h.createPort)
 	mux.HandleFunc("DELETE /api/ports/{id}", h.deletePort)
+
+	mux.HandleFunc("GET /api/sessions/{id}/previews", h.listSessionPreviews)
+	mux.HandleFunc("POST /api/sessions/{id}/previews", h.createSessionPreview)
+	mux.HandleFunc("GET /api/previews/{id}/logs", h.previewLogs)
 
 	mux.HandleFunc("GET /api/sessions/{id}/pr-detail", h.prDetail)
 

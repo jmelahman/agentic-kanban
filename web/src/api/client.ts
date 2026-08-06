@@ -156,6 +156,23 @@ export type PortAllocation = {
   proxy_active: boolean;
 };
 
+export type Preview = {
+  id: number;
+  repo: string;
+  sha: string;
+  short_sha: string;
+  ref?: string;
+  fe_hash?: string;
+  be_hash?: string;
+  status: "queued" | "building" | "ready" | "failed" | "evicted";
+  error?: string;
+  attempt_count: number;
+  preview_url?: string;
+  process?: string;
+  created_at: string;
+  updated_at: string;
+};
+
 export type AppSettings = {
   harness: string;
   worktrees_root: string;
@@ -319,6 +336,10 @@ export const api = {
       body: JSON.stringify(input),
     }),
   deletePort: (id: number) => request<void>(`/api/ports/${id}`, { method: "DELETE" }),
+
+  listPreviews: (sessionId: number) => request<Preview[]>(`/api/sessions/${sessionId}/previews`),
+  createPreview: (sessionId: number) =>
+    request<Preview>(`/api/sessions/${sessionId}/previews`, { method: "POST" }),
 
   getSettings: () => request<AppSettings>("/api/settings"),
   updateSettings: (input: { harness?: string; worktrees_root?: string; sign_commits?: boolean }) =>

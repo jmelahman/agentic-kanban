@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jmelahman/local-preview/orchestrator"
+
 	"github.com/jmelahman/kanban/internal/api"
 	"github.com/jmelahman/kanban/internal/config"
 	"github.com/jmelahman/kanban/internal/db"
@@ -35,6 +37,7 @@ type testEnv struct {
 	store    *db.Store
 	cfg      *config.Config
 	srv      *httptest.Server
+	previews *orchestrator.Orchestrator
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -74,13 +77,23 @@ func newEnv(t *testing.T) *testEnv {
 	hookRunner := hooks.NewRunner(store)
 	sessionMgr := session.NewManager(store, dockerCli, hookRunner)
 
+	previews, err := orchestrator.New(orchestrator.Options{
+		DataDir: filepath.Join(dir, "previews"),
+		Addr:    ":7474",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { previews.Close() })
+
 	handler := api.NewMux(api.Deps{
 		Store: store, Docker: dockerCli, Sessions: sessionMgr, Hooks: hookRunner, Config: cfg,
+		Previews: previews,
 	})
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	return &testEnv{t: t, dir: dir, repoPath: repoPath, store: store, cfg: cfg, srv: srv}
+	return &testEnv{t: t, dir: dir, repoPath: repoPath, store: store, cfg: cfg, srv: srv, previews: previews}
 }
 
 func (e *testEnv) seedBoard(name string) *db.Board {

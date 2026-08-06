@@ -20,6 +20,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
+	"github.com/jmelahman/local-preview/orchestrator"
+
 	"github.com/jmelahman/kanban/internal/api"
 	"github.com/jmelahman/kanban/internal/buildcop"
 	"github.com/jmelahman/kanban/internal/config"
@@ -258,6 +260,11 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 		log.Printf("error-reporting enabled, board=%q", errCfg.BoardName)
 	}
 
+	previews := newPreviewOrchestrator(cfg, addr, inMemory)
+	if previews != nil {
+		defer previews.Close()
+	}
+
 	mux := api.NewMux(api.Deps{
 		Store:    store,
 		Docker:   dockerClient,
@@ -267,7 +274,15 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 		Bus:      bus,
 		Build:    api.BuildInfo(Build()),
 		Reporter: reporter,
+		Previews: previews,
 	})
+
+	// Previews are routed by Host header (<sha>.<repo>.<domain>); every other
+	// host falls through to the kanban mux.
+	var root http.Handler = mux
+	if previews != nil {
+		root = previews.WrapHost(mux)
+	}
 
 	pollerCtx, pollerCancel := context.WithCancel(context.Background())
 	defer pollerCancel()
@@ -286,7 +301,7 @@ func run(addr, dataDirOverride, worktreesDirOverride string, portStart, portEnd 
 	h2s := &http2.Server{}
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           h2c.NewHandler(recoverPanics(reporter, metrics.HTTPMiddleware(logRequests(compressResponses(mux)))), h2s),
+		Handler:           h2c.NewHandler(recoverPanics(reporter, metrics.HTTPMiddleware(logRequests(compressResponses(root)))), h2s),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -329,6 +344,42 @@ func (s *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 		return nil, nil, fmt.Errorf("hijack not supported")
 	}
 	return hj.Hijack()
+}
+
+// newPreviewOrchestrator starts the embedded local-preview orchestrator that
+// serves a deployment per commit at <sha>.<board>.<domain> (default
+// preview.localhost, override with $KANBAN_PREVIEW_DOMAIN). Failure is
+// non-fatal: kanban runs without previews and the preview endpoints report
+// unavailable. With --in-memory the orchestrator's state moves to a temp dir
+// and an ephemeral DB, honoring the no-persistent-state promise.
+func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool) *orchestrator.Orchestrator {
+	dataDir := filepath.Join(cfg.DataDir, "previews")
+	dbPath := ""
+	if inMemory {
+		tmp, err := os.MkdirTemp("", "kanban-previews-")
+		if err != nil {
+			log.Printf("preview orchestrator disabled: %v", err)
+			return nil
+		}
+		dataDir = tmp
+		dbPath = ":memory:"
+	}
+	domain := os.Getenv("KANBAN_PREVIEW_DOMAIN")
+	previews, err := orchestrator.New(orchestrator.Options{
+		DataDir:       dataDir,
+		DBPath:        dbPath,
+		Addr:          addr,
+		PreviewDomain: domain,
+	})
+	if err != nil {
+		log.Printf("preview orchestrator disabled: %v", err)
+		return nil
+	}
+	if domain == "" {
+		domain = "preview.localhost"
+	}
+	log.Printf("preview orchestrator enabled: previews at *.%s", domain)
+	return previews
 }
 
 // buildAPIBase returns the base URL session containers should use to call the

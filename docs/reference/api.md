@@ -172,6 +172,17 @@ Sessions are the running container + worktree + harness for a ticket. The most u
 - `GET /api/sessions/{id}/file?path=<path>` — current working-tree contents of a single file in the session worktree (the **new** side of the diff above), returned as `{ "path": "<path>", "contents": "<text>" }`. Backs the per-file **View file** toggle in the diff tab, which swaps a file's hunks for a whole-file, syntax-highlighted blob view (like GitHub's "View file"). `path` is required and must name a file inside the worktree — it is validated to stay within the worktree (both lexically and after resolving symlinks), so `../` or a symlink pointing outside returns `404`. Returns `400` when `path` is missing, and `404` when the session has no worktree or the file doesn't exist.
 - `GET /api/sessions/{id}/file-diff?path=<path>&old_path=<path>` — both sides of one changed file, returned as `{ "path": "<path>", "old_contents": "<text>", "new_contents": "<text>" }`. The **old** side is read from the same merge-base the diff above is computed against (so its lines align with the patch's hunks); the **new** side is the working tree. The diff tab uses this to rebuild a file's diff from full contents and offer GitHub-style **expand up/down** beyond the patch's few context lines. `old_path` is the pre-rename path when it differs from `path` (the diff's `prevName`) and defaults to `path`. A side absent at its ref comes back empty — an empty `old_contents` is a newly-added file, an empty `new_contents` a deleted one. `path` is validated like `/file` above; returns `400` when `path` is missing, and `404` when the session has no worktree or the path exists in neither tree.
 
+## Previews
+
+Preview deployments (see [Previews](../guide/previews)) are served by an
+embedded [local-preview](https://github.com/jmelahman/local-preview)
+orchestrator at `<sha>.<board-slug>.<preview-domain>`. When the orchestrator
+failed to start these endpoints return `503`.
+
+- `GET /api/sessions/{id}/previews` — the session branch's preview deploys, newest first. Each deploy carries `status` (`queued`/`building`/`ready`/`failed`/`evicted`), `short_sha`, and — once ready — `preview_url` and `process` (the on-demand backend's live state). A board that has never deployed returns `[]`. Returns `400` when the board has no git repo or the session has no branch.
+- `POST /api/sessions/{id}/previews` — registers the board repo with the orchestrator (idempotent) and requests a deploy of the session branch's current tip. Idempotent per commit: re-posting an already-built tip returns the existing deploy. Responds `202` with the deploy. The target repo must have a `preview.toml` at its root (the build fails with a clear error otherwise).
+- `GET /api/previews/{id}/logs` — plain-text snapshot of the deploy's frontend/backend build logs.
+
 ## Config
 
 A generic read/write surface over the layered kanban config (see [Configuration](../guide/configuration)). Mirrors `git config`: `global` scope targets the user config (`~/.config/kanban/config.toml`), `local` scope targets a board's project `.kanban.toml`. Keys are dotted, e.g. `sync.allow_rebase` or `github.draft_column`. The older `GET`/`PATCH /api/settings` endpoint that backs the web Settings dialog still exists and edits the same files through the same writer.
