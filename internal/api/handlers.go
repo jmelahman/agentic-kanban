@@ -15,6 +15,8 @@ import (
 	"time"
 
 	"github.com/jmelahman/kanban/internal/config"
+	"github.com/jmelahman/local-preview/orchestrator"
+
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/errreport"
@@ -38,6 +40,7 @@ type handlers struct {
 	bus      *EventBus
 	build    BuildInfo
 	reporter *errreport.Reporter
+	previews *orchestrator.Orchestrator
 }
 
 func (h *handlers) health(w http.ResponseWriter, r *http.Request) {

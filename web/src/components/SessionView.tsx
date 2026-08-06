@@ -40,6 +40,7 @@ import { ActionButton } from "./ActionButton";
 import { Button } from "./Button";
 import { InfoPanel } from "./InfoPanel";
 import { PlansPanel } from "./PlansPanel";
+import { PreviewsPanel } from "./PreviewsPanel";
 import { Tab } from "./Tab";
 import { TasksPanel } from "./TasksPanel";
 
@@ -51,7 +52,7 @@ import { TasksPanel } from "./TasksPanel";
 const importDiffPanel = () => import("./DiffPanel");
 const DiffPanel = lazy(() => importDiffPanel().then((m) => ({ default: m.DiffPanel })));
 
-const TAB_ORDER = ["agent", "shell", "diff", "tasks", "plans", "info"] as const;
+const TAB_ORDER = ["agent", "shell", "diff", "tasks", "previews", "plans", "info"] as const;
 type TabId = (typeof TAB_ORDER)[number];
 
 function loadInitialTab(sessionId: number | null): TabId {
@@ -655,6 +656,7 @@ export function SessionView({
         <Tab active={tab === "shell"} onClick={() => setTab("shell")} label="terminal" />
         {hasWorktree && <Tab active={tab === "diff"} onClick={() => setTab("diff")} label="diff" />}
         <Tab active={tab === "tasks"} onClick={() => setTab("tasks")} label="tasks" />
+        <Tab active={tab === "previews"} onClick={() => setTab("previews")} label="previews" />
         {hasPlans && <Tab active={tab === "plans"} onClick={() => setTab("plans")} label="plans" />}
         <Tab active={tab === "info"} onClick={() => setTab("info")} label="info" />
       </div>
@@ -683,6 +685,7 @@ export function SessionView({
           </Suspense>
         )}
         {tab === "tasks" && session && <TasksPanel session={session} boardId={boardId} />}
+        {tab === "previews" && session && <PreviewsPanel session={session} />}
         {tab === "plans" && session && <PlansPanel session={session} />}
         {tab === "info" &&
           (session ? (

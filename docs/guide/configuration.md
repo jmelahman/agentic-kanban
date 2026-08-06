@@ -336,3 +336,4 @@ hosts.
 - [CLI reference](/reference/cli) — every flag for `serve`, `mcp`, `board list`, `ticket create`, `config set`.
 - [REST API](/reference/api) — endpoints exposed by the running server, including `/api/config`.
 - [MCP reference](/reference/mcp) — the `*_config` tools and the rest of the agent-facing surface.
+- [Previews](/guide/previews) — per-branch preview deployments and `$KANBAN_PREVIEW_DOMAIN`.
