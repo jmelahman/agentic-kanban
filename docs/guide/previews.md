@@ -62,7 +62,8 @@ step runs in a one-shot container with the extracted tree mounted. Repos
 without a devcontainer build in the builtin session image. Set
 `KANBAN_PREVIEW_BUILDS=host` to run build steps directly on the kanban host
 instead (or previews fall back to host builds automatically when Docker is
-unavailable).
+unavailable). A manifest-declared `image` on a side beats devcontainer
+discovery — the repo's explicit contract wins.
 
 ## Configuration
 

@@ -67,12 +67,14 @@ func TestDockerRunner(t *testing.T) {
 
 	r := NewDockerRunner(cli)
 	var out bytes.Buffer
+	// A manifest-declared image is honored over devcontainer discovery.
 	err = r.Run(ctx, orchestrator.RunSpec{
 		RepoName:   "runner-test",
 		SHA:        "deadbeef",
 		ScratchDir: scratch,
 		Dir:        "web",
 		Argv:       []string{"sh", "-c", "pwd && echo built > out.txt"},
+		Image:      "alpine:3.20",
 	}, &out)
 	if err != nil {
 		t.Fatalf("Run: %v\noutput: %s", err, out.String())
@@ -80,6 +82,9 @@ func TestDockerRunner(t *testing.T) {
 	// The step ran in the mounted workdir and its output landed on the host.
 	if !strings.Contains(out.String(), "/preview-build/web") {
 		t.Fatalf("workdir missing from output: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "alpine:3.20") {
+		t.Fatalf("declared image not honored: %q", out.String())
 	}
 	content, err := os.ReadFile(filepath.Join(scratch, "web", "out.txt"))
 	if err != nil || strings.TrimSpace(string(content)) != "built" {
