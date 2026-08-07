@@ -30,6 +30,46 @@ func TestStripComments(t *testing.T) {
 	}
 }
 
+func TestStrip(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"trailing comma in object", `{"a":1,}`, `{"a":1}`},
+		{"trailing comma in array", `[1,2,]`, `[1,2]`},
+		{"nested trailing commas", `{"a":[1,],}`, `{"a":[1]}`},
+		{"comma then whitespace", "{\"a\":1,\n  }", "{\"a\":1\n  }"},
+		// A comment between the comma and the closer must not hide it.
+		{"comma hidden by comment", "{\"a\":1, // tail\n}", "{\"a\":1 \n}"},
+		{"comma in string survives", `{"s":",}"}`, `{"s":",}"}`},
+		{"non-trailing commas survive", `{"a":1,"b":2}`, `{"a":1,"b":2}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := string(Strip([]byte(c.in))); got != c.want {
+				t.Fatalf("Strip(%q) = %q, want %q", c.in, got, c.want)
+			}
+		})
+	}
+}
+
+// TestStripDecodes confirms Strip's output on a devcontainer.json-shaped file
+// with comments and trailing commas is valid JSON the stdlib decoder accepts.
+func TestStripDecodes(t *testing.T) {
+	in := []byte("{\n  // image to use\n  \"image\": \"x\",\n  \"mounts\": [\n    \"a\", /* inline */\n    \"b\",\n  ],\n}")
+	var out struct {
+		Image  string   `json:"image"`
+		Mounts []string `json:"mounts"`
+	}
+	if err := json.Unmarshal(Strip(in), &out); err != nil {
+		t.Fatalf("Unmarshal after Strip: %v", err)
+	}
+	if out.Image != "x" || len(out.Mounts) != 2 {
+		t.Fatalf("decoded %+v, want {Image:x Mounts:[a b]}", out)
+	}
+}
+
 // TestStripCommentsDecodes confirms the stripped output is valid JSON the
 // stdlib decoder accepts, which is the whole point of the helper.
 func TestStripCommentsDecodes(t *testing.T) {

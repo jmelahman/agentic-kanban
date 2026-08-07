@@ -149,6 +149,11 @@ func TestDevcontainerConfig_Substitute(t *testing.T) {
 func TestDevcontainerConfig_Substitute_RemoteUserDefault(t *testing.T) {
 	// Reproduces the original bug: ${localEnv:VAR:default} in remoteUser was
 	// passed verbatim to Docker, causing "unable to find user ${localEnv:".
+	// Kanban session containers export DEVCONTAINER_REMOTE_USER themselves;
+	// unset it (t.Setenv registers the restore) so the default-applied half
+	// holds when the tests run inside one.
+	t.Setenv("DEVCONTAINER_REMOTE_USER", "")
+	os.Unsetenv("DEVCONTAINER_REMOTE_USER")
 	cfg := &DevcontainerConfig{RemoteUser: "${localEnv:DEVCONTAINER_REMOTE_USER:dev}"}
 	cfg.Substitute(NewSubstitutionContext("/x", "/workspace"))
 	if cfg.RemoteUser != "dev" {
@@ -363,6 +368,69 @@ func TestLoadDevcontainer_FallbackOrder(t *testing.T) {
 			t.Errorf("Image = %q; want %q", cfg.Image, BuiltinImage)
 		}
 	})
+}
+
+func TestLoadDevcontainer_JSONCAndObjectMounts(t *testing.T) {
+	repo := t.TempDir()
+	xdg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	body := `{
+	  // Comments, trailing commas, and object-form mounts are all legal in
+	  // devcontainer.json.
+	  "image": "example/img:1",
+	  "containerUser": "node",
+	  "mounts": [
+	    "source=vol1,target=/a,type=volume",
+	    {"source": "vol2", "target": "/b", "type": "volume"},
+	  ],
+	}`
+	path := filepath.Join(repo, ".devcontainer", "devcontainer.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadDevcontainer(repo)
+	if err != nil {
+		t.Fatalf("LoadDevcontainer: %v", err)
+	}
+	if cfg.Image != "example/img:1" {
+		t.Errorf("Image = %q; want %q", cfg.Image, "example/img:1")
+	}
+	if cfg.ContainerUser != "node" {
+		t.Errorf("ContainerUser = %q; want %q", cfg.ContainerUser, "node")
+	}
+	want := MountList{
+		"source=vol1,target=/a,type=volume",
+		"type=volume,source=vol2,target=/b",
+	}
+	if !reflect.DeepEqual(cfg.Mounts, want) {
+		t.Errorf("Mounts = %#v; want %#v", cfg.Mounts, want)
+	}
+}
+
+func TestBuildContainerConfig_ContainerUserFallback(t *testing.T) {
+	opts := SpawnOptions{WorktreePath: "/tmp/wt"}
+
+	cfg := &DevcontainerConfig{WorkspaceFolder: "/workspace", ContainerUser: "node"}
+	_, _, containerCfg, err := buildContainerConfig(cfg, opts, "img", "")
+	if err != nil {
+		t.Fatalf("buildContainerConfig: %v", err)
+	}
+	if containerCfg.User != "node" {
+		t.Errorf("User = %q; want containerUser fallback %q", containerCfg.User, "node")
+	}
+
+	cfg = &DevcontainerConfig{WorkspaceFolder: "/workspace", RemoteUser: "dev", ContainerUser: "node"}
+	_, _, containerCfg, err = buildContainerConfig(cfg, opts, "img", "")
+	if err != nil {
+		t.Fatalf("buildContainerConfig: %v", err)
+	}
+	if containerCfg.User != "dev" {
+		t.Errorf("User = %q; want remoteUser %q to win", containerCfg.User, "dev")
+	}
 }
 
 func TestResolveBuildPaths(t *testing.T) {

@@ -106,7 +106,7 @@ func Discover(worktreePath string) ([]VSCodeTask, []string, error) {
 	tasksPath := filepath.Join(worktreePath, ".vscode", "tasks.json")
 	if data, err := os.ReadFile(tasksPath); err == nil {
 		var file vsTasksFile
-		if err := json.Unmarshal(jsonc.StripComments(data), &file); err != nil {
+		if err := json.Unmarshal(jsonc.Strip(data), &file); err != nil {
 			msg := fmt.Sprintf(".vscode/tasks.json: %v", err)
 			log.Print(msg)
 			warnings = append(warnings, msg)
@@ -132,7 +132,7 @@ func Discover(worktreePath string) ([]VSCodeTask, []string, error) {
 	launchPath := filepath.Join(worktreePath, ".vscode", "launch.json")
 	if data, err := os.ReadFile(launchPath); err == nil {
 		var file vsLaunchFile
-		if err := json.Unmarshal(jsonc.StripComments(data), &file); err != nil {
+		if err := json.Unmarshal(jsonc.Strip(data), &file); err != nil {
 			msg := fmt.Sprintf(".vscode/launch.json: %v", err)
 			log.Print(msg)
 			warnings = append(warnings, msg)

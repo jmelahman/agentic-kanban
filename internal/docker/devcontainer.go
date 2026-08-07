@@ -35,10 +35,11 @@ type DevcontainerConfig struct {
 	Build            BuildConfig       `json:"build"`
 	Image            string            `json:"image"`
 	RunArgs          []string          `json:"runArgs"`
-	Mounts           []string          `json:"mounts"`
+	Mounts           MountList         `json:"mounts"`
 	WorkspaceMount   string            `json:"workspaceMount"`
 	WorkspaceFolder  string            `json:"workspaceFolder"`
 	RemoteUser       string            `json:"remoteUser"`
+	ContainerUser    string            `json:"containerUser"`
 	ContainerEnv     map[string]string `json:"containerEnv"`
 	PostStartCommand string            `json:"postStartCommand"`
 	WaitFor          string            `json:"waitFor"`
@@ -59,6 +60,48 @@ type BuildConfig struct {
 	Dockerfile string            `json:"dockerfile"`
 	Context    string            `json:"context"`
 	Args       map[string]string `json:"args"`
+}
+
+// MountList is a list of docker --mount strings. Its unmarshaler also accepts
+// the object form the devcontainer spec allows ({"source": …, "target": …,
+// "type": …}), normalizing objects to string form so variable substitution
+// and parseMountString handle one shape downstream.
+type MountList []string
+
+func (m *MountList) UnmarshalJSON(data []byte) error {
+	var entries []json.RawMessage
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return err
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		var s string
+		if err := json.Unmarshal(e, &s); err == nil {
+			out = append(out, s)
+			continue
+		}
+		var obj struct {
+			Source string `json:"source"`
+			Target string `json:"target"`
+			Type   string `json:"type"`
+		}
+		if err := json.Unmarshal(e, &obj); err != nil {
+			return fmt.Errorf("mount entry %s: neither string nor object form", string(e))
+		}
+		var parts []string
+		if obj.Type != "" {
+			parts = append(parts, "type="+obj.Type)
+		}
+		if obj.Source != "" {
+			parts = append(parts, "source="+obj.Source)
+		}
+		if obj.Target != "" {
+			parts = append(parts, "target="+obj.Target)
+		}
+		out = append(out, strings.Join(parts, ","))
+	}
+	*m = out
+	return nil
 }
 
 // PortMapping is a port to publish from container to host.
@@ -213,6 +256,7 @@ func (c *DevcontainerConfig) Substitute(ctx SubstitutionContext) {
 	c.WorkspaceMount = Substitute(c.WorkspaceMount, ctx)
 	c.WorkspaceFolder = Substitute(c.WorkspaceFolder, ctx)
 	c.RemoteUser = Substitute(c.RemoteUser, ctx)
+	c.ContainerUser = Substitute(c.ContainerUser, ctx)
 	for k, v := range c.ContainerEnv {
 		c.ContainerEnv[k] = Substitute(v, ctx)
 	}
@@ -265,7 +309,7 @@ func LoadDevcontainer(worktreePath string) (*DevcontainerConfig, error) {
 		log.Printf("devcontainer: %s has no devcontainer.json; using user fallback at %s", worktreePath, loaded)
 	}
 
-	stripped := jsonc.StripComments(data)
+	stripped := jsonc.Strip(data)
 	var cfg DevcontainerConfig
 	if err := json.Unmarshal(stripped, &cfg); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", loaded, err)
@@ -412,6 +456,13 @@ func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef s
 
 	applyRunArgs(cfg.RunArgs, hostCfg)
 
+	// remoteUser is what tools should run as and is what kanban execs use;
+	// containerUser (the user the container itself runs as) is the closest
+	// substitute when a config sets only that.
+	user := cfg.RemoteUser
+	if user == "" {
+		user = cfg.ContainerUser
+	}
 	containerCfg := &container.Config{
 		Image:        imageRef,
 		WorkingDir:   wsFolder,
@@ -419,7 +470,7 @@ func buildContainerConfig(cfg *DevcontainerConfig, opts SpawnOptions, imageRef s
 		AttachStdout: false,
 		AttachStderr: false,
 		ExposedPorts: exposed,
-		User:         cfg.RemoteUser,
+		User:         user,
 		Cmd:          []string{"sh", "-c", "tail -f /dev/null"},
 	}
 	if len(cfg.ContainerEnv) > 0 || len(opts.ExtraEnv) > 0 {
