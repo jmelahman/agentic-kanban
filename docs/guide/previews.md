@@ -81,7 +81,7 @@ builds only what changed.
 
 ## The previews dashboard
 
-The **previews** item in the header opens a dashboard over every deploy on
+The **preview** item in the header opens a dashboard over every deploy on
 the server, across every board — the fleet view the session tab's
 single-branch list can't give you.
 

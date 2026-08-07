@@ -160,7 +160,7 @@ export default function App() {
         <nav className="flex shrink-0 self-stretch -my-2">
           <Tab active={view === "overview"} onClick={() => setView("overview")} label="overview" />
           <Tab active={view === "board"} onClick={() => setView("board")} label="board" />
-          <Tab active={view === "previews"} onClick={() => setView("previews")} label="previews" />
+          <Tab active={view === "previews"} onClick={() => setView("previews")} label="preview" />
         </nav>
         {view === "board" && (
           <select
