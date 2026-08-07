@@ -24,6 +24,10 @@ const BuildsEnv = "KANBAN_PREVIEW_BUILDS"
 // AutoDeployEnv disables deploy-on-idle when set to "0" or "false".
 const AutoDeployEnv = "KANBAN_PREVIEW_AUTO_DEPLOY"
 
+// ManifestDirEnv overrides the directory searched for out-of-repo preview
+// manifests.
+const ManifestDirEnv = "KANBAN_PREVIEW_MANIFESTS"
+
 // RepoName derives the orchestrator repo name — a DNS label, since it
 // becomes the subdomain segment — from the board slug.
 func RepoName(b *db.Board) string {
@@ -49,16 +53,50 @@ func AutoDeployEnabled() bool {
 	return v != "0" && !strings.EqualFold(v, "false")
 }
 
-// WorktreeOnboarded reports whether a checkout carries a preview manifest —
-// a preview.toml, or a [previews] table in .kanban.toml. It's the cheap
+// ManifestDir returns the directory searched for out-of-repo preview
+// manifests: `<dir>/<repo-name>.toml`, in the plain preview.toml schema,
+// for repos that can't carry a manifest upstream (a vendored fork, or an
+// upstream that won't take the file). The repo name is RepoName(board), so
+// the file is named after the board slug.
+//
+// It deliberately mirrors local-preview's own convention —
+// $PREVIEW_CONFIG_DIR, else the platform config dir plus "preview", then
+// "manifests" — so one manifest serves both the `preview` CLI and kanban.
+// $KANBAN_PREVIEW_MANIFESTS overrides it (a containerized kanban wants a
+// mounted path, not the server user's home). Returns "" when no config dir
+// is resolvable, which disables the lookup.
+func ManifestDir() string {
+	if dir := os.Getenv(ManifestDirEnv); dir != "" {
+		return dir
+	}
+	root := os.Getenv("PREVIEW_CONFIG_DIR")
+	if root == "" {
+		base, err := os.UserConfigDir()
+		if err != nil {
+			return ""
+		}
+		root = filepath.Join(base, "preview")
+	}
+	return filepath.Join(root, "manifests")
+}
+
+// Onboarded reports whether a board can be previewed: its checkout carries
+// a manifest — a preview.toml, or a [previews] table in .kanban.toml — or
+// the server holds an out-of-repo manifest for repoName. It's the cheap
 // gate for auto-deploys (the substring probe is a heuristic; the real parse
 // happens at build time, where a malformed manifest fails visibly).
-func WorktreeOnboarded(dir string) bool {
-	if _, err := os.Stat(filepath.Join(dir, "preview.toml")); err == nil {
+func Onboarded(worktreeDir, repoName string) bool {
+	if _, err := os.Stat(filepath.Join(worktreeDir, "preview.toml")); err == nil {
 		return true
 	}
-	if b, err := os.ReadFile(filepath.Join(dir, ".kanban.toml")); err == nil {
-		return strings.Contains(string(b), "[previews")
+	if b, err := os.ReadFile(filepath.Join(worktreeDir, ".kanban.toml")); err == nil &&
+		strings.Contains(string(b), "[previews") {
+		return true
+	}
+	if dir := ManifestDir(); dir != "" && repoName != "" {
+		if _, err := os.Stat(filepath.Join(dir, repoName+".toml")); err == nil {
+			return true
+		}
 	}
 	return false
 }

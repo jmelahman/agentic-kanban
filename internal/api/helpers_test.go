@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
 	"github.com/jmelahman/kanban/internal/hooks"
+	previewsvc "github.com/jmelahman/kanban/internal/previews"
 	"github.com/jmelahman/kanban/internal/secrets"
 	"github.com/jmelahman/kanban/internal/session"
 )
@@ -38,6 +40,19 @@ type testEnv struct {
 	cfg      *config.Config
 	srv      *httptest.Server
 	previews *orchestrator.Orchestrator
+	// manifestDir holds out-of-repo manifests (<repo-name>.toml) for repos
+	// that can't carry one; see writeLocalManifest.
+	manifestDir string
+}
+
+// writeLocalManifest installs a server-side manifest for an orchestrator
+// repo name (the board slug), onboarding a repo that carries no manifest.
+func (e *testEnv) writeLocalManifest(repoName, content string) {
+	e.t.Helper()
+	p := filepath.Join(e.manifestDir, repoName+".toml")
+	if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		e.t.Fatal(err)
+	}
 }
 
 func newEnv(t *testing.T) *testEnv {
@@ -77,29 +92,41 @@ func newEnv(t *testing.T) *testEnv {
 	hookRunner := hooks.NewRunner(store)
 	sessionMgr := session.NewManager(store, dockerCli, hookRunner)
 
-	previews, err := orchestrator.New(orchestrator.Options{
+	// Out-of-repo manifests resolve from the developer's real config dir in
+	// production; point them at a per-test dir so the suite can't see (or
+	// depend on) whatever manifests the host happens to have.
+	manifestDir := filepath.Join(dir, "manifests")
+	if err := os.MkdirAll(manifestDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(previewsvc.ManifestDirEnv, manifestDir)
+
+	previewOrch, err := orchestrator.New(orchestrator.Options{
 		DataDir: filepath.Join(dir, "previews"),
 		Addr:    ":7474",
 		// Mirror production wiring (cmd/server): preview.toml or a
-		// [previews] table in .kanban.toml.
+		// [previews] table in .kanban.toml, then a server-side
+		// <board-slug>.toml for repos that can't carry one.
 		ManifestSources: []orchestrator.ManifestSource{
 			{Path: "preview.toml"},
 			{Path: ".kanban.toml", Table: "previews"},
 		},
+		LocalManifestDir: manifestDir,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { previews.Close() })
+	t.Cleanup(func() { previewOrch.Close() })
 
 	handler := api.NewMux(api.Deps{
 		Store: store, Docker: dockerCli, Sessions: sessionMgr, Hooks: hookRunner, Config: cfg,
-		Previews: previews,
+		Previews: previewOrch,
 	})
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	return &testEnv{t: t, dir: dir, repoPath: repoPath, store: store, cfg: cfg, srv: srv, previews: previews}
+	return &testEnv{t: t, dir: dir, repoPath: repoPath, store: store, cfg: cfg, srv: srv, previews: previewOrch,
+		manifestDir: manifestDir}
 }
 
 func (e *testEnv) seedBoard(name string) *db.Board {

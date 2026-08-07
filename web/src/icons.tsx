@@ -198,6 +198,52 @@ export function GaugeIcon(props: IconProps) {
   );
 }
 
+// Preview-dashboard icons: a git branch, a download arrow, an outbound link,
+// and the empty-state rocket.
+export function BranchIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <circle cx="6" cy="6" r="2.5" />
+      <circle cx="6" cy="18" r="2.5" />
+      <circle cx="18" cy="7" r="2.5" />
+      <path d="M6 8.5v7" />
+      <path d="M18 9.5a5 5 0 0 1-5 5H9.5" />
+    </svg>
+  );
+}
+
+export function DownloadIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M12 3v11" />
+      <path d="m7.5 10 4.5 4.5 4.5-4.5" />
+      <path d="M4 19h16" />
+    </svg>
+  );
+}
+
+export function ExternalLinkIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M14 4h6v6" />
+      <path d="M20 4 11 13" />
+      <path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4" />
+    </svg>
+  );
+}
+
+export function RocketIcon(props: IconProps) {
+  return (
+    <svg {...baseProps(props)}>
+      <path d="M12 2c3 2.4 4.8 6.2 4.8 10.5L15 16H9l-1.8-3.5C7.2 8.2 9 4.4 12 2Z" />
+      <circle cx="12" cy="9.5" r="1.6" />
+      <path d="M7.4 12 4 15.5V19l3.3-1.6" />
+      <path d="M16.6 12 20 15.5V19l-3.3-1.6" />
+      <path d="M10.5 19.5c.5 1.2 1 1.9 1.5 2.5.5-.6 1-1.3 1.5-2.5" />
+    </svg>
+  );
+}
+
 export function FullscreenEnterIcon(props: IconProps) {
   return (
     <svg {...baseProps(props)}>

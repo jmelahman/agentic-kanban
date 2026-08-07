@@ -25,6 +25,7 @@ import (
 	"github.com/jmelahman/kanban/internal/harness"
 	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
+	"github.com/jmelahman/kanban/internal/previews"
 	"github.com/jmelahman/kanban/internal/session"
 	"github.com/jmelahman/kanban/internal/slug"
 	"github.com/jmelahman/kanban/internal/tasks"
@@ -223,7 +224,8 @@ func (h *handlers) moveBoard(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) deleteBoard(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r, "id")
-	if _, err := h.store.GetBoard(r.Context(), id); err != nil {
+	board, err := h.store.GetBoard(r.Context(), id)
+	if err != nil {
 		h.httpError(w, err, 404)
 		return
 	}
@@ -240,6 +242,15 @@ func (h *handlers) deleteBoard(w http.ResponseWriter, r *http.Request) {
 	if err := h.store.DeleteBoard(r.Context(), id); err != nil {
 		h.httpError(w, err, 500)
 		return
+	}
+	// The board's preview deployments outlive its row otherwise: running
+	// backends, the mirror clone, artifacts, state dirs, and build logs.
+	// Best-effort — the board is already gone, and a board that never
+	// deployed has no repo registered (ErrNotFound).
+	if h.previews != nil {
+		if err := h.previews.DeleteRepo(previews.RepoName(board)); err != nil && !errors.Is(err, orchestrator.ErrNotFound) {
+			log.Printf("delete board %d: delete preview repo: %v", id, err)
+		}
 	}
 	w.WriteHeader(204)
 }

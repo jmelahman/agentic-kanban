@@ -117,7 +117,10 @@ func NewMux(d Deps) http.Handler {
 
 	mux.HandleFunc("GET /api/sessions/{id}/previews", h.listSessionPreviews)
 	mux.HandleFunc("POST /api/sessions/{id}/previews", h.createSessionPreview)
+	mux.HandleFunc("GET /api/previews", h.listPreviews)
+	mux.HandleFunc("POST /api/boards/{id}/previews", h.createBoardPreview)
 	mux.HandleFunc("GET /api/previews/{id}/logs", h.previewLogs)
+	mux.HandleFunc("GET /api/previews/{id}/artifacts/{artifact}/{file}", h.previewArtifact)
 
 	mux.HandleFunc("GET /api/sessions/{id}/pr-detail", h.prDetail)
 

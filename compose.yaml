@@ -57,6 +57,11 @@ services:
       - ${HOME}/code:${HOME}/code
       - ${HOME}/.local/share/kanban:${HOME}/.local/share/kanban
       - ${HOME}/.config/kanban:${HOME}/.config/kanban
+      # Out-of-repo preview manifests (<board-slug>.toml) for boards whose
+      # repo can't carry a preview.toml. Shared with the `preview` CLI's own
+      # manifest dir. Read-only — kanban only ever reads them. Override the
+      # location with KANBAN_PREVIEW_MANIFESTS.
+      - ${HOME}/.config/preview:${HOME}/.config/preview:ro
       # Your git config + global excludes, so the session diff view honors the
       # files you ignore "in all situations". ~/.gitconfig carries
       # core.excludesFile; ~/.config/git is its default target

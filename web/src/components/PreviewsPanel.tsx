@@ -7,6 +7,18 @@ import { Button } from "./Button";
 // content-addressed build of a commit served at its own subdomain by the
 // embedded local-preview orchestrator.
 
+/** Compact byte size for artifact download links ("4.2 MB"). */
+function formatSize(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB"];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i++;
+  }
+  return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+}
+
 const statusColor: Record<Preview["status"], string> = {
   queued: "text-fg-muted",
   building: "text-accent-500",
@@ -54,45 +66,69 @@ export function PreviewsPanel({ session }: { session: Session }) {
         {!previewsQ.isError && previews.length === 0 && (
           <p className="text-fg-muted">
             No previews yet. "deploy tip" builds this branch's latest commit and serves it at its
-            own subdomain. The repo needs a preview.toml at its root.
+            own subdomain. The repo needs a preview.toml at its root — or, for repos that can't
+            carry one, a manifest named for this board's slug in the server's manifest directory.
           </p>
         )}
         <ul className="flex flex-col gap-1">
           {previews.map((p) => (
-            <li
-              key={p.id}
-              className="flex items-center justify-between rounded bg-surface px-2 py-1"
-            >
-              <div>
-                <div className="font-mono text-xs font-medium">{p.short_sha}</div>
-                <div className="text-xs">
-                  <span className={statusColor[p.status]}>{p.status}</span>
-                  {p.process ? <span className="text-fg-muted"> · backend {p.process}</span> : null}
-                  {p.status === "failed" && p.error ? (
-                    <span className="text-danger"> — {p.error}</span>
-                  ) : null}
+            <li key={p.id} className="rounded bg-surface px-2 py-1">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-mono text-xs font-medium">{p.short_sha}</div>
+                  <div className="text-xs">
+                    <span className={statusColor[p.status]}>{p.status}</span>
+                    {p.process ? (
+                      <span className="text-fg-muted"> · backend {p.process}</span>
+                    ) : null}
+                    {p.fe_process ? (
+                      <span className="text-fg-muted"> · frontend {p.fe_process}</span>
+                    ) : null}
+                    {p.status === "failed" && p.error ? (
+                      <span className="text-danger"> — {p.error}</span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <a
-                  className="text-xs text-fg-muted hover:text-fg"
-                  href={`/api/previews/${p.id}/logs`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  logs
-                </a>
-                {p.status === "ready" && p.preview_url && (
+                <div className="flex items-center gap-2">
                   <a
-                    className="text-accent-500"
-                    href={p.preview_url}
+                    className="text-xs text-fg-muted hover:text-fg"
+                    href={`/api/previews/${p.id}/logs`}
                     target="_blank"
                     rel="noreferrer"
                   >
-                    open ↗
+                    logs
                   </a>
-                )}
+                  {p.status === "ready" && p.preview_url && (
+                    <a
+                      className="text-accent-500"
+                      href={p.preview_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      open ↗
+                    </a>
+                  )}
+                </div>
               </div>
+              {/* Downloadable build outputs the manifest declares under
+                  [artifacts.<name>] — CLI binaries and the like, built per
+                  commit and served as files instead of run. */}
+              {p.artifacts?.map((a) => (
+                <div key={a.name} className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span className="text-xs text-fg-muted">{a.name}:</span>
+                  {a.files.map((f) => (
+                    <a
+                      key={f.name}
+                      className="font-mono text-xs text-accent-500 hover:underline"
+                      href={`/api/previews/${p.id}/artifacts/${encodeURIComponent(a.name)}/${encodeURIComponent(f.name)}`}
+                      download={f.name}
+                    >
+                      {f.name}
+                      <span className="text-fg-muted"> ({formatSize(f.size)})</span>
+                    </a>
+                  ))}
+                </div>
+              ))}
             </li>
           ))}
         </ul>

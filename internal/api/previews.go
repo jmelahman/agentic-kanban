@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/jmelahman/local-preview/orchestrator"
@@ -55,17 +58,14 @@ func (h *handlers) previewContext(w http.ResponseWriter, r *http.Request) (sess 
 // maybeAutoDeployPreview requests a preview of the session branch's current
 // tip after an agent finishes a work burst (status → idle). Fire-and-forget:
 // deploys are idempotent per commit, so an unchanged tip is a no-op. Gated
-// on the worktree carrying a preview manifest (preview.toml or a [previews]
-// table in .kanban.toml) so boards that haven't onboarded never accumulate
-// failed deploys, and on KANBAN_PREVIEW_AUTO_DEPLOY.
+// on the board being onboarded — a manifest in the worktree, or an
+// out-of-repo one on the server — so boards that haven't onboarded never
+// accumulate failed deploys, and on KANBAN_PREVIEW_AUTO_DEPLOY.
 func (h *handlers) maybeAutoDeployPreview(sess *db.Session) {
 	if h.previews == nil || sess == nil || sess.BranchName == "" || sess.WorktreePath == "" {
 		return
 	}
 	if !previews.AutoDeployEnabled() {
-		return
-	}
-	if !previews.WorktreeOnboarded(sess.WorktreePath) {
 		return
 	}
 	go func() {
@@ -81,6 +81,11 @@ func (h *handlers) maybeAutoDeployPreview(sess *db.Session) {
 			return
 		}
 		name := previews.RepoName(board)
+		// The onboarding gate needs the repo name (out-of-repo manifests
+		// are keyed by it), hence resolving the board first.
+		if !previews.Onboarded(sess.WorktreePath, name) {
+			return
+		}
 		if _, err := h.previews.RegisterRepo(ctx, name, paths.RepoPath); err != nil {
 			log.Printf("preview auto-deploy: register %s: %v", name, err)
 			return
@@ -132,6 +137,124 @@ func (h *handlers) createSessionPreview(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, 202, deploy)
+}
+
+// dashboardDeploy is one deploy plus the board it belongs to. The
+// orchestrator only knows repo names (derived from board slugs), so kanban
+// maps them back to boards here — the previews dashboard spans every board,
+// unlike the session-scoped endpoints above. Board fields are empty for a
+// deploy whose board has since been renamed or deleted.
+type dashboardDeploy struct {
+	orchestrator.Deploy
+	BoardID   int64  `json:"board_id,omitempty"`
+	BoardName string `json:"board_name,omitempty"`
+	BoardSlug string `json:"board_slug,omitempty"`
+}
+
+// listPreviews returns every preview deploy across all boards, newest
+// first — the previews dashboard's data source.
+func (h *handlers) listPreviews(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	deploys, err := h.previews.Deploys("")
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	boards, err := h.store.ListBoards(r.Context())
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	byRepo := make(map[string]db.Board, len(boards))
+	for _, b := range boards {
+		byRepo[previews.RepoName(&b)] = b
+	}
+	out := make([]dashboardDeploy, 0, len(deploys))
+	for _, d := range deploys {
+		row := dashboardDeploy{Deploy: d}
+		if b, ok := byRepo[d.Repo]; ok {
+			row.BoardID, row.BoardName, row.BoardSlug = b.ID, b.Name, b.Slug
+		}
+		out = append(out, row)
+	}
+	writeJSON(w, 200, out)
+}
+
+// createBoardPreview deploys an arbitrary ref of a board's repo. The
+// session endpoint only ever deploys that session's branch; the dashboard
+// needs to deploy anything the repo has — a base branch, a tag, a SHA.
+func (h *handlers) createBoardPreview(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	board, err := h.store.GetBoard(r.Context(), pathID(r, "id"))
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	body, err := decodeBody[struct {
+		Ref string `json:"ref"`
+	}](r)
+	if err != nil && !errors.Is(err, io.EOF) {
+		h.httpError(w, err, 400)
+		return
+	}
+	ref := strings.TrimSpace(body.Ref)
+	if ref == "" {
+		ref = board.BaseBranch
+	}
+	if ref == "" {
+		h.httpError(w, fmt.Errorf("ref required (board has no base branch)"), 400)
+		return
+	}
+	paths := session.ResolvePaths(board, nil)
+	if !paths.HasRepo {
+		h.httpError(w, fmt.Errorf("board has no git repo to deploy"), 400)
+		return
+	}
+	name := previews.RepoName(board)
+	if _, err := h.previews.RegisterRepo(r.Context(), name, paths.RepoPath); err != nil {
+		h.httpError(w, fmt.Errorf("register repo for previews: %w", err), 500)
+		return
+	}
+	deploy, err := h.previews.RequestDeploy(r.Context(), name, ref, false)
+	if err != nil {
+		h.httpError(w, err, 400)
+		return
+	}
+	writeJSON(w, 202, deploy)
+}
+
+// previewArtifact serves one downloadable file from a ready deploy's
+// [artifacts.<name>] section — a CLI binary or other per-commit build
+// output the manifest publishes instead of running. The orchestrator
+// resolves the on-disk path and rejects anything that isn't a regular file
+// inside the artifact dir, so this handler only has to stream it. Artifacts
+// are content-addressed and immutable, hence the long-lived cache header.
+func (h *handlers) previewArtifact(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	name := r.PathValue("artifact")
+	file := r.PathValue("file")
+	path, err := h.previews.ArtifactFilePath(pathID(r, "id"), name, file)
+	if errors.Is(err, orchestrator.ErrNotFound) {
+		h.httpError(w, fmt.Errorf("artifact %q file %q not found", name, file), 404)
+		return
+	}
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filepath.Base(file)))
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	http.ServeFile(w, r, path)
 }
 
 // previewLogs returns the build-log snapshot for one preview deploy.

@@ -13,6 +13,7 @@ import { DevToolbar } from "@/components/devToolbar/DevToolbar";
 import { useDevToolbarPrefs } from "@/components/devToolbar/preferences";
 import { HeaderMobileMenu } from "@/components/HeaderMobileMenu";
 import { Overview } from "@/components/Overview/Overview";
+import { PreviewsDashboard } from "@/components/PreviewsDashboard";
 import { SessionCounter } from "@/components/SessionCounter";
 import { Tab } from "@/components/Tab";
 import { TerminalsRoot } from "@/components/TerminalsRoot";
@@ -27,12 +28,13 @@ import { useShortcut } from "@/keys/useShortcut";
 import { readActiveBoardId, writeActiveBoardId } from "@/storage";
 
 const VIEW_KEY = "app.view";
-type AppView = "board" | "overview";
+const VIEWS = ["board", "overview", "previews"] as const;
+type AppView = (typeof VIEWS)[number];
 
 function loadInitialView(): AppView {
   try {
     const raw = localStorage.getItem(VIEW_KEY);
-    return raw === "overview" ? "overview" : "board";
+    return VIEWS.find((v) => v === raw) ?? "board";
   } catch {
     return "board";
   }
@@ -158,6 +160,7 @@ export default function App() {
         <nav className="flex shrink-0 self-stretch -my-2">
           <Tab active={view === "overview"} onClick={() => setView("overview")} label="overview" />
           <Tab active={view === "board"} onClick={() => setView("board")} label="board" />
+          <Tab active={view === "previews"} onClick={() => setView("previews")} label="previews" />
         </nav>
         {view === "board" && (
           <select
@@ -264,6 +267,8 @@ export default function App() {
       <main className="min-h-0 flex-1 overflow-hidden">
         {view === "overview" ? (
           <Overview />
+        ) : view === "previews" ? (
+          <PreviewsDashboard />
         ) : activeId != null ? (
           <Board boardId={activeId} />
         ) : noBoards ? (

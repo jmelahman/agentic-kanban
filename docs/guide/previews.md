@@ -32,6 +32,42 @@ and worktree branches are deployable as-is (they share the repo's object
 store). The manifest is always read from the deployed commit, so onboarding
 applies to commits made after it landed.
 
+### Repos you can't change
+
+Some boards track a repo whose upstream won't take a `preview.toml`. Those
+are onboarded from the **server side** instead: drop a manifest named for
+the board's slug in kanban's manifest directory, in the plain `preview.toml`
+schema.
+
+```bash
+# Board "Onyx" (slug: onyx) → the manifest kanban looks for
+~/.config/preview/manifests/onyx.toml
+```
+
+That's local-preview's own manifest directory, so a manifest written for the
+`preview` CLI works in kanban unchanged, and vice versa. It's read from the
+server's disk at build time rather than from the deployed commit — the
+tradeoff for onboarding a repo that can't carry its own contract: the
+manifest doesn't version with the code, so a commit that moves the build
+needs the manifest updated by hand.
+
+In-repo sources win: kanban only falls back to this directory when the
+deployed commit has neither a `preview.toml` nor a `[previews]` table.
+Automatic deploy-on-idle honors it too — a board onboarded this way deploys
+on agent idle like any other.
+
+Set `KANBAN_PREVIEW_MANIFESTS` to point elsewhere (a containerized kanban
+wants a mounted path, not the server user's home).
+
+::: tip
+Previewing an app with real infrastructure — a database, a search engine, a
+model server — is what the manifest's `run_image`, `networks`, and `env`
+keys are for: you run the dependency stack once and every preview's
+processes join its docker network. local-preview's
+[external dependencies](https://jmelahman.github.io/local-preview/guide/external-dependencies)
+guide walks through exactly that.
+:::
+
 ## Using it
 
 Open a ticket's session pane → **previews** tab → **deploy tip**. The deploy
@@ -43,14 +79,70 @@ with no DNS setup.
 Deploys are idempotent per commit — "deploy tip" after new agent commits
 builds only what changed.
 
+## The previews dashboard
+
+The **previews** item in the header opens a dashboard over every deploy on
+the server, across every board — the fleet view the session tab's
+single-branch list can't give you.
+
+Each row carries the board it belongs to, the commit, its branch and author,
+and a status badge that reads the build status until the deploy is ready and
+the live process state after that:
+
+| Badge | Meaning |
+| --- | --- |
+| `queued` / `building` | Waiting for a build slot, or building now. |
+| `ready` | Built. Static preview — served instantly. |
+| `idle` | Built, backend not running — it starts on the first request. |
+| `starting` | A supervised process is warming up. |
+| `running` | Every side is warm. |
+| `failed` | The build failed; the error is on the row, the detail in the logs. |
+| `evicted` | Artifacts were cleaned up. Redeploy to rebuild. |
+
+Rows link out to the live preview, open the build log, and offer any
+[artifacts](#downloadable-artifacts) as downloads. Filter to one board with
+the board picker; the list polls once a second while anything is building or
+starting and every five seconds otherwise.
+
+**deploy** opens a dialog that deploys any ref of any git-linked board — a
+branch, a tag, a bare sha. Leave the ref empty to deploy the board's base
+branch, which is the usual way to get a preview of `main` alongside the
+ticket branches diverging from it.
+
+## Downloadable artifacts
+
+A manifest can also declare build outputs that are published for download
+rather than run — a CLI binary per commit, say — as
+`[artifacts.<name>]` sections:
+
+```toml
+[artifacts.cli]
+path  = "."
+image = "golang:1.26-alpine"
+build = [["go", "build", "-o", "bin/mytool-linux-amd64", "."]]
+files = ["bin/mytool-linux-amd64"]
+```
+
+They're hashed and cached like the other sides, so a commit that doesn't
+touch the artifact's partition reuses the existing build. Ready deploys list
+them in the previews tab as download links; files are addressed by base
+name, so base names must be unique within one artifact. Each artifact's
+build output also gets its own section in the deploy's build logs.
+
+::: tip
+Artifacts need local-preview v0.1.2 or newer. Earlier versions reject the
+whole manifest — `unknown keys: artifacts.<name>` — failing every deploy of
+a repo that declares them.
+:::
+
 ## Automatic deploys
 
 When an agent finishes a burst of work (its session transitions to idle),
 kanban automatically deploys the branch tip. Deploys are idempotent per
 commit, so an unchanged tip is a no-op — and the trigger only fires for
-worktrees that carry a `preview.toml`, so boards that haven't onboarded
-never accumulate failed deploys. Disable with
-`KANBAN_PREVIEW_AUTO_DEPLOY=0`.
+boards that are onboarded (a manifest in the worktree, or a server-side one
+named for the board slug), so boards that haven't onboarded never accumulate
+failed deploys. Disable with `KANBAN_PREVIEW_AUTO_DEPLOY=0`.
 
 ## Reproducible builds
 
@@ -72,8 +164,11 @@ discovery — the repo's explicit contract wins.
 | `KANBAN_PREVIEW_DOMAIN` | `preview.localhost` | Base domain previews are served under. Point a wildcard DNS record at the kanban server to use a real domain. |
 | `KANBAN_PREVIEW_BUILDS` | `devcontainer` | Set to `host` to run build steps on the kanban host instead of in the repo's devcontainer. |
 | `KANBAN_PREVIEW_AUTO_DEPLOY` | on | Set to `0` to disable deploy-on-idle. |
+| `KANBAN_PREVIEW_MANIFESTS` | `$PREVIEW_CONFIG_DIR/manifests`, else `~/.config/preview/manifests` | Directory searched for out-of-repo manifests (`<board-slug>.toml`) for repos that can't carry their own. |
 
 Preview state (builds, artifacts, backend state, its own SQLite) lives under
 `<data-dir>/previews/`. With `--in-memory` it moves to a temp dir and an
-ephemeral DB. If the orchestrator can't start (e.g. `git` missing), kanban
+ephemeral DB. Deleting a board tears its previews down with it — running
+backends are stopped and the board's mirror clone, artifacts, state dirs,
+and build logs are removed. If the orchestrator can't start (e.g. `git` missing), kanban
 runs normally and the preview endpoints report unavailable.

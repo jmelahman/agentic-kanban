@@ -377,6 +377,7 @@ func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool, dock
 	}
 
 	domain := os.Getenv("KANBAN_PREVIEW_DOMAIN")
+	manifestDir := previews.ManifestDir()
 	orch, err := orchestrator.New(orchestrator.Options{
 		DataDir:       dataDir,
 		DBPath:        dbPath,
@@ -390,6 +391,14 @@ func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool, dock
 			{Path: "preview.toml"},
 			{Path: ".kanban.toml", Table: "previews"},
 		},
+		// Repos that can't carry a manifest upstream get one on the server,
+		// named for the board slug. Shared with the `preview` CLI's own
+		// manifest dir, so a manifest written for one works in the other.
+		LocalManifestDir: manifestDir,
+		// Kanban triggers deploys itself — explicitly (the previews panel)
+		// and when an agent reports idle — so the orchestrator's own
+		// branch-polling loop has nothing to find. Negative disables it.
+		PollInterval: -1,
 	})
 	if err != nil {
 		log.Printf("preview orchestrator disabled: %v", err)
@@ -398,8 +407,19 @@ func newPreviewOrchestrator(cfg *config.Config, addr string, inMemory bool, dock
 	if domain == "" {
 		domain = "preview.localhost"
 	}
-	log.Printf("preview orchestrator enabled: previews at *.%s (builds: %s)", domain, buildMode)
+	log.Printf("preview orchestrator enabled: previews at *.%s (builds: %s, manifests: %s)",
+		domain, buildMode, manifestDirLabel(manifestDir))
 	return orch
+}
+
+// manifestDirLabel describes the out-of-repo manifest lookup for the
+// startup log: boards are onboarded in-repo unless this directory holds a
+// <board-slug>.toml, so it's worth surfacing where kanban is looking.
+func manifestDirLabel(dir string) string {
+	if dir == "" {
+		return "in-repo only"
+	}
+	return "in-repo, " + dir
 }
 
 // buildAPIBase returns the base URL session containers should use to call the

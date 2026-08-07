@@ -156,21 +156,52 @@ export type PortAllocation = {
   proxy_active: boolean;
 };
 
+/** One downloadable file of a deploy's [artifacts.<name>] section. */
+export type PreviewArtifactFile = {
+  name: string;
+  size: number;
+};
+
+/** A named set of per-commit build outputs published for download. */
+export type PreviewArtifact = {
+  name: string;
+  hash: string;
+  files: PreviewArtifactFile[];
+};
+
 export type Preview = {
   id: number;
   repo: string;
   sha: string;
   short_sha: string;
   ref?: string;
+  branch?: string;
+  author_name?: string;
+  author_email?: string;
   fe_hash?: string;
   be_hash?: string;
   status: "queued" | "building" | "ready" | "failed" | "evicted";
   error?: string;
   attempt_count: number;
   preview_url?: string;
+  /** Live backend state once ready: running, starting, or idle. */
   process?: string;
+  /** Same, for a process-mode frontend; absent for static bundles. */
+  fe_process?: string;
+  artifacts?: PreviewArtifact[];
   created_at: string;
   updated_at: string;
+};
+
+/**
+ * A deploy from the cross-board dashboard feed, joined to the board that owns
+ * it. The board fields are absent when a deploy outlives its board (renamed
+ * or deleted) — the orchestrator only ever knows the repo name.
+ */
+export type DashboardPreview = Preview & {
+  board_id?: number;
+  board_name?: string;
+  board_slug?: string;
 };
 
 export type AppSettings = {
@@ -340,6 +371,18 @@ export const api = {
   listPreviews: (sessionId: number) => request<Preview[]>(`/api/sessions/${sessionId}/previews`),
   createPreview: (sessionId: number) =>
     request<Preview>(`/api/sessions/${sessionId}/previews`, { method: "POST" }),
+
+  listAllPreviews: () => request<DashboardPreview[]>("/api/previews"),
+  previewLogs: async (previewId: number): Promise<string> => {
+    const res = await fetch(`/api/previews/${previewId}/logs`);
+    if (!res.ok) throw new ApiError(res.status, `HTTP ${res.status}`, "");
+    return res.text();
+  },
+  createBoardPreview: (boardId: number, ref?: string) =>
+    request<Preview>(`/api/boards/${boardId}/previews`, {
+      method: "POST",
+      body: JSON.stringify({ ref: ref ?? "" }),
+    }),
 
   getSettings: () => request<AppSettings>("/api/settings"),
   updateSettings: (input: { harness?: string; worktrees_root?: string; sign_commits?: boolean }) =>

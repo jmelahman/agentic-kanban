@@ -14,10 +14,21 @@ type Common = {
   busy?: boolean;
 };
 
-export function Modal({ open, onClose, title, children, busy = false }: Common) {
+// Modals default to form width. `wide` is for content that reads badly in a
+// narrow column — log panes, diffs, tables.
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  busy = false,
+  wide = false,
+}: Common & { wide?: boolean }) {
   return (
     <DialogShell open={open} onClose={onClose} busy={busy} flavor="modal">
-      <div className="relative w-[520px] max-w-[calc(100vw-2rem)] rounded border border-border bg-bg shadow-lg">
+      <div
+        className={`relative ${wide ? "w-[820px]" : "w-[520px]"} max-w-[calc(100vw-2rem)] rounded border border-border bg-bg shadow-lg`}
+      >
         <DialogHeader title={title} onClose={onClose} busy={busy} />
         {children}
       </div>
