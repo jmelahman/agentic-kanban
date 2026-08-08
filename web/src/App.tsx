@@ -153,7 +153,7 @@ export default function App() {
     <div className="flex h-full min-w-0 flex-col">
       <header className="flex flex-nowrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2 sm:flex-wrap">
         <h1
-          className={`hidden text-lg font-semibold sm:block ${isPrideMonth() ? "rainbow-text" : ""}`}
+          className={`hidden text-lg font-semibold md:block ${isPrideMonth() ? "rainbow-text" : ""}`}
         >
           Kanban
         </h1>
