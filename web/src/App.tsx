@@ -151,7 +151,7 @@ export default function App() {
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <header className="flex flex-nowrap items-center gap-x-3 gap-y-2 border-b border-border px-3 py-2 sm:flex-wrap">
+      <header className="flex flex-nowrap items-center gap-x-3 gap-y-2 border-b border-border py-2 pr-3 sm:flex-wrap md:pl-3">
         <h1
           className={`hidden text-lg font-semibold md:block ${isPrideMonth() ? "rainbow-text" : ""}`}
         >
