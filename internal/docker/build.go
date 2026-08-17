@@ -32,6 +32,16 @@ type BuildStep struct {
 	// User is "uid:gid" so files created in the mount stay owned by the
 	// kanban host user (a root-owned scratch dir breaks artifact publishing).
 	User string
+	// Mounts are extra volume mounts alongside HostDir — the devcontainer's
+	// named cache volumes, so a repeat build finds a warm toolchain cache.
+	Mounts []BuildMount
+}
+
+// BuildMount is one extra mount of a build step. Source is a named volume
+// (or a host path) and Target its path inside the container.
+type BuildMount struct {
+	Source string
+	Target string
 }
 
 // EnsureBuildImage resolves a devcontainer config (discovered at root, an
@@ -52,6 +62,10 @@ func (c *Client) RunBuildStep(ctx context.Context, step BuildStep, out io.Writer
 	// When kanban itself runs in a container the daemon still interprets
 	// bind sources as host paths.
 	hostDir := TranslateToHost(step.HostDir)
+	binds := []string{hostDir + ":" + buildMountTarget}
+	for _, m := range step.Mounts {
+		binds = append(binds, m.Source+":"+m.Target)
+	}
 
 	created, err := c.cli.ContainerCreate(ctx, &container.Config{
 		Image: step.Image,
@@ -63,7 +77,7 @@ func (c *Client) RunBuildStep(ctx context.Context, step BuildStep, out io.Writer
 		Env:        step.Env,
 		User:       step.User,
 	}, &container.HostConfig{
-		Binds: []string{hostDir + ":" + buildMountTarget},
+		Binds: binds,
 	}, nil, nil, "")
 	if err != nil {
 		return fmt.Errorf("create build container: %w", err)

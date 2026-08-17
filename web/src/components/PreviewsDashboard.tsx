@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, type Board, type DashboardPreview, type PreviewArtifact } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-import { BranchIcon, DownloadIcon, ExternalLinkIcon, RocketIcon } from "@/icons";
+import { BranchIcon, DownloadIcon, ExternalLinkIcon, RocketIcon, TrashIcon } from "@/icons";
 import { Button } from "./Button";
-import { Modal } from "./Modal";
+import { ConfirmModal, Modal } from "./Modal";
 
 // The previews dashboard: every deploy the embedded local-preview
 // orchestrator knows about, across every board, plus the controls to deploy
@@ -319,7 +319,19 @@ function DeployModal({ boards, onClose }: { boards: Board[]; onClose: () => void
 export function PreviewsDashboard() {
   const [deployOpen, setDeployOpen] = useState(false);
   const [logsId, setLogsId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DashboardPreview | null>(null);
   const [boardFilter, setBoardFilter] = useState<number | "all">("all");
+
+  const qc = useQueryClient();
+  const invalidate = () => qc.invalidateQueries({ queryKey: queryKeys.allPreviews });
+  const stopMut = useMutation({ mutationFn: api.stopPreview, onSuccess: invalidate });
+  const deleteMut = useMutation({
+    mutationFn: api.deletePreview,
+    onSuccess: () => {
+      setDeleteTarget(null);
+      invalidate();
+    },
+  });
 
   const boardsQ = useQuery({ queryKey: queryKeys.boards, queryFn: api.listBoards });
   const previewsQ = useQuery({
@@ -430,12 +442,16 @@ export function PreviewsDashboard() {
                 ]
                   .filter(Boolean)
                   .join("\n");
+                const state = deployState(p);
+                // Stopping only means something while something is up; a
+                // stopped deploy stays listed and cold-starts on next request.
+                const stoppable = state === "running" || state === "starting";
                 return (
                   <li
                     key={p.id}
                     className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-3 transition-colors hover:bg-surface-2/40"
                   >
-                    <StatusBadge state={deployState(p)} />
+                    <StatusBadge state={state} />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                         <span className="text-sm font-medium">{p.board_name ?? p.repo}</span>
@@ -483,6 +499,17 @@ export function PreviewsDashboard() {
                     >
                       logs
                     </button>
+                    {stoppable && (
+                      <button
+                        type="button"
+                        onClick={() => stopMut.mutate(p.id)}
+                        disabled={stopMut.isPending && stopMut.variables === p.id}
+                        title="Stop this deploy's processes — it restarts on the next request"
+                        className={`${pillClass} disabled:opacity-50`}
+                      >
+                        stop
+                      </button>
+                    )}
                     {p.preview_url ? (
                       <a
                         href={p.preview_url}
@@ -503,6 +530,15 @@ export function PreviewsDashboard() {
                     >
                       {timeAgo(p.created_at)}
                     </time>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteTarget(p)}
+                      title="Delete this deploy"
+                      aria-label={`Delete deploy ${p.short_sha}`}
+                      className="shrink-0 rounded p-1 text-fg-muted transition-colors duration-150 hover:bg-surface-3 hover:text-danger"
+                    >
+                      <TrashIcon size={13} />
+                    </button>
                   </li>
                 );
               })}
@@ -512,6 +548,17 @@ export function PreviewsDashboard() {
       </div>
       {deployOpen && <DeployModal boards={deployableBoards} onClose={() => setDeployOpen(false)} />}
       {logsPreview && <BuildLogModal preview={logsPreview} onClose={() => setLogsId(null)} />}
+      <ConfirmModal
+        open={deleteTarget != null}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete deployment"
+        description={`Delete ${deleteTarget?.board_name ?? deleteTarget?.repo} @ ${deleteTarget?.short_sha}?`}
+        consequence="Its processes stop and any build output no other deploy shares is reclaimed. Deploying the same commit again rebuilds it."
+        onConfirm={() => deleteTarget && deleteMut.mutate(deleteTarget.id)}
+        confirmLabel="delete"
+        confirmPendingLabel="deleting…"
+        pending={deleteMut.isPending}
+      />
     </div>
   );
 }

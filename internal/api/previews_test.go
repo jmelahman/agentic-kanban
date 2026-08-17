@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -584,4 +585,43 @@ func TestBoardPreviewWithoutRepo(t *testing.T) {
 	resp := e.post(fmt.Sprintf("/api/boards/%d/previews", board.ID), map[string]string{"ref": "main"})
 	assertStatus(t, resp, 400)
 	readBody(t, resp)
+}
+
+// TestStopAndDeletePreview: the dashboard's per-row lifecycle controls. Stop
+// leaves the deploy listed (it cold-starts again on the next request);
+// delete removes it and reclaims what nothing else references.
+func TestStopAndDeletePreview(t *testing.T) {
+	e := newEnv(t)
+	seedPreviewableRepo(t, e)
+	board := e.seedBoard("Demo Board")
+
+	resp := e.post(fmt.Sprintf("/api/boards/%d/previews", board.ID), map[string]string{})
+	assertStatus(t, resp, 202)
+	deploy := decodeJSON[orchestrator.Deploy](t, resp)
+	if d := awaitTerminal(t, e, deploy.ID); d.Status != orchestrator.StatusReady {
+		logs, _ := e.previews.DeployLogs(deploy.ID)
+		t.Fatalf("deploy failed: %s\n%s", d.Error, logs)
+	}
+
+	// Stopping a deploy that isn't running is a no-op, not an error — the
+	// UI only offers it while something is up, but the endpoint is idempotent.
+	resp = e.post(fmt.Sprintf("/api/previews/%d/stop", deploy.ID), nil)
+	assertStatus(t, resp, 204)
+	if _, err := e.previews.Deploy(deploy.ID); err != nil {
+		t.Fatalf("stopped deploy should still exist: %v", err)
+	}
+
+	resp = e.delete(fmt.Sprintf("/api/previews/%d", deploy.ID))
+	assertStatus(t, resp, 204)
+	if _, err := e.previews.Deploy(deploy.ID); !errors.Is(err, orchestrator.ErrNotFound) {
+		t.Fatalf("deploy %d survived delete: %v", deploy.ID, err)
+	}
+	rows := decodeJSON[[]map[string]any](t, e.get("/api/previews"))
+	if len(rows) != 0 {
+		t.Fatalf("expected an empty dashboard after delete, got %+v", rows)
+	}
+
+	// Unknown ids are 404s, not silent successes.
+	assertStatus(t, e.post("/api/previews/9999/stop", nil), 404)
+	assertStatus(t, e.delete("/api/previews/9999"), 404)
 }

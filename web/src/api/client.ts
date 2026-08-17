@@ -383,6 +383,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ ref: ref ?? "" }),
     }),
+  stopPreview: (previewId: number) =>
+    request<void>(`/api/previews/${previewId}/stop`, { method: "POST" }),
+  deletePreview: (previewId: number) =>
+    request<void>(`/api/previews/${previewId}`, { method: "DELETE" }),
 
   getSettings: () => request<AppSettings>("/api/settings"),
   updateSettings: (input: { harness?: string; worktrees_root?: string; sign_commits?: boolean }) =>

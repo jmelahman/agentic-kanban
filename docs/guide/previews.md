@@ -104,6 +104,16 @@ Rows link out to the live preview, open the build log, and offer any
 the board picker; the list polls once a second while anything is building or
 starting and every five seconds otherwise.
 
+Two lifecycle controls sit on each row:
+
+- **stop** — shown while a deploy is `starting` or `running`. It stops the
+  supervised processes and leaves the deploy in place, so it drops back to
+  `idle` and cold-starts on the next request. Processes are shared per
+  artifact hash, so a sibling deploy built to the same output stops too.
+- The trash icon **deletes** the deploy, reclaiming any build output no
+  surviving deploy still references. Sides are content-addressed, so a half
+  another deploy shares is kept. Redeploying the commit rebuilds it.
+
 **deploy** opens a dialog that deploys any ref of any git-linked board — a
 branch, a tag, a bare sha. Leave the ref empty to deploy the board's base
 branch, which is the usual way to get a preview of `main` alongside the
@@ -150,8 +160,11 @@ Build steps run inside the board repo's **devcontainer** by default: the
 devcontainer config is read from the deployed commit's tree (old commits
 build with the environment they shipped with), resolved through kanban's
 content-addressed image cache (unchanged configs reuse the image), and each
-step runs in a one-shot container with the extracted tree mounted. Repos
-without a devcontainer build in the builtin session image. Set
+step runs in a one-shot container with the extracted tree mounted. The
+devcontainer's named cache volumes are mounted alongside it and `HOME` points
+at the remote user's home, so Go and npm resolve their caches onto the same
+volumes the interactive session container uses and a repeat build starts
+warm. Repos without a devcontainer build in the builtin session image. Set
 `KANBAN_PREVIEW_BUILDS=host` to run build steps directly on the kanban host
 instead (or previews fall back to host builds automatically when Docker is
 unavailable). A manifest-declared `image` on a side beats devcontainer

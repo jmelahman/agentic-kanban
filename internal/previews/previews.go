@@ -102,11 +102,15 @@ func Onboarded(worktreeDir, repoName string) bool {
 }
 
 // DockerRunner executes preview build steps inside the target repo's
-// devcontainer. The config is read from the extracted commit tree — old
-// commits build with the environment they shipped with — and resolved
-// through kanban's content-addressed image cache, so unchanged configs
-// reuse the image. Repos without a devcontainer build in the builtin
-// session image.
+// devcontainer, resolved at the deployed commit — old commits build with the
+// environment they shipped with.
+//
+// The orchestrator resolves the devcontainer itself and hands it over on the
+// RunSpec (image, named cache volumes, remote home); this runner prefers that
+// and only falls back to reading the extracted tree when the orchestrator
+// declined — most importantly for Dockerfile-built devcontainers, which it
+// doesn't support and kanban's content-addressed image cache does. Repos
+// without a devcontainer at all build in the builtin session image.
 type DockerRunner struct {
 	docker *docker.Client
 }
@@ -130,16 +134,37 @@ func (r *DockerRunner) buildUser(ctx context.Context) string {
 
 // Run implements orchestrator.Runner.
 func (r *DockerRunner) Run(ctx context.Context, spec orchestrator.RunSpec, out io.Writer) error {
-	// A manifest-declared image is the repo's explicit contract and beats
-	// devcontainer discovery.
-	cfg := &docker.DevcontainerConfig{Image: spec.Image}
-	if spec.Image == "" {
+	// HOME defaults to a writable scratch path: the build user is rarely the
+	// image's own user, so its home may not exist or be writable.
+	env := []string{"HOME=/tmp"}
+	var mounts []docker.BuildMount
+
+	var cfg *docker.DevcontainerConfig
+	switch {
+	case spec.Image != "":
+		// A manifest-declared image is the repo's explicit contract and beats
+		// devcontainer discovery.
+		cfg = &docker.DevcontainerConfig{Image: spec.Image}
+	case spec.Devcontainer.Image != "":
+		cfg = &docker.DevcontainerConfig{Image: spec.Devcontainer.Image}
+		// Mount the devcontainer's own named cache volumes and point HOME at
+		// the remote user's home, so go/npm resolve their caches onto those
+		// volumes and repeat builds start warm — the same volumes the
+		// interactive session container uses.
+		if spec.Devcontainer.Home != "" {
+			env = []string{"HOME=" + spec.Devcontainer.Home}
+		}
+		for _, m := range spec.Devcontainer.Mounts {
+			mounts = append(mounts, docker.BuildMount{Source: m.Source, Target: m.Target})
+		}
+	default:
 		loaded, err := docker.LoadDevcontainer(spec.ScratchDir)
 		if err != nil {
 			return fmt.Errorf("load devcontainer config: %w", err)
 		}
 		cfg = loaded
 	}
+
 	image, err := r.docker.EnsureBuildImage(ctx, cfg, spec.ScratchDir, "preview-"+spec.RepoName)
 	if err != nil {
 		return fmt.Errorf("resolve build image: %w", err)
@@ -150,8 +175,9 @@ func (r *DockerRunner) Run(ctx context.Context, spec orchestrator.RunSpec, out i
 		HostDir: spec.ScratchDir,
 		Dir:     spec.Dir,
 		Argv:    spec.Argv,
-		Env:     []string{"HOME=/tmp"},
+		Env:     env,
 		User:    r.buildUser(ctx),
+		Mounts:  mounts,
 	}, out); err != nil {
 		return fmt.Errorf("devcontainer build: %w", err)
 	}

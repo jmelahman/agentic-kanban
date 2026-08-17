@@ -257,6 +257,47 @@ func (h *handlers) previewArtifact(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, path)
 }
 
+// stopPreview stops the supervised processes backing a deploy without
+// removing it: the deploy stays listed and cold-starts again on the next
+// request to its URL. Processes are shared per artifact hash, so sibling
+// deploys built to the same output stop with it.
+func (h *handlers) stopPreview(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	err := h.previews.StopDeploy(pathID(r, "id"))
+	if errors.Is(err, orchestrator.ErrNotFound) {
+		h.httpError(w, fmt.Errorf("preview not found"), 404)
+		return
+	}
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	w.WriteHeader(204)
+}
+
+// deletePreview removes a deploy and reclaims the artifacts and process
+// state no surviving deploy still references. Halves shared with another
+// deploy (previews are content-addressed per side) are kept.
+func (h *handlers) deletePreview(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	err := h.previews.DeleteDeploy(pathID(r, "id"))
+	if errors.Is(err, orchestrator.ErrNotFound) {
+		h.httpError(w, fmt.Errorf("preview not found"), 404)
+		return
+	}
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	w.WriteHeader(204)
+}
+
 // previewLogs returns the build-log snapshot for one preview deploy.
 func (h *handlers) previewLogs(w http.ResponseWriter, r *http.Request) {
 	if h.previews == nil {
