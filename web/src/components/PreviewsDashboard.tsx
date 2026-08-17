@@ -2,7 +2,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, type Board, type DashboardPreview, type PreviewArtifact } from "@/api/client";
 import { queryKeys } from "@/api/keys";
-import { BranchIcon, DownloadIcon, ExternalLinkIcon, RocketIcon, TrashIcon } from "@/icons";
+import {
+  BranchIcon,
+  DatabaseIcon,
+  DownloadIcon,
+  ExternalLinkIcon,
+  RocketIcon,
+  TrashIcon,
+} from "@/icons";
 import { Button } from "./Button";
 import { ConfirmModal, Modal } from "./Modal";
 
@@ -316,8 +323,179 @@ function DeployModal({ boards, onClose }: { boards: Board[]; onClose: () => void
   );
 }
 
+/**
+ * Where the orchestrator's disk goes, and the policy that bounds it. Every
+ * commit previewed leaves artifacts, backend state, and logs behind, so
+ * without a policy this only ever grows. Sizes are measured by walking the
+ * data dir, so they're fetched on open rather than polled.
+ */
+function StorageModal({ onClose }: { onClose: () => void }) {
+  const qc = useQueryClient();
+  const storageQ = useQuery({ queryKey: queryKeys.previewStorage, queryFn: api.previewStorage });
+  const policyQ = useQuery({ queryKey: queryKeys.previewRetention, queryFn: api.previewRetention });
+
+  // Empty means "unlimited" here, so the fields stay strings until saved —
+  // a bare 0 in a number input is indistinguishable from a cleared one.
+  const [deploys, setDeploys] = useState<string | null>(null);
+  const [days, setDays] = useState<string | null>(null);
+  const asField = (n: number) => (n > 0 ? String(n) : "");
+  const deploysValue = deploys ?? asField(policyQ.data?.max_deploys_per_repo ?? 0);
+  const daysValue = days ?? asField(policyQ.data?.max_age_days ?? 0);
+
+  const saveMut = useMutation({
+    mutationFn: () =>
+      api.setPreviewRetention({
+        max_deploys_per_repo: Math.max(0, Number(deploysValue) || 0),
+        max_age_days: Math.max(0, Number(daysValue) || 0),
+      }),
+    onSuccess: (p) => {
+      qc.setQueryData(queryKeys.previewRetention, p);
+      setDeploys(null);
+      setDays(null);
+    },
+  });
+  const gcMut = useMutation({
+    mutationFn: api.collectPreviewGarbage,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.previewStorage });
+      qc.invalidateQueries({ queryKey: queryKeys.allPreviews });
+    },
+  });
+
+  const s = storageQ.data;
+  const categories = s
+    ? [
+        ["artifacts", s.artifacts_bytes],
+        ["state", s.state_bytes],
+        ["logs", s.logs_bytes],
+        ["git mirrors", s.mirror_bytes],
+        ["staging", s.tmp_bytes],
+        ["database", s.db_bytes],
+      ]
+    : [];
+  const repos = [...(s?.repos ?? [])].sort((a, b) => b.total_bytes - a.total_bytes);
+
+  return (
+    <Modal open wide onClose={onClose} title="Storage & retention" busy={saveMut.isPending}>
+      <div className="flex flex-col gap-4 p-4">
+        <section>
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
+              Disk usage
+            </h3>
+            <span className="font-mono text-sm tabular-nums">
+              {storageQ.isPending ? "…" : formatBytes(s?.total_bytes ?? 0)}
+            </span>
+          </div>
+          {storageQ.isError ? (
+            <p className="text-xs text-danger">{String(storageQ.error)}</p>
+          ) : (
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3">
+              {categories.map(([label, bytes]) => (
+                <div key={label} className="flex items-baseline justify-between gap-2 text-xs">
+                  <span className="text-fg-muted">{label}</span>
+                  <span className="font-mono tabular-nums">{formatBytes(Number(bytes))}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {repos.length > 0 && (
+            <ul className="mt-3 divide-y divide-border rounded border border-border">
+              {repos.map((r) => (
+                <li
+                  key={r.repo}
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-2 py-1.5 text-xs"
+                >
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {r.board_name ?? r.repo}
+                  </span>
+                  <span className="text-fg-muted">
+                    {r.deploys} deploy{r.deploys === 1 ? "" : "s"}
+                    {r.evicted_deploys > 0 && `, ${r.evicted_deploys} evicted`}
+                  </span>
+                  <span className="w-20 shrink-0 text-right font-mono tabular-nums">
+                    {formatBytes(r.total_bytes)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="border-t border-border pt-4">
+          <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-fg-muted">
+            Retention
+          </h3>
+          <p className="mb-3 text-xs text-fg-muted">
+            Sweeps run hourly. Evicting reclaims a deploy's build output but keeps its row —
+            redeploying the same commit rebuilds it. A board's newest ready deploy is never evicted.
+            Leave a field empty for no limit.
+          </p>
+          <form
+            className="flex flex-wrap items-end gap-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveMut.mutate();
+            }}
+          >
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Deploys per board</span>
+              <input
+                type="number"
+                min={0}
+                value={deploysValue}
+                onChange={(e) => setDeploys(e.target.value)}
+                placeholder="unlimited"
+                className="w-36 rounded bg-surface px-2 py-1 text-sm text-fg placeholder:text-fg-muted/60"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-fg-muted">Max age (days)</span>
+              <input
+                type="number"
+                min={0}
+                value={daysValue}
+                onChange={(e) => setDays(e.target.value)}
+                placeholder="unlimited"
+                className="w-36 rounded bg-surface px-2 py-1 text-sm text-fg placeholder:text-fg-muted/60"
+              />
+            </label>
+            <Button
+              type="submit"
+              variant="primary"
+              pending={saveMut.isPending}
+              idleLabel="save"
+              pendingLabel="saving…"
+            />
+          </form>
+          {saveMut.error && <p className="mt-2 text-xs text-danger">{String(saveMut.error)}</p>}
+        </section>
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2">
+        <p className="min-w-0 flex-1 truncate text-xs text-fg-muted">
+          {gcMut.error ? (
+            <span className="text-danger">{String(gcMut.error)}</span>
+          ) : gcMut.data ? (
+            `Evicted ${gcMut.data.evicted.length}, freed ${formatBytes(gcMut.data.freed_bytes)}.`
+          ) : (
+            "Sweeping now also clears stale staging leftovers."
+          )}
+        </p>
+        <Button
+          type="button"
+          onClick={() => gcMut.mutate()}
+          pending={gcMut.isPending}
+          idleLabel="sweep now"
+          pendingLabel="sweeping…"
+        />
+      </div>
+    </Modal>
+  );
+}
+
 export function PreviewsDashboard() {
   const [deployOpen, setDeployOpen] = useState(false);
+  const [storageOpen, setStorageOpen] = useState(false);
   const [logsId, setLogsId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DashboardPreview | null>(null);
   const [boardFilter, setBoardFilter] = useState<number | "all">("all");
@@ -384,6 +562,15 @@ export function PreviewsDashboard() {
                 </option>
               ))}
             </select>
+            <button
+              type="button"
+              onClick={() => setStorageOpen(true)}
+              title="Storage & retention"
+              aria-label="Storage and retention"
+              className="rounded p-1.5 text-fg-muted transition-colors duration-150 hover:bg-surface-2 hover:text-fg"
+            >
+              <DatabaseIcon size={16} />
+            </button>
             <Button variant="primary" size="lg" onClick={() => setDeployOpen(true)}>
               deploy
             </Button>
@@ -547,6 +734,7 @@ export function PreviewsDashboard() {
         )}
       </div>
       {deployOpen && <DeployModal boards={deployableBoards} onClose={() => setDeployOpen(false)} />}
+      {storageOpen && <StorageModal onClose={() => setStorageOpen(false)} />}
       {logsPreview && <BuildLogModal preview={logsPreview} onClose={() => setLogsId(null)} />}
       <ConfirmModal
         open={deleteTarget != null}

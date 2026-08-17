@@ -204,6 +204,46 @@ export type DashboardPreview = Preview & {
   board_slug?: string;
 };
 
+/** One board's share of the preview orchestrator's disk usage. */
+export type PreviewStorageRepo = {
+  repo: string;
+  artifacts_bytes: number;
+  state_bytes: number;
+  logs_bytes: number;
+  mirror_bytes: number;
+  total_bytes: number;
+  deploys: number;
+  evicted_deploys: number;
+  board_id?: number;
+  board_name?: string;
+  board_slug?: string;
+};
+
+/** What the preview orchestrator occupies on disk, by category and board. */
+export type PreviewStorage = {
+  total_bytes: number;
+  artifacts_bytes: number;
+  state_bytes: number;
+  logs_bytes: number;
+  mirror_bytes: number;
+  tmp_bytes: number;
+  db_bytes: number;
+  repos: PreviewStorageRepo[];
+};
+
+/** Limits on how many preview deploys are kept. 0 means unlimited. */
+export type RetentionPolicy = {
+  max_deploys_per_repo: number;
+  max_age_days: number;
+};
+
+/** The outcome of one retention sweep. */
+export type GCResult = {
+  policy: RetentionPolicy;
+  evicted: { id: number; repo: string; short_sha: string; branch?: string }[];
+  freed_bytes: number;
+};
+
 export type AppSettings = {
   harness: string;
   worktrees_root: string;
@@ -387,6 +427,14 @@ export const api = {
     request<void>(`/api/previews/${previewId}/stop`, { method: "POST" }),
   deletePreview: (previewId: number) =>
     request<void>(`/api/previews/${previewId}`, { method: "DELETE" }),
+  previewStorage: () => request<PreviewStorage>("/api/previews/storage"),
+  previewRetention: () => request<RetentionPolicy>("/api/previews/retention"),
+  setPreviewRetention: (policy: RetentionPolicy) =>
+    request<RetentionPolicy>("/api/previews/retention", {
+      method: "PUT",
+      body: JSON.stringify(policy),
+    }),
+  collectPreviewGarbage: () => request<GCResult>("/api/previews/gc", { method: "POST" }),
 
   getSettings: () => request<AppSettings>("/api/settings"),
   updateSettings: (input: { harness?: string; worktrees_root?: string; sign_commits?: boolean }) =>

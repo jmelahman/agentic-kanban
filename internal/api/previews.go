@@ -298,6 +298,142 @@ func (h *handlers) deletePreview(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(204)
 }
 
+// storageRepo is one repo's slice of the storage report, resolved back to
+// the board that owns it (orchestrator repos are named after boards).
+type storageRepo struct {
+	Repo           string `json:"repo"`
+	ArtifactsBytes int64  `json:"artifacts_bytes"`
+	StateBytes     int64  `json:"state_bytes"`
+	LogsBytes      int64  `json:"logs_bytes"`
+	MirrorBytes    int64  `json:"mirror_bytes"`
+	TotalBytes     int64  `json:"total_bytes"`
+	Deploys        int    `json:"deploys"`
+	EvictedDeploys int    `json:"evicted_deploys"`
+	BoardID        int64  `json:"board_id,omitempty"`
+	BoardName      string `json:"board_name,omitempty"`
+	BoardSlug      string `json:"board_slug,omitempty"`
+}
+
+// storageReport is the GET /api/previews/storage response.
+type storageReport struct {
+	TotalBytes     int64         `json:"total_bytes"`
+	ArtifactsBytes int64         `json:"artifacts_bytes"`
+	StateBytes     int64         `json:"state_bytes"`
+	LogsBytes      int64         `json:"logs_bytes"`
+	MirrorBytes    int64         `json:"mirror_bytes"`
+	TmpBytes       int64         `json:"tmp_bytes"`
+	DBBytes        int64         `json:"db_bytes"`
+	Repos          []storageRepo `json:"repos"`
+}
+
+// previewStorage reports how much disk the preview orchestrator uses,
+// broken down by category and by board. The orchestrator walks its data dir
+// to answer, so this is a live number — call it from a user action, not a
+// poll.
+func (h *handlers) previewStorage(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	rep, err := h.previews.Storage()
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	boards, err := h.store.ListBoards(r.Context())
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	byRepo := make(map[string]db.Board, len(boards))
+	for _, b := range boards {
+		byRepo[previews.RepoName(&b)] = b
+	}
+	out := storageReport{
+		TotalBytes:     rep.TotalBytes,
+		ArtifactsBytes: rep.ArtifactsBytes,
+		StateBytes:     rep.StateBytes,
+		LogsBytes:      rep.LogsBytes,
+		MirrorBytes:    rep.MirrorBytes,
+		TmpBytes:       rep.TmpBytes,
+		DBBytes:        rep.DBBytes,
+		Repos:          make([]storageRepo, 0, len(rep.Repos)),
+	}
+	for _, u := range rep.Repos {
+		row := storageRepo{
+			Repo:           u.Repo,
+			ArtifactsBytes: u.ArtifactsBytes,
+			StateBytes:     u.StateBytes,
+			LogsBytes:      u.LogsBytes,
+			MirrorBytes:    u.MirrorBytes,
+			TotalBytes:     u.TotalBytes,
+			Deploys:        u.Deploys,
+			EvictedDeploys: u.EvictedDeploys,
+		}
+		if b, ok := byRepo[u.Repo]; ok {
+			row.BoardID, row.BoardName, row.BoardSlug = b.ID, b.Name, b.Slug
+		}
+		out.Repos = append(out.Repos, row)
+	}
+	writeJSON(w, 200, out)
+}
+
+// previewRetention returns the retention policy bounding how many preview
+// deploys are kept.
+func (h *handlers) previewRetention(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	policy, err := h.previews.RetentionPolicy()
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, policy)
+}
+
+// updatePreviewRetention replaces the retention policy. It takes effect on
+// the next sweep — hourly, or immediately via POST /api/previews/gc — so
+// tightening limits never surprise-evicts on save. Either limit at 0 means
+// unlimited; both at 0 disables eviction.
+func (h *handlers) updatePreviewRetention(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	policy, err := decodeBody[orchestrator.RetentionPolicy](r)
+	if err != nil {
+		h.httpError(w, err, 400)
+		return
+	}
+	if policy.MaxDeploysPerRepo < 0 || policy.MaxAgeDays < 0 {
+		h.httpError(w, fmt.Errorf("retention limits must be >= 0 (0 = unlimited)"), 400)
+		return
+	}
+	if err := h.previews.SetRetentionPolicy(policy); err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, policy)
+}
+
+// collectPreviewGarbage runs one retention sweep immediately and reports
+// what it evicted. With retention disabled it still collects stale staging
+// leftovers, so it always has something to do.
+func (h *handlers) collectPreviewGarbage(w http.ResponseWriter, r *http.Request) {
+	if h.previews == nil {
+		h.httpError(w, fmt.Errorf("preview orchestrator unavailable (see server logs)"), 503)
+		return
+	}
+	res, err := h.previews.CollectGarbage()
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, res)
+}
+
 // previewLogs returns the build-log snapshot for one preview deploy.
 func (h *handlers) previewLogs(w http.ResponseWriter, r *http.Request) {
 	if h.previews == nil {

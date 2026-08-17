@@ -625,3 +625,71 @@ func TestStopAndDeletePreview(t *testing.T) {
 	assertStatus(t, e.post("/api/previews/9999/stop", nil), 404)
 	assertStatus(t, e.delete("/api/previews/9999"), 404)
 }
+
+func TestPreviewStorageAndRetention(t *testing.T) {
+	e := newEnv(t)
+	seedPreviewableRepo(t, e)
+	board := e.seedBoard("Demo Board")
+
+	resp := e.post(fmt.Sprintf("/api/boards/%d/previews", board.ID), map[string]string{})
+	assertStatus(t, resp, 202)
+	deploy := decodeJSON[orchestrator.Deploy](t, resp)
+	if d := awaitTerminal(t, e, deploy.ID); d.Status != orchestrator.StatusReady {
+		logs, _ := e.previews.DeployLogs(deploy.ID)
+		t.Fatalf("deploy failed: %s\n%s", d.Error, logs)
+	}
+
+	// Storage resolves the orchestrator's repo back to the board that owns it.
+	type storageRow struct {
+		Repo           string `json:"repo"`
+		TotalBytes     int64  `json:"total_bytes"`
+		Deploys        int    `json:"deploys"`
+		EvictedDeploys int    `json:"evicted_deploys"`
+		BoardID        int64  `json:"board_id"`
+		BoardName      string `json:"board_name"`
+	}
+	report := decodeJSON[struct {
+		TotalBytes int64        `json:"total_bytes"`
+		Repos      []storageRow `json:"repos"`
+	}](t, e.get("/api/previews/storage"))
+	if report.TotalBytes <= 0 {
+		t.Fatalf("total_bytes = %d, want > 0 after a ready deploy", report.TotalBytes)
+	}
+	if len(report.Repos) != 1 {
+		t.Fatalf("repos = %+v, want one entry", report.Repos)
+	}
+	row := report.Repos[0]
+	if row.BoardID != board.ID || row.BoardName != board.Name {
+		t.Fatalf("repo row not attributed to its board: %+v", row)
+	}
+	if row.Deploys != 1 || row.EvictedDeploys != 0 {
+		t.Fatalf("deploy counts = %d active / %d evicted, want 1 / 0", row.Deploys, row.EvictedDeploys)
+	}
+
+	// Retention defaults to unlimited and round-trips.
+	policy := decodeJSON[orchestrator.RetentionPolicy](t, e.get("/api/previews/retention"))
+	if policy != (orchestrator.RetentionPolicy{}) {
+		t.Fatalf("default policy = %+v, want unlimited", policy)
+	}
+	assertStatus(t, e.put("/api/previews/retention",
+		orchestrator.RetentionPolicy{MaxDeploysPerRepo: -1}), 400)
+	assertStatus(t, e.put("/api/previews/retention",
+		orchestrator.RetentionPolicy{MaxDeploysPerRepo: 5, MaxAgeDays: 30}), 200)
+	policy = decodeJSON[orchestrator.RetentionPolicy](t, e.get("/api/previews/retention"))
+	if policy != (orchestrator.RetentionPolicy{MaxDeploysPerRepo: 5, MaxAgeDays: 30}) {
+		t.Fatalf("policy after save = %+v", policy)
+	}
+
+	// A board's newest ready deploy is protected, so a sweep under this
+	// policy evicts nothing and the preview stays listed.
+	gc := decodeJSON[orchestrator.GCResult](t, e.post("/api/previews/gc", nil))
+	if len(gc.Evicted) != 0 {
+		t.Fatalf("evicted = %+v, want the sole ready deploy protected", gc.Evicted)
+	}
+	if gc.Policy != policy {
+		t.Fatalf("gc policy = %+v, want %+v", gc.Policy, policy)
+	}
+	if _, err := e.previews.Deploy(deploy.ID); err != nil {
+		t.Fatalf("deploy should survive the sweep: %v", err)
+	}
+}

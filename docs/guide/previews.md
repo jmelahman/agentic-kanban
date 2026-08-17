@@ -119,6 +119,35 @@ branch, a tag, a bare sha. Leave the ref empty to deploy the board's base
 branch, which is the usual way to get a preview of `main` alongside the
 ticket branches diverging from it.
 
+## Storage and retention
+
+Every commit previewed leaves build output, backend state, and logs behind,
+so previews only ever grow until something reclaims them. The database icon
+in the dashboard header opens **Storage & retention**.
+
+The top half reports where the disk went — artifacts, backend state, logs,
+git mirrors, staging, and the orchestrator's own database — then breaks the
+total down per board, with each board's deploy count. Sizes are measured by
+walking the data dir, so they're read when you open the dialog rather than
+polled.
+
+The bottom half is the policy that bounds it, with two independent limits:
+
+- **Deploys per board** keeps at most N deploys, newest first.
+- **Max age (days)** evicts deploys older than N days.
+
+Leave a field empty for no limit; empty both and nothing is ever evicted,
+which is the default. A sweep runs hourly, and **sweep now** runs one
+immediately and reports what it freed.
+
+Eviction reclaims a deploy's bytes but keeps its row, which is what the
+`evicted` state in the table above means — the deploy stays visible as
+history and redeploying the same commit rebuilds it. A board's newest ready
+deploy is never evicted, so tight limits can't leave a board with no working
+preview, and neither are deploys still queued or building. Even with
+retention off, a sweep clears stale staging leftovers from interrupted
+builds.
+
 ## Downloadable artifacts
 
 A manifest can also declare build outputs that are published for download

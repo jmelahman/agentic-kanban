@@ -222,6 +222,11 @@ func (e *testEnv) patch(path string, body any) *http.Response {
 	return e.send("PATCH", path, body)
 }
 
+func (e *testEnv) put(path string, body any) *http.Response {
+	e.t.Helper()
+	return e.send("PUT", path, body)
+}
+
 func (e *testEnv) delete(path string) *http.Response {
 	e.t.Helper()
 	return e.send("DELETE", path, nil)
