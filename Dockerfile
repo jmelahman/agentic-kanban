@@ -7,7 +7,7 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY web/ ./
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.26.5@sha256:d52df9c279840adf958d017ebb275651ed8338b953d39817bc3633a2e6b1bbcc AS go
+FROM --platform=$BUILDPLATFORM golang:1.26.6@sha256:0d1d3a794be25f809dd2cb3160d8c73276c4056a9f8242a138e908ddeee7b6b6 AS go
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
