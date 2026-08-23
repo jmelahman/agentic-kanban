@@ -3,9 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -66,34 +69,48 @@ func boardCmd() *cobra.Command {
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new board",
+		Long: `Create a new board.
+
+Run inside a git repository, every flag is optional: --repo-path defaults
+to the repo containing the current directory (resolved to the main working
+tree when run from a linked worktree) and --name to that directory's name.
+The server detects the base branch and worktree root from the repo.
+Explicit flags always win; inference only fills in what you omit.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBoardCreate(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(),
-				client.CreateBoardArgs{
-					Name:         bcName,
-					RepoPath:     bcRepo,
-					MountPath:    bcMount,
-					WorktreeRoot: bcWorktreeRoot,
-					BaseBranch:   bcBaseBranch,
-					BranchPrefix: bcBranchPrefix,
-				}, bcJSON)
+			a, err := inferBoardCreateArgs(client.CreateBoardArgs{
+				Name:         bcName,
+				RepoPath:     bcRepo,
+				MountPath:    bcMount,
+				WorktreeRoot: bcWorktreeRoot,
+				BaseBranch:   bcBaseBranch,
+				BranchPrefix: bcBranchPrefix,
+			})
+			if err != nil {
+				return err
+			}
+			return runBoardCreate(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), a, bcJSON)
 		},
 	}
-	create.Flags().StringVar(&bcName, "name", "", "Board name (required)")
-	create.Flags().StringVar(&bcRepo, "repo-path", "", "Path to the git repo on the host (required if --mount-path is empty)")
+	create.Flags().StringVar(&bcName, "name", "", "Board name (default: the repo directory's name)")
+	create.Flags().StringVar(&bcRepo, "repo-path", "", "Path to the git repo on the host (default: the repo containing the current directory)")
 	create.Flags().StringVar(&bcMount, "mount-path", "", "Mount path inside session containers (alternative to --repo-path)")
 	create.Flags().StringVar(&bcWorktreeRoot, "worktree-root", "", "Override the parent directory for new session worktrees")
-	create.Flags().StringVar(&bcBaseBranch, "base-branch", "", "Branch session worktrees fork from (default: main)")
+	create.Flags().StringVar(&bcBaseBranch, "base-branch", "", "Branch session worktrees fork from (default: detected from the repo)")
 	create.Flags().StringVar(&bcBranchPrefix, "branch-prefix", "", "Optional prefix prepended to session branch names")
 	create.Flags().BoolVar(&bcJSON, "json", false, "Print the full board JSON instead of a one-line summary")
-	_ = create.MarkFlagRequired("name")
 
 	var bgJSON bool
 	get := &cobra.Command{
-		Use:   "get <id>",
-		Short: "Print a single board",
-		Args:  cobra.ExactArgs(1),
+		Use:   "get [id]",
+		Short: "Print a single board (defaults to the board for the repo in the current directory)",
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBoardGet(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), args[0], bgJSON)
+			url := resolveURL(cmd, serverURL)
+			ident, err := resolveBoardIdent(cmd.Context(), url, args)
+			if err != nil {
+				return err
+			}
+			return runBoardGet(cmd.Context(), url, cmd.OutOrStdout(), ident, bgJSON)
 		},
 	}
 	get.Flags().BoolVar(&bgJSON, "json", false, "Print the full board JSON instead of a one-line summary")
@@ -147,20 +164,30 @@ func boardCmd() *cobra.Command {
 	}
 
 	state := &cobra.Command{
-		Use:   "state <id>",
+		Use:   "state [id]",
 		Short: "Print full board state (board, columns, tickets, sessions) as JSON",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBoardState(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), args[0])
+			url := resolveURL(cmd, serverURL)
+			ident, err := resolveBoardIdent(cmd.Context(), url, args)
+			if err != nil {
+				return err
+			}
+			return runBoardState(cmd.Context(), url, cmd.OutOrStdout(), ident)
 		},
 	}
 
 	archived := &cobra.Command{
-		Use:   "archived <id>",
+		Use:   "archived [id]",
 		Short: "List archived tickets on a board",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runBoardArchived(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), args[0])
+			url := resolveURL(cmd, serverURL)
+			ident, err := resolveBoardIdent(cmd.Context(), url, args)
+			if err != nil {
+				return err
+			}
+			return runBoardArchived(cmd.Context(), url, cmd.OutOrStdout(), ident)
 		},
 	}
 
@@ -295,16 +322,136 @@ func printBoardSummary(out io.Writer, raw json.RawMessage, asJSON bool) error {
 		return err
 	}
 	var b struct {
-		ID   int64  `json:"id"`
-		Slug string `json:"slug"`
-		Name string `json:"name"`
+		ID         int64  `json:"id"`
+		Slug       string `json:"slug"`
+		Name       string `json:"name"`
+		RepoPath   string `json:"repo_path"`
+		MountPath  string `json:"mount_path"`
+		BaseBranch string `json:"base_branch"`
 	}
 	if err := json.Unmarshal(raw, &b); err != nil {
 		_, perr := fmt.Fprintln(out, string(raw))
 		return perr
 	}
-	fmt.Fprintf(out, "#%d %s (%s)\n", b.ID, b.Name, b.Slug)
+	// Echo the resolved repo and base branch so inferred values are visible.
+	line := fmt.Sprintf("#%d %s (%s)", b.ID, b.Name, b.Slug)
+	switch {
+	case b.RepoPath != "":
+		line += " repo=" + b.RepoPath
+	case b.MountPath != "":
+		line += " mount=" + b.MountPath
+	}
+	if b.BaseBranch != "" {
+		line += " base=" + b.BaseBranch
+	}
+	fmt.Fprintln(out, line)
 	return nil
+}
+
+// inferBoardCreateArgs fills the gaps a bare `kanban board create` leaves.
+// With neither --repo-path nor --mount-path it resolves the git repo
+// containing the current directory, and with no --name it uses the repo
+// directory's basename. Explicit flags always win; inference only fills
+// what's missing. The inferred path is only meaningful when the CLI and
+// the server share a filesystem — same as a hand-typed --repo-path.
+func inferBoardCreateArgs(a client.CreateBoardArgs) (client.CreateBoardArgs, error) {
+	if a.RepoPath == "" && a.MountPath == "" {
+		repo, err := cwdRepoRoot()
+		if err != nil {
+			return a, fmt.Errorf("cannot infer --repo-path: %w (run inside a git repo or pass --repo-path/--mount-path)", err)
+		}
+		a.RepoPath = repo
+	}
+	if strings.TrimSpace(a.Name) == "" {
+		if a.RepoPath == "" {
+			return a, fmt.Errorf("--name required when --mount-path is set without --repo-path")
+		}
+		a.Name = filepath.Base(a.RepoPath)
+	}
+	return a, nil
+}
+
+// cwdRepoRoot returns the root of the git working tree containing the
+// current directory. From a linked worktree it resolves to the main working
+// tree instead: session worktrees fork from the board's repo_path, and a
+// board pointed at a disposable worktree breaks when that worktree is
+// removed.
+func cwdRepoRoot() (string, error) {
+	top, err := gitRevParse("--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	common, err := gitRevParse("--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	// The common dir ends in "/.git" for a normal repo (shared by all its
+	// worktrees); anything else (e.g. a bare repo) keeps the cwd's toplevel.
+	if abs, err := filepath.Abs(common); err == nil && filepath.Base(abs) == ".git" {
+		return filepath.Dir(abs), nil
+	}
+	return top, nil
+}
+
+func gitRevParse(flag string) (string, error) {
+	out, err := exec.Command("git", "rev-parse", flag).Output()
+	if err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && len(ee.Stderr) > 0 {
+			return "", fmt.Errorf("git rev-parse %s: %s", flag, strings.TrimSpace(string(ee.Stderr)))
+		}
+		return "", fmt.Errorf("git rev-parse %s: %w", flag, err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// resolveBoardIdent returns the board identifier for a command whose [id]
+// arg is optional: the explicit arg when given, otherwise the id of the
+// board whose repo_path is the git repo containing the current directory.
+// Zero or several matching boards is an error, never a guess — boards may
+// legitimately share a repo (e.g. Build Cop boards).
+func resolveBoardIdent(ctx context.Context, url string, args []string) (string, error) {
+	if len(args) > 0 {
+		return args[0], nil
+	}
+	repo, err := cwdRepoRoot()
+	if err != nil {
+		return "", fmt.Errorf("no board id given and cannot infer one: %w (run inside a board's git repo or pass an id/slug)", err)
+	}
+	boards, err := client.New(url, nil).ListBoards(ctx)
+	if err != nil {
+		return "", err
+	}
+	var matches []client.Board
+	for _, b := range boards {
+		if b.RepoPath != "" && samePath(b.RepoPath, repo) {
+			matches = append(matches, b)
+		}
+	}
+	switch len(matches) {
+	case 1:
+		return strconv.FormatInt(matches[0].ID, 10), nil
+	case 0:
+		return "", fmt.Errorf("no board has repo path %s; pass an id or slug", repo)
+	default:
+		slugs := make([]string, len(matches))
+		for i, b := range matches {
+			slugs[i] = b.Slug
+		}
+		return "", fmt.Errorf("%d boards use repo %s (%s); pass an id or slug", len(matches), repo, strings.Join(slugs, ", "))
+	}
+}
+
+// samePath reports whether two paths name the same location, tolerating
+// unresolved symlinks on either side (e.g. a board created with a symlinked
+// repo path).
+func samePath(a, b string) bool {
+	if filepath.Clean(a) == filepath.Clean(b) {
+		return true
+	}
+	ra, err1 := filepath.EvalSymlinks(a)
+	rb, err2 := filepath.EvalSymlinks(b)
+	return err1 == nil && err2 == nil && ra == rb
 }
 
 // ---------- ticket ----------

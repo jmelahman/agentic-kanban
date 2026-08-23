@@ -31,9 +31,10 @@ func New(baseURL string, hc *http.Client) *Client {
 
 // Board mirrors the subset of fields callers need from /api/boards.
 type Board struct {
-	ID   int64  `json:"id"`
-	Name string `json:"name"`
-	Slug string `json:"slug"`
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Slug     string `json:"slug"`
+	RepoPath string `json:"repo_path"`
 }
 
 // Ticket mirrors the subset of fields callers need from ticket responses.
@@ -110,6 +111,7 @@ func (c *Client) ListBoards(ctx context.Context) ([]Board, error) {
 		_ = json.Unmarshal(b["id"], &s.ID)
 		_ = json.Unmarshal(b["name"], &s.Name)
 		_ = json.Unmarshal(b["slug"], &s.Slug)
+		_ = json.Unmarshal(b["repo_path"], &s.RepoPath)
 		out = append(out, s)
 	}
 	return out, nil

@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -137,6 +139,197 @@ func TestRunBoardCreateAndDelete(t *testing.T) {
 	if _, err := store.GetBoard(t.Context(), created.ID); err == nil {
 		t.Error("board still exists after delete")
 	}
+}
+
+func TestInferBoardCreateArgs(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "myrepo")
+	mustGit(t, "", "init", "-q", "-b", "main", repo)
+	mustGit(t, repo, "config", "user.email", "test@example.com")
+	mustGit(t, repo, "config", "user.name", "Test")
+	mustGit(t, repo, "commit", "--allow-empty", "-q", "-m", "init")
+
+	t.Run("infers_repo_and_name_from_cwd", func(t *testing.T) {
+		t.Chdir(repo)
+		got, err := inferBoardCreateArgs(client.CreateBoardArgs{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !samePath(got.RepoPath, repo) {
+			t.Errorf("RepoPath = %q, want %q", got.RepoPath, repo)
+		}
+		if got.Name != "myrepo" {
+			t.Errorf("Name = %q, want myrepo", got.Name)
+		}
+	})
+
+	t.Run("infers_from_subdirectory", func(t *testing.T) {
+		sub := filepath.Join(repo, "a", "b")
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Chdir(sub)
+		got, err := inferBoardCreateArgs(client.CreateBoardArgs{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !samePath(got.RepoPath, repo) {
+			t.Errorf("RepoPath = %q, want %q", got.RepoPath, repo)
+		}
+	})
+
+	t.Run("linked_worktree_resolves_to_main_repo", func(t *testing.T) {
+		wt := filepath.Join(dir, "wt")
+		mustGit(t, repo, "worktree", "add", "-q", wt)
+		t.Chdir(wt)
+		got, err := inferBoardCreateArgs(client.CreateBoardArgs{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !samePath(got.RepoPath, repo) {
+			t.Errorf("RepoPath = %q, want main repo %q", got.RepoPath, repo)
+		}
+		if got.Name != "myrepo" {
+			t.Errorf("Name = %q, want myrepo", got.Name)
+		}
+	})
+
+	t.Run("explicit_flags_win", func(t *testing.T) {
+		t.Chdir(repo)
+		got, err := inferBoardCreateArgs(client.CreateBoardArgs{Name: "Custom", RepoPath: "/elsewhere"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Name != "Custom" || got.RepoPath != "/elsewhere" {
+			t.Errorf("explicit args changed: %+v", got)
+		}
+	})
+
+	t.Run("name_inferred_from_explicit_repo_path", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		got, err := inferBoardCreateArgs(client.CreateBoardArgs{RepoPath: "/somewhere/proj"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Name != "proj" {
+			t.Errorf("Name = %q, want proj", got.Name)
+		}
+	})
+
+	t.Run("errors_outside_git_repo", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		if _, err := inferBoardCreateArgs(client.CreateBoardArgs{}); err == nil {
+			t.Fatal("expected error outside a git repo")
+		}
+	})
+
+	t.Run("mount_path_only_requires_name", func(t *testing.T) {
+		if _, err := inferBoardCreateArgs(client.CreateBoardArgs{MountPath: "/workspace"}); err == nil {
+			t.Fatal("expected error for --mount-path without --name")
+		}
+		got, err := inferBoardCreateArgs(client.CreateBoardArgs{MountPath: "/workspace", Name: "WS"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.RepoPath != "" || got.Name != "WS" {
+			t.Errorf("mount-path args changed: %+v", got)
+		}
+	})
+}
+
+func TestRunBoardCreateInferred(t *testing.T) {
+	srv, store, _ := newKanbanCLITestServer(t)
+	repo := filepath.Join(t.TempDir(), "inferred-repo")
+	mustGit(t, "", "init", "-q", "-b", "trunk", repo)
+	mustGit(t, repo, "config", "user.email", "test@example.com")
+	mustGit(t, repo, "config", "user.name", "Test")
+	mustGit(t, repo, "commit", "--allow-empty", "-q", "-m", "init")
+	t.Chdir(repo)
+
+	args, err := inferBoardCreateArgs(client.CreateBoardArgs{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := runBoardCreate(t.Context(), srv.URL, &out, args, true); err != nil {
+		t.Fatal(err)
+	}
+	var created db.Board
+	if err := json.Unmarshal(bytes.TrimSpace(out.Bytes()), &created); err != nil {
+		t.Fatalf("output not JSON: %q (%v)", out.String(), err)
+	}
+	if created.Name != "inferred-repo" {
+		t.Errorf("Name = %q, want inferred-repo", created.Name)
+	}
+	if created.BaseBranch != "trunk" {
+		t.Errorf("BaseBranch = %q, want trunk (detected by server)", created.BaseBranch)
+	}
+	if _, err := store.GetBoard(t.Context(), created.ID); err != nil {
+		t.Fatalf("board not in store: %v", err)
+	}
+}
+
+func TestResolveBoardIdent(t *testing.T) {
+	srv, store, board := newKanbanCLITestServer(t)
+
+	t.Run("explicit_arg_passthrough", func(t *testing.T) {
+		got, err := resolveBoardIdent(t.Context(), srv.URL, []string{"some-slug"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != "some-slug" {
+			t.Errorf("ident = %q, want some-slug", got)
+		}
+	})
+
+	t.Run("infers_board_from_cwd", func(t *testing.T) {
+		t.Chdir(board.RepoPath)
+		got, err := resolveBoardIdent(t.Context(), srv.URL, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := strconv.FormatInt(board.ID, 10); got != want {
+			t.Errorf("ident = %q, want %q", got, want)
+		}
+
+		// The summary of an inferred lookup shows the repo and base branch.
+		var out bytes.Buffer
+		if err := runBoardGet(t.Context(), srv.URL, &out, got, false); err != nil {
+			t.Fatal(err)
+		}
+		if s := out.String(); !strings.Contains(s, board.Slug) || !strings.Contains(s, "repo=") || !strings.Contains(s, "base=main") {
+			t.Errorf("summary missing inferred fields: %q", s)
+		}
+	})
+
+	t.Run("errors_when_no_board_matches", func(t *testing.T) {
+		other := filepath.Join(t.TempDir(), "unrelated")
+		mustGit(t, "", "init", "-q", "-b", "main", other)
+		t.Chdir(other)
+		if _, err := resolveBoardIdent(t.Context(), srv.URL, nil); err == nil {
+			t.Fatal("expected error when no board matches the cwd repo")
+		}
+	})
+
+	t.Run("errors_when_ambiguous", func(t *testing.T) {
+		second := &db.Board{
+			Name:       "CLI Board 2",
+			Slug:       "cli-board-2",
+			RepoPath:   board.RepoPath,
+			BaseBranch: "main",
+		}
+		if err := store.CreateBoard(context.Background(), second); err != nil {
+			t.Fatal(err)
+		}
+		t.Chdir(board.RepoPath)
+		_, err := resolveBoardIdent(t.Context(), srv.URL, nil)
+		if err == nil {
+			t.Fatal("expected error when two boards share the repo")
+		}
+		if !strings.Contains(err.Error(), second.Slug) {
+			t.Errorf("ambiguity error should list candidates: %v", err)
+		}
+	})
 }
 
 func TestRunBoardStateAndArchived(t *testing.T) {

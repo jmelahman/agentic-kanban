@@ -105,22 +105,36 @@ Prints all boards as an `ID SLUG NAME` table.
 ### `board create`
 
 ```sh
-kanban board create --name <name> --repo-path <path> [flags]
+kanban board create [flags]
 ```
+
+Run inside a git repository, a bare `kanban board create` needs no flags:
+`--repo-path` defaults to the repo containing the current directory
+(resolved to the main working tree when run from a linked worktree) and
+`--name` to that directory's name. The server then detects the base branch
+and worktree root from the repo as usual. Explicit flags always win —
+inference only fills in what you omit. Inference assumes the CLI and the
+server share a filesystem (true for a local `kanban serve`); for dockerized
+deploys keep passing `--mount-path` explicitly.
 
 | Flag              | Required | Description                                                         |
 | ----------------- | -------- | ------------------------------------------------------------------- |
-| `--name`          | yes      | Board name.                                                         |
-| `--repo-path`     | one of   | Path to the host git repo. Required if `--mount-path` is not set.   |
-| `--mount-path`    | one of   | Mount path inside session containers. Alternative to `--repo-path`. |
+| `--name`          | no       | Board name. Defaults to the repo directory's name. Required when only `--mount-path` is set. |
+| `--repo-path`     | no       | Path to the host git repo. Defaults to the repo containing the current directory; pass it (or `--mount-path`) when running outside a git repo. |
+| `--mount-path`    | no       | Mount path inside session containers. Alternative to `--repo-path`. |
 | `--worktree-root` | no       | Override the parent directory for new session worktrees.            |
 | `--base-branch`   | no       | Branch new session worktrees fork from. Defaults to `main`. Before creating each worktree, kanban best-effort runs `git fetch origin <base-branch>` (10s timeout) and uses `origin/<base-branch>` as the start-point if it ends up strictly ahead of local; otherwise it falls back to local. |
 | `--branch-prefix` | no       | Optional prefix prepended to session branch names.                  |
 | `--json`          | no       | Print the full board JSON instead of a one-line summary.            |
 
-### `board get <id>`
+### `board get [id]`
 
-Prints a single board. `<id>` accepts a numeric id or a slug.
+Prints a single board. `<id>` accepts a numeric id or a slug. When
+omitted, the board is inferred from the git repo containing the current
+directory — an error if zero or several boards use that repo. The same
+inference applies to `board state` and `board archived`; mutating
+commands (`update`, `delete`, `archived-clear`) always require an
+explicit id.
 
 ### `board update <id> [flags]`
 
@@ -132,14 +146,16 @@ to rename the board).
 
 Deletes a board and destroys every associated session.
 
-### `board state <id>`
+### `board state [id]`
 
 Prints a single-shot snapshot — `{board, columns, tickets, sessions,
-merge_config, sync_config}` — as JSON. Useful piping into `jq`.
+merge_config, sync_config}` — as JSON. Useful piping into `jq`. `<id>`
+optional as in `board get`.
 
-### `board archived <id>`
+### `board archived [id]`
 
-Lists archived tickets on a board as an `ID SLUG TITLE` table.
+Lists archived tickets on a board as an `ID SLUG TITLE` table. `<id>`
+optional as in `board get`.
 
 ### `board archived-clear <id>`
 
