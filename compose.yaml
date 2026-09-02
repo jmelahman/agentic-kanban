@@ -1,12 +1,12 @@
 services:
   kanban:
-    image: lahmanja/kanban:latest
+    image: lahmanja/kanban:${KANBAN_VERSION:-latest}
     container_name: kanban
     build:
       context: .
       dockerfile: Dockerfile
       cache_from:
-        - lahmanja/kanban:${KANBAN_VERSION:-latest}
+        - lahmanja/kanban:latest
       # Build metadata. Resolve on the host since .git is dockerignored and
       # worktrees only stash a gitdir pointer. Set alongside your other env
       # vars when invoking `docker compose up --build`, e.g.:
