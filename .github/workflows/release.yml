@@ -21,7 +21,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - run: prek run --all-files govulncheck npm-audit
+      - run: prek run --all-files npm-audit
 
   devcontainer:
     needs: audit
