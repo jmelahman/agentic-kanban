@@ -649,4 +649,97 @@ func TestTicketCreateCommand(t *testing.T) {
 			t.Error("expected an error for a non-numeric id")
 		}
 	})
+
+	t.Run("attach_without_id_needs_tty", func(t *testing.T) {
+		t.Chdir(board.RepoPath)
+		_, err := run(t, "attach")
+		if err == nil || !strings.Contains(err.Error(), "ticket id is required") {
+			t.Errorf("err = %v", err)
+		}
+		_, err = run(t, "attach", "--board", board.Slug)
+		if err == nil || !strings.Contains(err.Error(), "ticket id is required") {
+			t.Errorf("--board: err = %v", err)
+		}
+		// A bad detach sequence is reported before anything else happens.
+		_, err = run(t, "attach", "--detach-keys", "ctrl-")
+		if err == nil || !strings.Contains(err.Error(), "detach keys") {
+			t.Errorf("bad --detach-keys: err = %v", err)
+		}
+		_, err = run(t, "attach", "1", "2")
+		if err == nil {
+			t.Error("expected an error for two positional args")
+		}
+	})
+}
+
+func TestLoadBoardTickets(t *testing.T) {
+	srv, store, board := newKanbanCLITestServer(t)
+	cols, _ := store.ListColumns(t.Context(), board.ID)
+	if len(cols) < 2 {
+		t.Fatalf("need at least two columns, got %d", len(cols))
+	}
+	mk := func(col int, title string) *db.Ticket {
+		t.Helper()
+		tk := &db.Ticket{BoardID: board.ID, ColumnID: cols[col].ID, Title: title, Slug: strings.ToLower(title)}
+		if err := store.CreateTicket(t.Context(), tk); err != nil {
+			t.Fatal(err)
+		}
+		return tk
+	}
+	// Created out of board order on purpose: the second column's ticket
+	// first, then two in the first column.
+	inProgress := mk(1, "Second")
+	first := mk(0, "First")
+	third := mk(0, "Third")
+	archived := mk(0, "Archived")
+	if err := store.ArchiveTicket(t.Context(), archived.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpsertSession(t.Context(), &db.Session{TicketID: inProgress.ID, Status: db.SessionStatusWorking}); err != nil {
+		t.Fatal(err)
+	}
+
+	label, items, err := loadBoardTickets(t.Context(), srv.URL, board.Slug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if label != "CLI Board (cli-board)" {
+		t.Errorf("label = %q", label)
+	}
+	want := []pickerItem{
+		{ID: first.ID, Title: "First", Column: cols[0].Name},
+		{ID: third.ID, Title: "Third", Column: cols[0].Name},
+		{ID: inProgress.ID, Title: "Second", Column: cols[1].Name, Status: db.SessionStatusWorking},
+	}
+	if len(items) != len(want) {
+		t.Fatalf("items = %+v, want %+v", items, want)
+	}
+	for i := range want {
+		if items[i] != want[i] {
+			t.Errorf("items[%d] = %+v, want %+v", i, items[i], want[i])
+		}
+	}
+
+	if _, _, err := loadBoardTickets(t.Context(), srv.URL, "no-such-board"); err == nil {
+		t.Error("expected an error for an unknown board")
+	}
+}
+
+// TestPickTicketEmptyBoard covers the branch of the interactive path that
+// runs before any screen is opened: a board with nothing to attach to is
+// an error, not an empty list.
+func TestPickTicketEmptyBoard(t *testing.T) {
+	srv, _, board := newKanbanCLITestServer(t)
+	restore := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	t.Cleanup(func() { stdinIsTerminal = restore })
+
+	_, err := pickTicket(t.Context(), srv.URL, board.Slug, defaultDetachKeys)
+	if err == nil || !strings.Contains(err.Error(), "no open tickets") {
+		t.Errorf("err = %v", err)
+	}
+	t.Chdir(t.TempDir())
+	if _, err := pickTicket(t.Context(), srv.URL, "", defaultDetachKeys); err == nil {
+		t.Error("expected an error when no board can be inferred")
+	}
 }

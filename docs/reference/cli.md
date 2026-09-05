@@ -18,7 +18,7 @@ kanban
 │   └── archived-clear Permanently delete every archived ticket on a board
 ├── ticket             Manage tickets on a board
 │   ├── create         Create a ticket (interactively by default) and attach to its agent
-│   ├── attach         Attach your terminal to a ticket's agent or a container shell
+│   ├── attach         Attach your terminal to a ticket's agent (pick from a list without an id)
 │   ├── update         Update title/body of a ticket
 │   ├── move           Move a ticket to a different column / position
 │   ├── archive        Archive a ticket
@@ -216,10 +216,10 @@ kanban ticket create --board playground --title "Wire CI" --column "In Progress"
 kanban ticket create --title "Wire CI" --attach
 ```
 
-### `ticket attach <id>`
+### `ticket attach [id]`
 
 ```sh
-kanban ticket attach <id> [--shell] [--detach-keys <keys>]
+kanban ticket attach [id] [--board <board>] [--shell] [--detach-keys <keys>]
 ```
 
 Attaches the current terminal to the agent running in the ticket's
@@ -229,6 +229,19 @@ and switch back to the browser later. The session is created and started
 first if it isn't running. Keystrokes are forwarded as typed and the
 agent's terminal size follows your window.
 
+Without an id, a full-screen list of the board's open tickets opens
+instead. The board is inferred from the git repo containing the current
+directory (the same lookup as `board get` — an error if zero or several
+boards use that repo) unless `--board` names one. Tickets are grouped by
+column in board order, each with its session status (`working`, `idle`,
+`stopped`, `no session`, …). `↑`/`↓` (or `Ctrl+P`/`Ctrl+N`, `PgUp`/`PgDn`,
+`Home`/`End`) move the highlight, typing narrows the list — every word
+you type must match somewhere in the ticket's `#id`, title, column, or
+status, so `#12`, `login`, and `progress idle` all work — `Enter`
+attaches to the highlighted ticket, and `Esc` leaves without attaching.
+The list needs a real terminal, so in scripts and pipes the id is
+required.
+
 Press the detach sequence (default `ctrl-p` then `ctrl-q`, as in
 `docker attach`) to return to your shell. Detaching never stops the
 session: the agent keeps running and `ticket attach` reconnects with the
@@ -237,10 +250,22 @@ exits. The default sequence deliberately avoids keys the agent uses
 (Claude Code binds `Ctrl+]`, for instance); `--detach-keys` accepts a
 comma-separated list of single characters or `ctrl-<key>` items.
 
-| Flag            | Default         | Description                                                            |
-| --------------- | --------------- | ---------------------------------------------------------------------- |
-| `--shell`       | `false`         | Attach an interactive shell in the session container instead of the agent. |
-| `--detach-keys` | `ctrl-p,ctrl-q` | Key sequence that detaches; swallowed, never forwarded to the session. |
+| Flag            | Default                    | Description                                                                  |
+| --------------- | -------------------------- | ---------------------------------------------------------------------------- |
+| `--board`       | board for the current repo | Board id or slug whose tickets to list. Only used when no id is given.        |
+| `--shell`       | `false`                    | Attach an interactive shell in the session container instead of the agent.   |
+| `--detach-keys` | `ctrl-p,ctrl-q`            | Key sequence that detaches; swallowed, never forwarded to the session.       |
+
+```sh
+# Reattach to a ticket you know the id of.
+kanban ticket attach 42
+
+# From inside the repo: pick a ticket from the board's list.
+kanban ticket attach
+
+# Same, for a board you're not inside.
+kanban ticket attach --board playground
+```
 
 `--server` (or `KANBAN_URL`) must point at a server whose origin check
 accepts the request; the CLI sends the server's own host as `Origin`,

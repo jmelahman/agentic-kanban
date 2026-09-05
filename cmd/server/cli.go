@@ -546,23 +546,38 @@ only prints the created ticket unless --attach is also given.`,
 	create.Flags().StringVar(&tcDetachKeys, "detach-keys", defaultDetachKeys, "Key sequence that detaches from the agent, docker-style (e.g. ctrl-p,ctrl-q or ctrl-])")
 
 	var (
-		taShell      bool
-		taDetachKeys string
+		taBoard, taDetachKeys string
+		taShell               bool
 	)
 	attach := &cobra.Command{
-		Use:   "attach <id>",
+		Use:   "attach [id]",
 		Short: "Attach your terminal to a ticket's agent (starting its session if needed)",
 		Long: `Attach the current terminal to the agent running in a ticket's session
 container, the same PTY the web UI shows. The session is created and
 started first if it isn't running. Input is forwarded as typed; the
 terminal size follows your window.
 
+Without an id, the board's open tickets are listed for you to pick from:
+the board is inferred from the git repo containing the current directory
+(an error if zero or several boards use that repo) unless --board names
+one. Typing narrows the list; Enter attaches, Esc cancels.
+
 Detaching (default ctrl-p,ctrl-q) leaves the agent running — reattach any
 time, or keep using it from the web UI. With --shell an interactive login
 shell in the container is attached instead of the agent.`,
-		Args: cobra.ExactArgs(1),
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseInt64(args[0], "ticket id")
+			ctx := cmd.Context()
+			url := resolveURL(cmd, serverURL)
+			var (
+				id  int64
+				err error
+			)
+			if len(args) == 1 {
+				id, err = parseInt64(args[0], "ticket id")
+			} else {
+				id, err = pickTicket(ctx, url, taBoard, taDetachKeys)
+			}
 			if err != nil {
 				return err
 			}
@@ -570,10 +585,11 @@ shell in the container is attached instead of the agent.`,
 			if taShell {
 				kind = "shell"
 			}
-			return runTicketAttach(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), id, kind, taDetachKeys)
+			return runTicketAttach(ctx, url, cmd.OutOrStdout(), id, kind, taDetachKeys)
 		},
 		SilenceUsage: true,
 	}
+	attach.Flags().StringVar(&taBoard, "board", "", "Board id or slug to list tickets from when no id is given (default: the board for the repo in the current directory)")
 	attach.Flags().BoolVar(&taShell, "shell", false, "Attach an interactive shell in the session container instead of the agent")
 	attach.Flags().StringVar(&taDetachKeys, "detach-keys", defaultDetachKeys, "Key sequence that detaches, docker-style (e.g. ctrl-p,ctrl-q or ctrl-])")
 
@@ -689,10 +705,44 @@ func boardLabel(ctx context.Context, url, ident string) (string, error) {
 	if err := json.Unmarshal(raw, &b); err != nil {
 		return "", fmt.Errorf("decode board: %w", err)
 	}
-	if b.Slug == "" || b.Slug == b.Name {
-		return b.Name, nil
+	return formatBoardLabel(b.Name, b.Slug), nil
+}
+
+// pickTicket backs `ticket attach` without an id: it resolves the board
+// (an explicit ident, else the cwd repo), lists its open tickets, and
+// returns the one the user picks. Preconditions that would only fail after
+// the list (no terminal, a bad --detach-keys) are checked first so nothing
+// is fetched or drawn for nothing.
+func pickTicket(ctx context.Context, url, boardIdent, detachKeys string) (int64, error) {
+	if _, err := parseDetachKeys(detachKeys); err != nil {
+		return 0, err
 	}
-	return b.Name + " (" + b.Slug + ")", nil
+	if !stdinIsTerminal() {
+		return 0, errors.New("a ticket id is required when not running in an interactive terminal")
+	}
+	var boardArgs []string
+	if boardIdent != "" {
+		boardArgs = []string{boardIdent}
+	}
+	ident, err := resolveBoardIdent(ctx, url, boardArgs)
+	if err != nil {
+		return 0, err
+	}
+	label, items, err := loadBoardTickets(ctx, url, ident)
+	if err != nil {
+		return 0, err
+	}
+	if len(items) == 0 {
+		return 0, fmt.Errorf("board %s has no open tickets", label)
+	}
+	item, ok, err := promptTicketPicker(label, items)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, errors.New("cancelled; nothing attached")
+	}
+	return item.ID, nil
 }
 
 // runTicketCreate creates the ticket, prints its summary, and returns the
