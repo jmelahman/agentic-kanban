@@ -17,7 +17,8 @@ kanban
 │   ├── archived       List archived tickets on a board
 │   └── archived-clear Permanently delete every archived ticket on a board
 ├── ticket             Manage tickets on a board
-│   ├── create         Create a ticket
+│   ├── create         Create a ticket (interactively by default) and attach to its agent
+│   ├── attach         Attach your terminal to a ticket's agent or a container shell
 │   ├── update         Update title/body of a ticket
 │   ├── move           Move a ticket to a different column / position
 │   ├── archive        Archive a ticket
@@ -166,20 +167,85 @@ Permanently deletes every archived ticket on the board. Destructive.
 ### `ticket create`
 
 ```sh
-kanban ticket create --board <id-or-slug> --title <title> [flags]
+kanban ticket create [flags]
 ```
 
-| Flag       | Required | Default         | Description                                               |
-| ---------- | -------- | --------------- | --------------------------------------------------------- |
-| `--board`  | yes      |                 | Board id or slug.                                         |
-| `--title`  | yes      |                 | Ticket title.                                             |
-| `--body`   | no       |                 | Markdown ticket body.                                     |
-| `--column` | no       | leftmost column | Column name (case-insensitive) or numeric id.             |
-| `--json`   | no       | `false`         | Print the full ticket JSON instead of a one-line summary. |
+Run inside a board's git repository, a bare `kanban ticket create` is the
+fastest way from "I have an idea" to "an agent is working on it":
+
+1. The board is inferred from the repo containing the current directory
+   (the same lookup as `board get` — an error if zero or several boards
+   use that repo). Pass `--board` to pick one explicitly.
+2. A full-screen form asks for a title and an optional markdown
+   description. `Tab` switches fields, `Enter` in the title jumps to the
+   description, `Ctrl+S` creates the ticket, `Esc` cancels without
+   creating anything. Pasting multi-line text into the description works
+   (bracketed paste). `--body` pre-fills the description.
+3. The ticket is created in the leftmost column (or `--column`), its
+   session is started — a first start pulls or builds the devcontainer
+   image, which can take a few minutes — and your terminal attaches to
+   the agent inside the container, exactly as `ticket attach` would.
+
+With `--title` the command is non-interactive: no form, and it only
+prints the created ticket unless you also pass `--attach`. The form and
+attaching both need a real terminal on stdin/stdout, so in scripts and
+pipes `--title` is required and `--attach` is rejected before anything
+is created.
+
+| Flag            | Default                          | Description                                                                                       |
+| --------------- | -------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `--board`       | board for the current repo       | Board id or slug.                                                                                 |
+| `--title`       | prompted                         | Ticket title. Skips the form.                                                                     |
+| `--body`        |                                  | Markdown ticket body. Pre-fills the form's description when `--title` is omitted.                 |
+| `--column`      | leftmost column                  | Column name (case-insensitive) or numeric id.                                                     |
+| `--attach`      | `true` when prompted, else `false` | Start the session and attach to the agent after creating. `--attach=false` opts out of the interactive default. |
+| `--detach-keys` | `ctrl-p,ctrl-q`                  | Key sequence that detaches from the agent (see `ticket attach`).                                  |
+| `--json`        | `false`                          | Print the full ticket JSON instead of a one-line summary.                                         |
 
 ```sh
+# From inside the repo: prompt for title/description, then work with the agent.
+kanban ticket create
+
+# Same, but stay in the shell afterwards.
+kanban ticket create --attach=false
+
+# Scripted, no prompt, no attach.
 kanban ticket create --board playground --title "Wire CI" --column "In Progress"
+
+# Scripted, then hand the terminal to the agent.
+kanban ticket create --title "Wire CI" --attach
 ```
+
+### `ticket attach <id>`
+
+```sh
+kanban ticket attach <id> [--shell] [--detach-keys <keys>]
+```
+
+Attaches the current terminal to the agent running in the ticket's
+session container — the same PTY the web UI shows, so you can drive
+Claude Code (or whichever harness the board uses) from the command line
+and switch back to the browser later. The session is created and started
+first if it isn't running. Keystrokes are forwarded as typed and the
+agent's terminal size follows your window.
+
+Press the detach sequence (default `ctrl-p` then `ctrl-q`, as in
+`docker attach`) to return to your shell. Detaching never stops the
+session: the agent keeps running and `ticket attach` reconnects with the
+scrollback replayed. The command also returns when the agent process
+exits. The default sequence deliberately avoids keys the agent uses
+(Claude Code binds `Ctrl+]`, for instance); `--detach-keys` accepts a
+comma-separated list of single characters or `ctrl-<key>` items.
+
+| Flag            | Default         | Description                                                            |
+| --------------- | --------------- | ---------------------------------------------------------------------- |
+| `--shell`       | `false`         | Attach an interactive shell in the session container instead of the agent. |
+| `--detach-keys` | `ctrl-p,ctrl-q` | Key sequence that detaches; swallowed, never forwarded to the session. |
+
+`--server` (or `KANBAN_URL`) must point at a server whose origin check
+accepts the request; the CLI sends the server's own host as `Origin`,
+which matches a direct `kanban serve` and reverse proxies that preserve
+the `Host` header.
 
 ### `ticket update <id> [flags]`
 

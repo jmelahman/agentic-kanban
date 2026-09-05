@@ -465,26 +465,117 @@ func ticketCmd() *cobra.Command {
 	addServerFlag(parent, &serverURL)
 
 	var (
-		tcBoard, tcTitle, tcBody, tcColumn string
-		tcJSON                             bool
+		tcBoard, tcTitle, tcBody, tcColumn, tcDetachKeys string
+		tcJSON, tcAttach                                 bool
 	)
 	create := &cobra.Command{
 		Use:   "create",
-		Short: "Create a ticket on a board",
+		Short: "Create a ticket, interactively when run without --title, and drop into its agent",
+		Long: `Create a ticket on a board.
+
+Without --board the board is inferred from the git repo containing the
+current directory (an error if zero or several boards use that repo).
+
+Without --title, a terminal form asks for a title and an optional
+description; on submit the ticket is created, its session is started, and
+your terminal attaches to the agent running inside the devcontainer (see
+"kanban ticket attach"). With --title the command is non-interactive and
+only prints the created ticket unless --attach is also given.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runTicketCreate(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(),
-				client.CreateTicketArgs{Board: tcBoard, Title: tcTitle, Body: tcBody, Column: tcColumn},
-				tcJSON,
-			)
+			ctx := cmd.Context()
+			url := resolveURL(cmd, serverURL)
+			out := cmd.OutOrStdout()
+
+			var boardArgs []string
+			if tcBoard != "" {
+				boardArgs = []string{tcBoard}
+			}
+			board, err := resolveBoardIdent(ctx, url, boardArgs)
+			if err != nil {
+				return err
+			}
+
+			interactive := strings.TrimSpace(tcTitle) == ""
+			attach := tcAttach
+			if !cmd.Flags().Changed("attach") {
+				attach = interactive
+			}
+			// Both the form and the attach need a real terminal; say so
+			// before creating anything rather than half-way through.
+			if interactive && !stdinIsTerminal() {
+				return errors.New("--title is required when not running in an interactive terminal")
+			}
+			if attach && !stdinIsTerminal() {
+				return errors.New("--attach needs an interactive terminal on stdin and stdout")
+			}
+			a := client.CreateTicketArgs{Board: board, Title: tcTitle, Body: tcBody, Column: tcColumn}
+			if interactive {
+				label, err := boardLabel(ctx, url, board)
+				if err != nil {
+					return err
+				}
+				res, ok, err := promptTicketForm(label, tcBody)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					return errors.New("cancelled; no ticket created")
+				}
+				a.Title, a.Body = res.Title, res.Body
+			}
+
+			id, err := runTicketCreate(ctx, url, out, a, tcJSON)
+			if err != nil {
+				return err
+			}
+			if !attach {
+				return nil
+			}
+			return runTicketAttach(ctx, url, out, id, "agent", tcDetachKeys)
 		},
+		// Runtime failures (cancelled form, session start, detach) aren't
+		// usage errors; don't bury them under the flag table.
+		SilenceUsage: true,
 	}
-	create.Flags().StringVar(&tcBoard, "board", "", "Board id or slug (required)")
-	create.Flags().StringVar(&tcTitle, "title", "", "Ticket title (required)")
-	create.Flags().StringVar(&tcBody, "body", "", "Ticket body / description")
+	create.Flags().StringVar(&tcBoard, "board", "", "Board id or slug (default: the board for the repo in the current directory)")
+	create.Flags().StringVar(&tcTitle, "title", "", "Ticket title (omit to be prompted)")
+	create.Flags().StringVar(&tcBody, "body", "", "Ticket body / description (pre-fills the prompt when --title is omitted)")
 	create.Flags().StringVar(&tcColumn, "column", "", "Column name or id (default: leftmost column)")
 	create.Flags().BoolVar(&tcJSON, "json", false, "Print the full ticket JSON instead of a one-line summary")
-	_ = create.MarkFlagRequired("board")
-	_ = create.MarkFlagRequired("title")
+	create.Flags().BoolVar(&tcAttach, "attach", false, "Start the ticket's session and attach to its agent after creating (default: true when prompted, false with --title)")
+	create.Flags().StringVar(&tcDetachKeys, "detach-keys", defaultDetachKeys, "Key sequence that detaches from the agent, docker-style (e.g. ctrl-p,ctrl-q or ctrl-])")
+
+	var (
+		taShell      bool
+		taDetachKeys string
+	)
+	attach := &cobra.Command{
+		Use:   "attach <id>",
+		Short: "Attach your terminal to a ticket's agent (starting its session if needed)",
+		Long: `Attach the current terminal to the agent running in a ticket's session
+container, the same PTY the web UI shows. The session is created and
+started first if it isn't running. Input is forwarded as typed; the
+terminal size follows your window.
+
+Detaching (default ctrl-p,ctrl-q) leaves the agent running — reattach any
+time, or keep using it from the web UI. With --shell an interactive login
+shell in the container is attached instead of the agent.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id, err := parseInt64(args[0], "ticket id")
+			if err != nil {
+				return err
+			}
+			kind := "agent"
+			if taShell {
+				kind = "shell"
+			}
+			return runTicketAttach(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), id, kind, taDetachKeys)
+		},
+		SilenceUsage: true,
+	}
+	attach.Flags().BoolVar(&taShell, "shell", false, "Attach an interactive shell in the session container instead of the agent")
+	attach.Flags().StringVar(&taDetachKeys, "detach-keys", defaultDetachKeys, "Key sequence that detaches, docker-style (e.g. ctrl-p,ctrl-q or ctrl-])")
 
 	var (
 		tuTitle, tuBody string
@@ -574,16 +665,50 @@ func ticketCmd() *cobra.Command {
 	mergeCmd.Flags().StringVar(&mergeStrategy, "strategy", "", "Merge strategy: merge-commit, squash, or rebase (required)")
 	_ = mergeCmd.MarkFlagRequired("strategy")
 
-	parent.AddCommand(create, update, move, archive, unarchive, delTicket, doneCmd, sync, mergeCmd)
+	parent.AddCommand(create, attach, update, move, archive, unarchive, delTicket, doneCmd, sync, mergeCmd)
 	return parent
 }
 
-func runTicketCreate(ctx context.Context, url string, out io.Writer, args client.CreateTicketArgs, asJSON bool) error {
+// boardLabel returns "Name (slug)" for the board the ticket form header
+// names, so the user can tell an inferred board was the right one before
+// typing anything.
+func boardLabel(ctx context.Context, url, ident string) (string, error) {
+	c := client.New(url, nil)
+	id, err := c.ResolveBoardID(ctx, ident)
+	if err != nil {
+		return "", err
+	}
+	raw, err := c.GetBoard(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	var b struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}
+	if err := json.Unmarshal(raw, &b); err != nil {
+		return "", fmt.Errorf("decode board: %w", err)
+	}
+	if b.Slug == "" || b.Slug == b.Name {
+		return b.Name, nil
+	}
+	return b.Name + " (" + b.Slug + ")", nil
+}
+
+// runTicketCreate creates the ticket, prints its summary, and returns the
+// new ticket's id so callers can act on it (attach a terminal, etc).
+func runTicketCreate(ctx context.Context, url string, out io.Writer, args client.CreateTicketArgs, asJSON bool) (int64, error) {
 	raw, err := client.New(url, nil).CreateTicket(ctx, args)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return printTicketSummary(out, raw, asJSON)
+	var tk struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &tk); err != nil {
+		return 0, fmt.Errorf("decode ticket: %w", err)
+	}
+	return tk.ID, printTicketSummary(out, raw, asJSON)
 }
 
 func runTicketUpdate(ctx context.Context, url string, out io.Writer, id int64, args client.UpdateTicketArgs, asJSON bool) error {
