@@ -147,6 +147,7 @@ entry to `REGRESSIONS.md` and a one-line title here.
 - `ghostty-web` terminal dispose poisons the WASM heap — terminal teardown
 - `ghostty-web` canvas doesn't fill its container — terminal sizing/fit
 - `sessions` row has multiple writers — session lifecycle vs PR poller
+- `sessions` rows don't track container liveness — acting on a session from its row alone
 - Per-origin SSE streams starve the WebSocket pool — board subscriptions
 - A deleted board can refetch its `/state` on a loop — board-level events
 - Build Cop boards on the same repo share one jobs cache — per-tick cache eviction

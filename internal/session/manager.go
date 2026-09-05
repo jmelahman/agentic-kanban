@@ -26,16 +26,31 @@ type Manager struct {
 	brokers              *brokerSet
 	apiBase              string
 	claudeConfigOverride *bool
+
+	// containerRunning answers "is this container still up?" for Reconcile.
+	// Defaults to the docker client; tests swap in a stub via
+	// SetContainerProbe so a dead container can be simulated without a daemon.
+	containerRunning func(ctx context.Context, containerID string) (bool, error)
 }
 
 func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
-	return &Manager{
+	m := &Manager{
 		store:   store,
 		docker:  dc,
 		hooks:   h,
 		proxies: docker.NewProxyManager(context.Background(), dc),
 		brokers: newBrokerSet(dc),
 	}
+	if dc != nil {
+		m.containerRunning = dc.ContainerRunning
+	}
+	return m
+}
+
+// SetContainerProbe overrides how Reconcile checks whether a session's
+// container is still running. Pass nil to disable the check.
+func (m *Manager) SetContainerProbe(probe func(ctx context.Context, containerID string) (bool, error)) {
+	m.containerRunning = probe
 }
 
 // SetAPIBase configures the URL session containers should use to call back
@@ -55,7 +70,7 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 		if err := writeClaudeSettings(sess.WorktreePath); err != nil {
 			log.Printf("write claude settings for ticket %d: %v", ticket.ID, err)
 		}
-		return sess, nil
+		return m.Reconcile(ctx, sess)
 	}
 
 	containerName := fmt.Sprintf("kanban-%s-%s", board.Slug, ticket.Slug)
@@ -126,6 +141,12 @@ func (m *Manager) Ensure(ctx context.Context, board *db.Board, ticket *db.Ticket
 func (m *Manager) Start(ctx context.Context, sessionID int64, onPullProgress docker.PullProgressFunc) (*db.Session, error) {
 	sess, err := m.store.GetSession(ctx, sessionID)
 	if err != nil {
+		return nil, err
+	}
+	// A session whose container died underneath it still reads as running;
+	// square the row with the daemon first so the switch below restarts it
+	// instead of returning the stale row as a no-op.
+	if sess, err = m.Reconcile(ctx, sess); err != nil {
 		return nil, err
 	}
 	switch sess.Status {
@@ -322,6 +343,45 @@ func applyKanbanDevcontainerOverrides(cfg *docker.DevcontainerConfig, dev *kanba
 	for k, v := range dev.ContainerEnv {
 		cfg.ContainerEnv[k] = v
 	}
+}
+
+// Reconcile squares a session row with the docker daemon. The row's status
+// and container_id are only ever written by kanban's own lifecycle calls,
+// so a container that dies underneath us — a host reboot, a docker restart,
+// an OOM kill, a manual `docker rm` — leaves the row claiming a live
+// session with nothing behind it. Every consumer of that row then acts on
+// the lie: `kanban ticket attach` skips the start and the exec fails with
+// "container … is not running".
+//
+// When the recorded container is gone or not running, the session is
+// stopped through the normal Stop path (which clears the container id and
+// tears down brokers and port proxies), and the refreshed row is returned so
+// callers see a stopped session they can start. Rows that don't claim a live
+// container (stopped, error, no container id) and in-flight starts are left
+// alone, as is any row whose container can't be inspected for a reason other
+// than "not found": the daemon being unreachable is not evidence the
+// container is gone, and whatever the caller does next fails loudly anyway.
+func (m *Manager) Reconcile(ctx context.Context, sess *db.Session) (*db.Session, error) {
+	if m.containerRunning == nil || sess.ContainerID == nil || *sess.ContainerID == "" {
+		return sess, nil
+	}
+	switch sess.Status {
+	case db.SessionStatusStopped, db.SessionStatusError, db.SessionStatusStarting:
+		return sess, nil
+	}
+	running, err := m.containerRunning(ctx, *sess.ContainerID)
+	if err != nil {
+		log.Printf("session %d: inspect container %s: %v", sess.ID, *sess.ContainerID, err)
+		return sess, nil
+	}
+	if running {
+		return sess, nil
+	}
+	log.Printf("session %d: container %s is no longer running; marking the session stopped", sess.ID, *sess.ContainerID)
+	if err := m.Stop(ctx, sess.ID); err != nil {
+		return nil, err
+	}
+	return m.store.GetSession(ctx, sess.ID)
 }
 
 // Stop tears down the devcontainer; worktree is preserved.

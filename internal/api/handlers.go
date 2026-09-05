@@ -1437,7 +1437,24 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	_ = h.sessions.AttachAgent(r.Context(), sess, w, r, cmd, "/workspace")
+	if err := h.sessions.AttachAgent(r.Context(), sess, w, r, cmd, "/workspace"); err != nil {
+		h.reconcileAfterAttach(r.Context(), sess)
+	}
+}
+
+// reconcileAfterAttach runs when attaching to a session's container failed.
+// The usual cause is a container that died while the row still claims a live
+// session; Reconcile flips such rows to stopped, and the board is told so its
+// cards stop advertising a session that isn't there.
+func (h *handlers) reconcileAfterAttach(ctx context.Context, sess *db.Session) {
+	fresh, err := h.sessions.Reconcile(ctx, sess)
+	if err != nil {
+		log.Printf("reconcile session %d after attach failure: %v", sess.ID, err)
+		return
+	}
+	if fresh.Status != sess.Status {
+		h.publishSessionUpdated(ctx, sess.ID)
+	}
 }
 
 // claudeTranscriptExists reports whether Claude Code has a persisted JSONL
@@ -1464,7 +1481,9 @@ func (h *handlers) wsShell(w http.ResponseWriter, r *http.Request) {
 		h.httpError(w, err, 404)
 		return
 	}
-	_ = h.sessions.AttachShell(r.Context(), sess, w, r, "/workspace")
+	if err := h.sessions.AttachShell(r.Context(), sess, w, r, "/workspace"); err != nil {
+		h.reconcileAfterAttach(r.Context(), sess)
+	}
 }
 
 // Settings — backed by the user-level config file at

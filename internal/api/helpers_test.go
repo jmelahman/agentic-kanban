@@ -39,6 +39,7 @@ type testEnv struct {
 	store    *db.Store
 	cfg      *config.Config
 	srv      *httptest.Server
+	sessions *session.Manager
 	previews *orchestrator.Orchestrator
 	// manifestDir holds out-of-repo manifests (<repo-name>.toml) for repos
 	// that can't carry one; see writeLocalManifest.
@@ -125,8 +126,8 @@ func newEnv(t *testing.T) *testEnv {
 	srv := httptest.NewServer(handler)
 	t.Cleanup(srv.Close)
 
-	return &testEnv{t: t, dir: dir, repoPath: repoPath, store: store, cfg: cfg, srv: srv, previews: previewOrch,
-		manifestDir: manifestDir}
+	return &testEnv{t: t, dir: dir, repoPath: repoPath, store: store, cfg: cfg, srv: srv, sessions: sessionMgr,
+		previews: previewOrch, manifestDir: manifestDir}
 }
 
 func (e *testEnv) seedBoard(name string) *db.Board {

@@ -226,8 +226,24 @@ Attaches the current terminal to the agent running in the ticket's
 session container — the same PTY the web UI shows, so you can drive
 Claude Code (or whichever harness the board uses) from the command line
 and switch back to the browser later. The session is created and started
-first if it isn't running. Keystrokes are forwarded as typed and the
-agent's terminal size follows your window.
+first if it isn't running — including when its container has gone away
+since it was last started (a host reboot, a docker restart, an OOM kill):
+kanban notices the dead container when you attach, marks the session
+stopped, and starts a fresh one before connecting. Keystrokes are
+forwarded as typed and the agent's terminal size follows your window.
+
+Without an id, a full-screen list of the board's open tickets opens
+instead. The board is inferred from the git repo containing the current
+directory (the same lookup as `board get` — an error if zero or several
+boards use that repo) unless `--board` names one. Tickets are grouped by
+column in board order, each with its session status (`working`, `idle`,
+`stopped`, `no session`, …). `↑`/`↓` (or `Ctrl+P`/`Ctrl+N`, `PgUp`/`PgDn`,
+`Home`/`End`) move the highlight, typing narrows the list — every word
+you type must match somewhere in the ticket's `#id`, title, column, or
+status, so `#12`, `login`, and `progress idle` all work — `Enter`
+attaches to the highlighted ticket, and `Esc` leaves without attaching.
+The list needs a real terminal, so in scripts and pipes the id is
+required.
 
 Without an id, a full-screen list of the board's open tickets opens
 instead. The board is inferred from the git repo containing the current

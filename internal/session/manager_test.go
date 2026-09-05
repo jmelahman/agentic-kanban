@@ -1,12 +1,15 @@
 package session
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/jmelahman/kanban/internal/db"
 	"github.com/jmelahman/kanban/internal/docker"
+	"github.com/jmelahman/kanban/internal/hooks"
 	"github.com/jmelahman/kanban/internal/kanbantoml"
 )
 
@@ -270,6 +273,186 @@ func TestApplyKanbanDevcontainerOverrides_BuiltInClaudeConfig(t *testing.T) {
 		}, boolPtr(true))
 		if !hasClaude(cfg) {
 			t.Errorf("claude config missing despite override=true; mounts = %v", cfg.Mounts)
+		}
+	})
+}
+
+// newReconcileEnv seeds a board, a ticket, and a session row claiming a live
+// container, wired to a manager whose docker client can't reach a daemon so
+// Stop's container teardown is a fast no-op.
+func newReconcileEnv(t *testing.T, status string) (*Manager, *db.Store, *db.Board, *db.Ticket, *db.Session) {
+	t.Helper()
+	t.Setenv("DOCKER_HOST", "unix:///nonexistent/docker.sock")
+	store, err := db.Open(filepath.Join(t.TempDir(), "kanban.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	ctx := context.Background()
+
+	board := &db.Board{Name: "Reconcile", Slug: "reconcile"}
+	if err := store.CreateBoard(ctx, board); err != nil {
+		t.Fatal(err)
+	}
+	cols, err := store.ListColumns(ctx, board.ID)
+	if err != nil || len(cols) == 0 {
+		t.Fatalf("columns: %v", err)
+	}
+	ticket := &db.Ticket{BoardID: board.ID, ColumnID: cols[0].ID, Title: "Dead container", Slug: "dead-container"}
+	if err := store.CreateTicket(ctx, ticket); err != nil {
+		t.Fatal(err)
+	}
+	container := "c0ffee"
+	sess := &db.Session{
+		TicketID:     ticket.ID,
+		WorktreePath: t.TempDir(),
+		Status:       status,
+		ContainerID:  &container,
+	}
+	if err := store.UpsertSession(ctx, sess); err != nil {
+		t.Fatal(err)
+	}
+
+	dc, err := docker.NewClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { dc.Close() })
+	return NewManager(store, dc, hooks.NewRunner(store)), store, board, ticket, sess
+}
+
+func containerOf(s *db.Session) string {
+	if s.ContainerID == nil {
+		return ""
+	}
+	return *s.ContainerID
+}
+
+func TestReconcile(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("dead_container_stops_session", func(t *testing.T) {
+		m, store, _, _, sess := newReconcileEnv(t, db.SessionStatusIdle)
+		var probed []string
+		m.SetContainerProbe(func(_ context.Context, id string) (bool, error) {
+			probed = append(probed, id)
+			return false, nil
+		})
+		got, err := m.Reconcile(ctx, sess)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != db.SessionStatusStopped || containerOf(got) != "" || got.StoppedAt == nil {
+			t.Errorf("reconciled session = %+v, want stopped with no container", got)
+		}
+		if len(probed) != 1 || probed[0] != "c0ffee" {
+			t.Errorf("probed %v, want [c0ffee]", probed)
+		}
+		fresh, err := store.GetSession(ctx, sess.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fresh.Status != db.SessionStatusStopped || containerOf(fresh) != "" {
+			t.Errorf("persisted session = %+v, want stopped with no container", fresh)
+		}
+	})
+
+	t.Run("running_container_is_left_alone", func(t *testing.T) {
+		m, _, _, _, sess := newReconcileEnv(t, db.SessionStatusWorking)
+		m.SetContainerProbe(func(context.Context, string) (bool, error) { return true, nil })
+		got, err := m.Reconcile(ctx, sess)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != db.SessionStatusWorking || containerOf(got) != "c0ffee" {
+			t.Errorf("session = %+v, want untouched", got)
+		}
+	})
+
+	t.Run("inspect_failure_is_not_evidence", func(t *testing.T) {
+		m, _, _, _, sess := newReconcileEnv(t, db.SessionStatusIdle)
+		m.SetContainerProbe(func(context.Context, string) (bool, error) { return false, errors.New("daemon unreachable") })
+		got, err := m.Reconcile(ctx, sess)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != db.SessionStatusIdle || containerOf(got) != "c0ffee" {
+			t.Errorf("session = %+v, want untouched", got)
+		}
+	})
+
+	t.Run("rows_without_a_live_claim_are_not_probed", func(t *testing.T) {
+		for _, status := range []string{db.SessionStatusStopped, db.SessionStatusError, db.SessionStatusStarting} {
+			m, _, _, _, sess := newReconcileEnv(t, status)
+			m.SetContainerProbe(func(context.Context, string) (bool, error) {
+				t.Errorf("status %q: probe called", status)
+				return false, nil
+			})
+			got, err := m.Reconcile(ctx, sess)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Status != status {
+				t.Errorf("status %q became %q", status, got.Status)
+			}
+		}
+		m, _, _, _, sess := newReconcileEnv(t, db.SessionStatusIdle)
+		empty := ""
+		sess.ContainerID = &empty
+		m.SetContainerProbe(func(context.Context, string) (bool, error) {
+			t.Error("probe called for a session with no container id")
+			return false, nil
+		})
+		if _, err := m.Reconcile(ctx, sess); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("no_probe_disables_the_check", func(t *testing.T) {
+		m, _, _, _, sess := newReconcileEnv(t, db.SessionStatusIdle)
+		m.SetContainerProbe(nil)
+		got, err := m.Reconcile(ctx, sess)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != db.SessionStatusIdle {
+			t.Errorf("session = %+v, want untouched", got)
+		}
+	})
+
+	t.Run("ensure_returns_the_reconciled_row", func(t *testing.T) {
+		m, _, board, ticket, _ := newReconcileEnv(t, db.SessionStatusIdle)
+		m.SetContainerProbe(func(context.Context, string) (bool, error) { return false, nil })
+		got, err := m.Ensure(ctx, board, ticket)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Status != db.SessionStatusStopped || containerOf(got) != "" {
+			t.Errorf("ensured session = %+v, want stopped with no container", got)
+		}
+	})
+
+	t.Run("start_restarts_instead_of_returning_the_stale_row", func(t *testing.T) {
+		m, store, _, _, sess := newReconcileEnv(t, db.SessionStatusIdle)
+		probes := 0
+		m.SetContainerProbe(func(context.Context, string) (bool, error) {
+			probes++
+			return false, nil
+		})
+		// No daemon, so the restart fails at spawn: the point is that Start
+		// tried at all rather than handing back the idle row as a no-op.
+		if _, err := m.Start(ctx, sess.ID, nil); err == nil {
+			t.Fatal("Start succeeded without a docker daemon")
+		}
+		if probes != 1 {
+			t.Errorf("probes = %d, want 1", probes)
+		}
+		fresh, err := store.GetSession(ctx, sess.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fresh.Status != db.SessionStatusError || containerOf(fresh) != "" {
+			t.Errorf("session after failed restart = %+v, want error with no container", fresh)
 		}
 	})
 }

@@ -447,6 +447,80 @@ func TestSessions(t *testing.T) {
 		assertStatus(t, resp, 204)
 	})
 
+	// seedDeadSession is a session row that still claims a live container
+	// after the container died underneath kanban (host reboot, docker
+	// restart, OOM kill). The probe stands in for the daemon's answer.
+	seedDeadSession := func(t *testing.T, title string, running bool) (*db.Session, *[]string) {
+		t.Helper()
+		other := e.seedTicket(board, title)
+		container := "dead-" + strings.ToLower(title)
+		sess := &db.Session{
+			TicketID:     other.ID,
+			WorktreePath: filepath.Join(e.dir, "wt", fmt.Sprintf("ticket-%d", other.ID)),
+			BranchName:   fmt.Sprintf("kanban/test/%d", other.ID),
+			Status:       db.SessionStatusIdle,
+			ContainerID:  &container,
+		}
+		if err := e.store.UpsertSession(context.Background(), sess); err != nil {
+			t.Fatal(err)
+		}
+		probed := &[]string{}
+		e.sessions.SetContainerProbe(func(_ context.Context, id string) (bool, error) {
+			*probed = append(*probed, id)
+			return running, nil
+		})
+		t.Cleanup(func() { e.sessions.SetContainerProbe(nil) })
+		return sess, probed
+	}
+	containerOf := func(s db.Session) string {
+		if s.ContainerID == nil {
+			return ""
+		}
+		return *s.ContainerID
+	}
+
+	t.Run("ensure_reconciles_dead_container", func(t *testing.T) {
+		sess, probed := seedDeadSession(t, "DeadOnEnsure", false)
+		resp := e.post(fmt.Sprintf("/api/tickets/%d/session", sess.TicketID), nil)
+		assertStatus(t, resp, 201)
+		got := decodeJSON[db.Session](t, resp)
+		if got.ID != sess.ID || got.Status != db.SessionStatusStopped || containerOf(got) != "" {
+			t.Errorf("ensured session = %+v, want the same row stopped with no container", got)
+		}
+		if len(*probed) != 1 || (*probed)[0] != "dead-deadonensure" {
+			t.Errorf("probed %v, want the recorded container once", *probed)
+		}
+	})
+
+	t.Run("ensure_keeps_running_container", func(t *testing.T) {
+		sess, _ := seedDeadSession(t, "AliveOnEnsure", true)
+		resp := e.post(fmt.Sprintf("/api/tickets/%d/session", sess.TicketID), nil)
+		assertStatus(t, resp, 201)
+		got := decodeJSON[db.Session](t, resp)
+		if got.Status != db.SessionStatusIdle || containerOf(got) != "dead-aliveonensure" {
+			t.Errorf("ensured session = %+v, want untouched", got)
+		}
+	})
+
+	t.Run("start_reconciles_dead_container", func(t *testing.T) {
+		sess, probed := seedDeadSession(t, "DeadOnStart", false)
+		_ = os.MkdirAll(sess.WorktreePath, 0o755)
+		// Without a daemon the restart fails at spawn; the point is that
+		// start no longer returns the stale idle row as a 200 no-op.
+		resp := e.post(fmt.Sprintf("/api/sessions/%d/start", sess.ID), nil)
+		assertStatus(t, resp, 500)
+		if len(*probed) != 1 {
+			t.Errorf("probed %v, want once", *probed)
+		}
+		fresh, err := e.store.GetSession(context.Background(), sess.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fresh.Status != db.SessionStatusError || containerOf(*fresh) != "" {
+			t.Errorf("session after failed restart = %+v, want error with no container", fresh)
+		}
+	})
+
 	t.Run("stop_unknown_500", func(t *testing.T) {
 		resp := e.post("/api/sessions/9999/stop", nil)
 		// no session row → store returns ErrNotFound; handler maps to 500.

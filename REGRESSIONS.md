@@ -54,6 +54,31 @@ Rules:
   `publishSessionUpdated(ctx, sessionID)` which refetches; the poller
   refetches in `applyTransition`'s defer.
 
+### `sessions` rows don't track container liveness
+
+Only kanban's own lifecycle calls write `status` and `container_id`;
+nothing watches the daemon. A container that dies underneath us (host
+reboot, docker restart, OOM kill, a manual `docker rm`) leaves a row
+claiming `idle`/`working` with a container id that no longer exists, and
+every consumer of the row acts on the lie — `kanban ticket attach` skipped
+the start because the row looked running, then the PTY exec failed with
+"container … is not running". `session.Manager.Reconcile` is the fix: it
+inspects the recorded container and runs the normal `Stop` path (clears
+the id, tears down brokers and proxies) when the container is gone. Rules:
+
+- Any path that decides "this session is running, act on its container"
+  from the row alone goes through `Reconcile` first. `Ensure` and `Start`
+  do; the PTY/shell WebSocket handlers reconcile after a failed attach so
+  the board card flips to stopped. Don't add a new consumer that trusts
+  `status` and `container_id` as-is.
+- Only a definitive answer counts as evidence: the daemon says not found,
+  or `State.Running` is false. An inspect *error* means "unknown" — leave
+  the row alone rather than stopping a session because docker hiccuped.
+- Keep it off hot reads. `/state` and the summary endpoints are polled
+  constantly; a docker round-trip per session per poll is not acceptable
+  there. Reconcile at the points where someone is about to act on the
+  container.
+
 ### Per-origin SSE streams starve the WebSocket pool
 
 Browsers cap HTTP/1.1 connections at 6 per origin and route the initial
