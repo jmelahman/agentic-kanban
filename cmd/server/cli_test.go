@@ -42,7 +42,7 @@ func TestRunTicketCreate(t *testing.T) {
 
 	t.Run("default_column", func(t *testing.T) {
 		var out bytes.Buffer
-		err := runTicketCreate(t.Context(), srv.URL, &out, client.CreateTicketArgs{
+		_, err := runTicketCreate(t.Context(), srv.URL, &out, client.CreateTicketArgs{
 			Board: board.Slug,
 			Title: "Via CLI",
 		}, false)
@@ -70,7 +70,7 @@ func TestRunTicketCreate(t *testing.T) {
 
 	t.Run("named_column_json_output", func(t *testing.T) {
 		var out bytes.Buffer
-		err := runTicketCreate(t.Context(), srv.URL, &out, client.CreateTicketArgs{
+		_, err := runTicketCreate(t.Context(), srv.URL, &out, client.CreateTicketArgs{
 			Board:  board.Slug,
 			Title:  "Named Col",
 			Column: "in progress",
@@ -90,7 +90,7 @@ func TestRunTicketCreate(t *testing.T) {
 
 	t.Run("server_error_propagates", func(t *testing.T) {
 		var out bytes.Buffer
-		err := runTicketCreate(t.Context(), srv.URL, &out, client.CreateTicketArgs{
+		_, err := runTicketCreate(t.Context(), srv.URL, &out, client.CreateTicketArgs{
 			Board: "no-such-board",
 			Title: "x",
 		}, false)
@@ -545,4 +545,108 @@ func mustGit(t *testing.T, dir string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
 	}
+}
+
+// TestTicketCreateCommand exercises the cobra wiring of `ticket create`
+// and `ticket attach` without a terminal: board inference, the flag
+// combinations that must fail before creating anything, and --board
+// overriding inference.
+func TestTicketCreateCommand(t *testing.T) {
+	srv, store, board := newKanbanCLITestServer(t)
+	restore := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = restore })
+
+	run := func(t *testing.T, args ...string) (string, error) {
+		t.Helper()
+		cmd := ticketCmd()
+		var out bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetArgs(append(args, "--server", srv.URL))
+		err := cmd.ExecuteContext(t.Context())
+		return out.String(), err
+	}
+	countTickets := func(t *testing.T) int {
+		t.Helper()
+		tickets, err := store.ListTickets(t.Context(), board.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(tickets)
+	}
+
+	t.Run("infers_board_from_cwd", func(t *testing.T) {
+		t.Chdir(board.RepoPath)
+		out, err := run(t, "create", "--title", "From cwd", "--body", "details")
+		if err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		if !strings.Contains(out, "From cwd") {
+			t.Errorf("summary missing title: %q", out)
+		}
+		tickets, _ := store.ListTickets(t.Context(), board.ID)
+		var found bool
+		for _, tk := range tickets {
+			if tk.Title == "From cwd" && tk.Body == "details" {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("ticket not created on inferred board; got %+v", tickets)
+		}
+	})
+
+	t.Run("no_title_without_tty_fails_before_creating", func(t *testing.T) {
+		t.Chdir(board.RepoPath)
+		before := countTickets(t)
+		_, err := run(t, "create")
+		if err == nil || !strings.Contains(err.Error(), "--title is required") {
+			t.Errorf("err = %v", err)
+		}
+		if got := countTickets(t); got != before {
+			t.Errorf("tickets = %d, want %d (nothing created)", got, before)
+		}
+	})
+
+	t.Run("attach_without_tty_fails_before_creating", func(t *testing.T) {
+		t.Chdir(board.RepoPath)
+		before := countTickets(t)
+		_, err := run(t, "create", "--title", "Attach me", "--attach")
+		if err == nil || !strings.Contains(err.Error(), "interactive terminal") {
+			t.Errorf("err = %v", err)
+		}
+		if got := countTickets(t); got != before {
+			t.Errorf("tickets = %d, want %d (nothing created)", got, before)
+		}
+	})
+
+	t.Run("explicit_board_outside_repo", func(t *testing.T) {
+		t.Chdir(t.TempDir())
+		if _, err := run(t, "create", "--title", "No repo"); err == nil {
+			t.Error("expected an error when no board can be inferred")
+		}
+		out, err := run(t, "create", "--board", board.Slug, "--title", "Explicit board", "--json")
+		if err != nil {
+			t.Fatalf("%v\n%s", err, out)
+		}
+		var tk db.Ticket
+		if err := json.Unmarshal(bytes.TrimSpace([]byte(out)), &tk); err != nil {
+			t.Fatalf("output not JSON: %q (%v)", out, err)
+		}
+		if tk.BoardID != board.ID || tk.Title != "Explicit board" {
+			t.Errorf("ticket = %+v", tk)
+		}
+	})
+
+	t.Run("attach_without_tty", func(t *testing.T) {
+		_, err := run(t, "attach", "1")
+		if err == nil || !strings.Contains(err.Error(), "interactive terminal") {
+			t.Errorf("err = %v", err)
+		}
+		_, err = run(t, "attach", "x")
+		if err == nil {
+			t.Error("expected an error for a non-numeric id")
+		}
+	})
 }
