@@ -457,16 +457,29 @@ func samePath(a, b string) bool {
 // ---------- ticket ----------
 
 func ticketCmd() *cobra.Command {
-	var serverURL string
+	var serverURL, boardIdent string
 	parent := &cobra.Command{
 		Use:   "ticket",
 		Short: "Manage tickets on a kanban board",
+		Long: `Manage tickets on a kanban board.
+
+Every subcommand takes the ticket id as an optional positional argument.
+Without one, the board's tickets are listed for you to pick from: the
+board is inferred from the git repo containing the current directory (an
+error if zero or several boards use that repo) unless --board names one.
+Typing narrows the list; Enter runs the subcommand on the highlighted
+ticket, Esc cancels. The list needs a real terminal, so in scripts and
+pipes the id is required.`,
 	}
 	addServerFlag(parent, &serverURL)
+	// --board is persistent so every subcommand's picker can be pointed at a
+	// board from outside its repo with the same flag.
+	parent.PersistentFlags().StringVar(&boardIdent, "board", "",
+		"Board id or slug (default: the board for the repo in the current directory)")
 
 	var (
-		tcBoard, tcTitle, tcBody, tcColumn, tcDetachKeys string
-		tcJSON, tcAttach                                 bool
+		tcTitle, tcBody, tcColumn, tcDetachKeys string
+		tcJSON, tcAttach                        bool
 	)
 	create := &cobra.Command{
 		Use:   "create",
@@ -486,11 +499,7 @@ only prints the created ticket unless --attach is also given.`,
 			url := resolveURL(cmd, serverURL)
 			out := cmd.OutOrStdout()
 
-			var boardArgs []string
-			if tcBoard != "" {
-				boardArgs = []string{tcBoard}
-			}
-			board, err := resolveBoardIdent(ctx, url, boardArgs)
+			board, err := resolveBoardIdent(ctx, url, boardArgs(boardIdent))
 			if err != nil {
 				return err
 			}
@@ -533,11 +542,7 @@ only prints the created ticket unless --attach is also given.`,
 			}
 			return runTicketAttach(ctx, url, out, id, "agent", tcDetachKeys)
 		},
-		// Runtime failures (cancelled form, session start, detach) aren't
-		// usage errors; don't bury them under the flag table.
-		SilenceUsage: true,
 	}
-	create.Flags().StringVar(&tcBoard, "board", "", "Board id or slug (default: the board for the repo in the current directory)")
 	create.Flags().StringVar(&tcTitle, "title", "", "Ticket title (omit to be prompted)")
 	create.Flags().StringVar(&tcBody, "body", "", "Ticket body / description (pre-fills the prompt when --title is omitted)")
 	create.Flags().StringVar(&tcColumn, "column", "", "Column name or id (default: leftmost column)")
@@ -545,9 +550,34 @@ only prints the created ticket unless --attach is also given.`,
 	create.Flags().BoolVar(&tcAttach, "attach", false, "Start the ticket's session and attach to its agent after creating (default: true when prompted, false with --title)")
 	create.Flags().StringVar(&tcDetachKeys, "detach-keys", defaultDetachKeys, "Key sequence that detaches from the agent, docker-style (e.g. ctrl-p,ctrl-q or ctrl-])")
 
+	var tiJSON bool
+	info := &cobra.Command{
+		Use:   "info [id]",
+		Short: "Show a ticket's details, with each value copyable to the clipboard",
+		Long: `Show everything the web UI's Info tab does for a ticket: its description
+and board placement, its session and container, the worktree and branch,
+any pull request, and the ports its session has allocated.
+
+On a terminal this opens a full-screen view. Up/Down move between values,
+Enter (or "c" / "y") copies the highlighted one to the clipboard, and Esc
+closes. Piped or redirected it prints the same fields as plain text, and
+--json prints them as a single JSON object.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			url := resolveURL(cmd, serverURL)
+			id, err := ticketArg(ctx, url, args, boardIdent, pickerAction{"Ticket info", "show"}, false)
+			if err != nil {
+				return err
+			}
+			return runTicketInfo(ctx, url, cmd.OutOrStdout(), id, tiJSON)
+		},
+	}
+	info.Flags().BoolVar(&tiJSON, "json", false, "Print the ticket's info as JSON instead of opening the viewer")
+
 	var (
-		taBoard, taDetachKeys string
-		taShell               bool
+		taDetachKeys string
+		taShell      bool
 	)
 	attach := &cobra.Command{
 		Use:   "attach [id]",
@@ -569,15 +599,12 @@ shell in the container is attached instead of the agent.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			url := resolveURL(cmd, serverURL)
-			var (
-				id  int64
-				err error
-			)
-			if len(args) == 1 {
-				id, err = parseInt64(args[0], "ticket id")
-			} else {
-				id, err = pickTicket(ctx, url, taBoard, taDetachKeys)
+			// A bad --detach-keys would only fail after the list; reject it
+			// before anything is fetched or drawn.
+			if _, err := parseDetachKeys(taDetachKeys); err != nil {
+				return err
 			}
+			id, err := ticketArg(ctx, url, args, boardIdent, pickerAction{"Attach to ticket", "attach"}, false)
 			if err != nil {
 				return err
 			}
@@ -587,9 +614,7 @@ shell in the container is attached instead of the agent.`,
 			}
 			return runTicketAttach(ctx, url, cmd.OutOrStdout(), id, kind, taDetachKeys)
 		},
-		SilenceUsage: true,
 	}
-	attach.Flags().StringVar(&taBoard, "board", "", "Board id or slug to list tickets from when no id is given (default: the board for the repo in the current directory)")
 	attach.Flags().BoolVar(&taShell, "shell", false, "Attach an interactive shell in the session container instead of the agent")
 	attach.Flags().StringVar(&taDetachKeys, "detach-keys", defaultDetachKeys, "Key sequence that detaches, docker-style (e.g. ctrl-p,ctrl-q or ctrl-])")
 
@@ -598,11 +623,13 @@ shell in the container is attached instead of the agent.`,
 		tuJSON          bool
 	)
 	update := &cobra.Command{
-		Use:   "update <id>",
+		Use:   "update [id]",
 		Short: "Update title/body of a ticket",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseInt64(args[0], "ticket id")
+			ctx := cmd.Context()
+			url := resolveURL(cmd, serverURL)
+			id, err := ticketArg(ctx, url, args, boardIdent, pickerAction{"Update ticket", "update"}, false)
 			if err != nil {
 				return err
 			}
@@ -613,7 +640,7 @@ shell in the container is attached instead of the agent.`,
 			if cmd.Flags().Changed("body") {
 				a.Body = &tuBody
 			}
-			return runTicketUpdate(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), id, a, tuJSON)
+			return runTicketUpdate(ctx, url, cmd.OutOrStdout(), id, a, tuJSON)
 		},
 	}
 	update.Flags().StringVar(&tuTitle, "title", "", "New title")
@@ -625,15 +652,17 @@ shell in the container is attached instead of the agent.`,
 		tmPosition int
 	)
 	move := &cobra.Command{
-		Use:   "move <id>",
+		Use:   "move [id]",
 		Short: "Move a ticket to a different column / position",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseInt64(args[0], "ticket id")
+			ctx := cmd.Context()
+			url := resolveURL(cmd, serverURL)
+			id, err := ticketArg(ctx, url, args, boardIdent, pickerAction{"Move ticket", "move"}, false)
 			if err != nil {
 				return err
 			}
-			return runTicketMove(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), id,
+			return runTicketMove(ctx, url, cmd.OutOrStdout(), id,
 				client.MoveTicketArgs{ColumnID: tmColumnID, Position: tmPosition})
 		},
 	}
@@ -641,48 +670,70 @@ shell in the container is attached instead of the agent.`,
 	move.Flags().IntVar(&tmPosition, "position", 0, "Target position within the column (0-indexed)")
 	_ = move.MarkFlagRequired("column-id")
 
-	archive := simpleTicketCmd("archive", "Archive a ticket", &serverURL,
+	archive := simpleTicketCmd("archive", "Archive a ticket", pickerAction{"Archive ticket", "archive"}, false,
+		&serverURL, &boardIdent,
 		func(c *client.Client, ctx context.Context, id int64) error { return c.ArchiveTicket(ctx, id) })
-	unarchive := simpleTicketCmd("unarchive", "Unarchive a ticket", &serverURL,
+	unarchive := simpleTicketCmd("unarchive", "Unarchive a ticket", pickerAction{"Unarchive ticket", "unarchive"}, true,
+		&serverURL, &boardIdent,
 		func(c *client.Client, ctx context.Context, id int64) error { return c.UnarchiveTicket(ctx, id) })
-	delTicket := simpleTicketCmd("delete", "Permanently delete a ticket (must be archived first)", &serverURL,
+	delTicket := simpleTicketCmd("delete", "Permanently delete a ticket (must be archived first)", pickerAction{"Delete ticket", "delete"}, true,
+		&serverURL, &boardIdent,
 		func(c *client.Client, ctx context.Context, id int64) error { return c.DeleteTicket(ctx, id) })
-	doneCmd := simpleTicketCmd("done", "Move a ticket to the rightmost column and stop its session", &serverURL,
+	doneCmd := simpleTicketCmd("done", "Move a ticket to the rightmost column and stop its session", pickerAction{"Finish ticket", "finish"}, false,
+		&serverURL, &boardIdent,
 		func(c *client.Client, ctx context.Context, id int64) error { return c.DoneTicket(ctx, id) })
 
 	var syncStrategy string
 	sync := &cobra.Command{
-		Use:   "sync <id>",
+		Use:   "sync [id]",
 		Short: "Sync a ticket branch from base (rebase|merge)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseInt64(args[0], "ticket id")
+			ctx := cmd.Context()
+			url := resolveURL(cmd, serverURL)
+			id, err := ticketArg(ctx, url, args, boardIdent, pickerAction{"Sync ticket branch", "sync"}, false)
 			if err != nil {
 				return err
 			}
-			return runTicketSync(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), id, syncStrategy)
+			return runTicketSync(ctx, url, cmd.OutOrStdout(), id, syncStrategy)
 		},
 	}
 	sync.Flags().StringVar(&syncStrategy, "strategy", "rebase", "Sync strategy: rebase or merge")
 
 	var mergeStrategy string
 	mergeCmd := &cobra.Command{
-		Use:   "merge <id>",
+		Use:   "merge [id]",
 		Short: "Merge a ticket branch into base (merge-commit|squash|rebase)",
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseInt64(args[0], "ticket id")
+			ctx := cmd.Context()
+			url := resolveURL(cmd, serverURL)
+			id, err := ticketArg(ctx, url, args, boardIdent, pickerAction{"Merge ticket branch", "merge"}, false)
 			if err != nil {
 				return err
 			}
-			return runTicketMerge(cmd.Context(), resolveURL(cmd, serverURL), cmd.OutOrStdout(), id, mergeStrategy)
+			return runTicketMerge(ctx, url, cmd.OutOrStdout(), id, mergeStrategy)
 		},
 	}
 	mergeCmd.Flags().StringVar(&mergeStrategy, "strategy", "", "Merge strategy: merge-commit, squash, or rebase (required)")
 	_ = mergeCmd.MarkFlagRequired("strategy")
 
-	parent.AddCommand(create, attach, update, move, archive, unarchive, delTicket, doneCmd, sync, mergeCmd)
+	parent.AddCommand(create, info, attach, update, move, archive, unarchive, delTicket, doneCmd, sync, mergeCmd)
+	// A cancelled picker or a failed API call isn't a usage error; don't
+	// bury any of them under the flag table.
+	for _, c := range parent.Commands() {
+		c.SilenceUsage = true
+	}
 	return parent
+}
+
+// boardArgs adapts an optional --board value to the positional-arg slice
+// resolveBoardIdent takes.
+func boardArgs(ident string) []string {
+	if ident == "" {
+		return nil
+	}
+	return []string{ident}
 }
 
 // boardLabel returns "Name (slug)" for the board the ticket form header
@@ -708,39 +759,46 @@ func boardLabel(ctx context.Context, url, ident string) (string, error) {
 	return formatBoardLabel(b.Name, b.Slug), nil
 }
 
-// pickTicket backs `ticket attach` without an id: it resolves the board
-// (an explicit ident, else the cwd repo), lists its open tickets, and
-// returns the one the user picks. Preconditions that would only fail after
-// the list (no terminal, a bad --detach-keys) are checked first so nothing
-// is fetched or drawn for nothing.
-func pickTicket(ctx context.Context, url, boardIdent, detachKeys string) (int64, error) {
-	if _, err := parseDetachKeys(detachKeys); err != nil {
-		return 0, err
+// ticketArg resolves the optional ticket id every `kanban ticket`
+// subcommand accepts: the explicit argument when given, otherwise the
+// ticket the user picks out of the board's list.
+func ticketArg(ctx context.Context, url string, args []string, boardIdent string, action pickerAction, archived bool) (int64, error) {
+	if len(args) > 0 {
+		return parseInt64(args[0], "ticket id")
 	}
+	return pickTicket(ctx, url, boardIdent, action, archived)
+}
+
+// pickTicket resolves the board (an explicit ident, else the cwd repo),
+// lists its tickets, and returns the one the user picks. archived selects
+// the board's archived tickets, for the subcommands that only act on those.
+// The terminal check comes first so nothing is fetched or drawn for a
+// picker that can't be shown.
+func pickTicket(ctx context.Context, url, boardIdent string, action pickerAction, archived bool) (int64, error) {
 	if !stdinIsTerminal() {
 		return 0, errors.New("a ticket id is required when not running in an interactive terminal")
 	}
-	var boardArgs []string
-	if boardIdent != "" {
-		boardArgs = []string{boardIdent}
-	}
-	ident, err := resolveBoardIdent(ctx, url, boardArgs)
+	ident, err := resolveBoardIdent(ctx, url, boardArgs(boardIdent))
 	if err != nil {
 		return 0, err
 	}
-	label, items, err := loadBoardTickets(ctx, url, ident)
+	label, items, err := loadBoardTickets(ctx, url, ident, archived)
 	if err != nil {
 		return 0, err
 	}
 	if len(items) == 0 {
-		return 0, fmt.Errorf("board %s has no open tickets", label)
+		kind := "open"
+		if archived {
+			kind = "archived"
+		}
+		return 0, fmt.Errorf("board %s has no %s tickets", label, kind)
 	}
-	item, ok, err := promptTicketPicker(label, items)
+	item, ok, err := promptTicketPicker(action, label, items)
 	if err != nil {
 		return 0, err
 	}
 	if !ok {
-		return 0, errors.New("cancelled; nothing attached")
+		return 0, errors.New("cancelled; no ticket selected")
 	}
 	return item.ID, nil
 }
@@ -794,20 +852,24 @@ func runTicketMerge(ctx context.Context, url string, out io.Writer, id int64, st
 }
 
 // simpleTicketCmd builds an archive/unarchive/delete/done style subcommand
-// (positional ticket id, no body, no flags) that maps to a one-line client
-// call. The shape is the same for all four commands; this avoids four
-// near-identical blocks in ticketCmd().
-func simpleTicketCmd(use, short string, serverURL *string, action func(c *client.Client, ctx context.Context, id int64) error) *cobra.Command {
+// (optional positional ticket id, no body, no flags) that maps to a one-line
+// client call. The shape is the same for all four commands; this avoids four
+// near-identical blocks in ticketCmd(). pick names the picker opened when no
+// id is given, and archived points it at the board's archived tickets for
+// the commands that only ever act on those.
+func simpleTicketCmd(use, short string, pick pickerAction, archived bool, serverURL, boardIdent *string, action func(c *client.Client, ctx context.Context, id int64) error) *cobra.Command {
 	return &cobra.Command{
-		Use:   use + " <id>",
+		Use:   use + " [id]",
 		Short: short,
-		Args:  cobra.ExactArgs(1),
+		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			id, err := parseInt64(args[0], "ticket id")
+			ctx := cmd.Context()
+			url := resolveURL(cmd, *serverURL)
+			id, err := ticketArg(ctx, url, args, *boardIdent, pick, archived)
 			if err != nil {
 				return err
 			}
-			if err := action(client.New(resolveURL(cmd, *serverURL), nil), cmd.Context(), id); err != nil {
+			if err := action(client.New(url, nil), ctx, id); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s ticket %d\n", use, id)
@@ -895,9 +957,13 @@ func sessionCmd() *cobra.Command {
 	_ = ensure.MarkFlagRequired("ticket")
 
 	start := sessionLifecycleCmd("start", "Start a stopped session", &serverURL,
-		func(c *client.Client, ctx context.Context, id int64) (json.RawMessage, error) { return c.StartSession(ctx, id) })
+		func(c *client.Client, ctx context.Context, id int64) (json.RawMessage, error) {
+			return c.StartSession(ctx, id)
+		})
 	restart := sessionLifecycleCmd("restart", "Restart a session", &serverURL,
-		func(c *client.Client, ctx context.Context, id int64) (json.RawMessage, error) { return c.RestartSession(ctx, id) })
+		func(c *client.Client, ctx context.Context, id int64) (json.RawMessage, error) {
+			return c.RestartSession(ctx, id)
+		})
 
 	stop := &cobra.Command{
 		Use:   "stop <id>",

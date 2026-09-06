@@ -39,12 +39,45 @@ type Board struct {
 
 // Ticket mirrors the subset of fields callers need from ticket responses.
 type Ticket struct {
-	ID       int64  `json:"id"`
-	BoardID  int64  `json:"board_id"`
-	ColumnID int64  `json:"column_id"`
-	Title    string `json:"title"`
-	Slug     string `json:"slug"`
-	Position int    `json:"position"`
+	ID         int64  `json:"id"`
+	BoardID    int64  `json:"board_id"`
+	ColumnID   int64  `json:"column_id"`
+	Title      string `json:"title"`
+	Slug       string `json:"slug"`
+	Body       string `json:"body"`
+	Position   int    `json:"position"`
+	CreatedAt  int64  `json:"created_at"`
+	ArchivedAt *int64 `json:"archived_at,omitempty"`
+}
+
+// Session mirrors the subset of fields callers need from session responses.
+type Session struct {
+	ID              int64   `json:"id"`
+	TicketID        int64   `json:"ticket_id"`
+	WorktreePath    string  `json:"worktree_path"`
+	BranchName      string  `json:"branch_name"`
+	ContainerID     *string `json:"container_id,omitempty"`
+	ContainerName   *string `json:"container_name,omitempty"`
+	Status          string  `json:"status"`
+	StartedAt       *int64  `json:"started_at,omitempty"`
+	StoppedAt       *int64  `json:"stopped_at,omitempty"`
+	PRState         string  `json:"pr_state,omitempty"`
+	PRNumber        *int64  `json:"pr_number,omitempty"`
+	PRURL           string  `json:"pr_url,omitempty"`
+	PRTitle         string  `json:"pr_title,omitempty"`
+	MountPath       string  `json:"mount_path,omitempty"`
+	RepoPath        string  `json:"repo_path,omitempty"`
+	ClaudeSessionID string  `json:"claude_session_id,omitempty"`
+}
+
+// Port mirrors one entry of GET /api/sessions/{id}/ports.
+type Port struct {
+	ID            int64  `json:"id"`
+	SessionID     int64  `json:"session_id"`
+	Label         string `json:"label"`
+	ContainerPort int    `json:"container_port"`
+	HostPort      int    `json:"host_port"`
+	ProxyActive   bool   `json:"proxy_active"`
 }
 
 // CreateBoardArgs is the request body for POST /api/boards. Name plus one of
@@ -203,6 +236,13 @@ func (c *Client) CreateTicket(ctx context.Context, a CreateTicketArgs) (json.Raw
 	return c.do(ctx, http.MethodPost, "/api/boards/"+url.PathEscape(a.Board)+"/tickets", body, http.StatusCreated)
 }
 
+// GetTicket calls GET /api/tickets/{id}. It's the only ticket lookup that
+// needs no board context, so callers holding a bare ticket id can find the
+// board it belongs to.
+func (c *Client) GetTicket(ctx context.Context, id int64) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodGet, "/api/tickets/"+strconv.FormatInt(id, 10), nil, http.StatusOK)
+}
+
 // UpdateTicket calls PATCH /api/tickets/{id}.
 func (c *Client) UpdateTicket(ctx context.Context, id int64, a UpdateTicketArgs) (json.RawMessage, error) {
 	return c.do(ctx, http.MethodPatch, "/api/tickets/"+strconv.FormatInt(id, 10), a, http.StatusOK)
@@ -280,6 +320,19 @@ func (c *Client) StopSession(ctx context.Context, id int64) error {
 // RestartSession calls POST /api/sessions/{id}/restart.
 func (c *Client) RestartSession(ctx context.Context, id int64) (json.RawMessage, error) {
 	return c.do(ctx, http.MethodPost, "/api/sessions/"+strconv.FormatInt(id, 10)+"/restart", nil, http.StatusOK)
+}
+
+// ListPorts calls GET /api/sessions/{id}/ports.
+func (c *Client) ListPorts(ctx context.Context, sessionID int64) ([]Port, error) {
+	raw, err := c.do(ctx, http.MethodGet, "/api/sessions/"+strconv.FormatInt(sessionID, 10)+"/ports", nil, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	var ports []Port
+	if err := json.Unmarshal(raw, &ports); err != nil {
+		return nil, err
+	}
+	return ports, nil
 }
 
 // ConfigPatchArgs is the request body for PATCH /api/config. Scope is "local"

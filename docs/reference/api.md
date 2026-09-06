@@ -34,6 +34,14 @@ curl -fsS -X POST http://localhost:7474/api/boards/playground/tickets \
   -d '{"title":"Investigate flaky test","column":"Backlog","body":"Repro on CI but not locally."}'
 ```
 
+### `GET /api/tickets/{id}`
+
+Get one ticket by numeric id. Unlike the board-scoped listings this needs no board context, so a caller holding only a ticket id (the CLI's `kanban ticket info`) can find the board it lives on — the response carries `board_id` and `column_id`. Returns `404` for an unknown id.
+
+```sh
+curl -fsS http://localhost:7474/api/tickets/42
+```
+
 ### `GET /api/boards/{id}/archived`
 
 List tickets that have been archived from the given board.

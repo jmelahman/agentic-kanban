@@ -699,7 +699,7 @@ func TestLoadBoardTickets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	label, items, err := loadBoardTickets(t.Context(), srv.URL, board.Slug)
+	label, items, err := loadBoardTickets(t.Context(), srv.URL, board.Slug, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -720,8 +720,102 @@ func TestLoadBoardTickets(t *testing.T) {
 		}
 	}
 
-	if _, _, err := loadBoardTickets(t.Context(), srv.URL, "no-such-board"); err == nil {
+	// The archived listing is a different endpoint but the same grouping:
+	// only the archived ticket, under the column it was archived from. It is
+	// what `ticket unarchive` and `ticket delete` pick from.
+	label, items, err = loadBoardTickets(t.Context(), srv.URL, board.Slug, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if label != "CLI Board (cli-board)" {
+		t.Errorf("archived label = %q", label)
+	}
+	wantArchived := []pickerItem{{ID: archived.ID, Title: "Archived", Column: cols[0].Name}}
+	if len(items) != 1 || items[0] != wantArchived[0] {
+		t.Errorf("archived items = %+v, want %+v", items, wantArchived)
+	}
+
+	if _, _, err := loadBoardTickets(t.Context(), srv.URL, "no-such-board", false); err == nil {
 		t.Error("expected an error for an unknown board")
+	}
+}
+
+// TestTicketArg covers the shared "id or picker" resolution every ticket
+// subcommand runs: an explicit id never opens a screen, a bad one is
+// rejected as a parse error, and an absent one falls through to the picker
+// (which without a terminal is an error rather than a hang).
+func TestTicketArg(t *testing.T) {
+	srv, _, board := newKanbanCLITestServer(t)
+	restore := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = restore })
+
+	// An unreachable server proves nothing was fetched for an explicit id.
+	id, err := ticketArg(t.Context(), "http://127.0.0.1:1", []string{"42"}, board.Slug, attachAction, false)
+	if err != nil || id != 42 {
+		t.Errorf("ticketArg(42) = %d, %v", id, err)
+	}
+	if _, err := ticketArg(t.Context(), srv.URL, []string{"abc"}, board.Slug, attachAction, false); err == nil ||
+		!strings.Contains(err.Error(), "ticket id") {
+		t.Errorf("bad id: err = %v", err)
+	}
+	if _, err := ticketArg(t.Context(), srv.URL, nil, board.Slug, attachAction, false); err == nil ||
+		!strings.Contains(err.Error(), "interactive terminal") {
+		t.Errorf("no id without a tty: err = %v", err)
+	}
+}
+
+// TestLoadTicketInfo checks the assembly `ticket info` does: a bare ticket
+// id resolves to its board, the column it sits in, the session working on
+// it, and that session's ports.
+func TestLoadTicketInfo(t *testing.T) {
+	srv, store, board := newKanbanCLITestServer(t)
+	cols, _ := store.ListColumns(t.Context(), board.ID)
+	tk := &db.Ticket{BoardID: board.ID, ColumnID: cols[1].ID, Title: "Info me", Slug: "info-me", Body: "why"}
+	if err := store.CreateTicket(t.Context(), tk); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := loadTicketInfo(t.Context(), srv.URL, tk.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Ticket.Title != "Info me" || info.Ticket.Body != "why" {
+		t.Errorf("ticket = %+v", info.Ticket)
+	}
+	if info.Board.ID != board.ID || info.Board.Slug != "cli-board" {
+		t.Errorf("board = %+v", info.Board)
+	}
+	if info.Column != cols[1].Name {
+		t.Errorf("column = %q, want %q", info.Column, cols[1].Name)
+	}
+	if info.Session != nil {
+		t.Errorf("session = %+v, want none before one is started", info.Session)
+	}
+
+	sess := &db.Session{TicketID: tk.ID, Status: db.SessionStatusWorking, BranchName: "kanban/cli-board/info-me"}
+	if err := store.UpsertSession(t.Context(), sess); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreatePort(t.Context(), &db.PortAllocation{
+		SessionID: sess.ID, Label: "web", ContainerPort: 5173, HostPort: 13001, ProxyActive: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err = loadTicketInfo(t.Context(), srv.URL, tk.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Session == nil || info.Session.BranchName != "kanban/cli-board/info-me" {
+		t.Fatalf("session = %+v", info.Session)
+	}
+	if len(info.Ports) != 1 || info.Ports[0].Label != "web" || info.Ports[0].HostPort != 13001 {
+		t.Errorf("ports = %+v", info.Ports)
+	}
+
+	if _, err := loadTicketInfo(t.Context(), srv.URL, tk.ID+9999); err == nil {
+		t.Error("expected an error for an unknown ticket id")
 	}
 }
 
@@ -734,12 +828,18 @@ func TestPickTicketEmptyBoard(t *testing.T) {
 	stdinIsTerminal = func() bool { return true }
 	t.Cleanup(func() { stdinIsTerminal = restore })
 
-	_, err := pickTicket(t.Context(), srv.URL, board.Slug, defaultDetachKeys)
+	_, err := pickTicket(t.Context(), srv.URL, board.Slug, attachAction, false)
 	if err == nil || !strings.Contains(err.Error(), "no open tickets") {
 		t.Errorf("err = %v", err)
 	}
+	// The archived list is empty on a fresh board too, and says so in its
+	// own words rather than the open list's.
+	_, err = pickTicket(t.Context(), srv.URL, board.Slug, pickerAction{"Delete ticket", "delete"}, true)
+	if err == nil || !strings.Contains(err.Error(), "no archived tickets") {
+		t.Errorf("archived err = %v", err)
+	}
 	t.Chdir(t.TempDir())
-	if _, err := pickTicket(t.Context(), srv.URL, "", defaultDetachKeys); err == nil {
+	if _, err := pickTicket(t.Context(), srv.URL, "", attachAction, false); err == nil {
 		t.Error("expected an error when no board can be inferred")
 	}
 }

@@ -8,6 +8,10 @@ import (
 	"github.com/gdamore/tcell/v2"
 )
 
+// attachAction is the picker action most of these tests run under; the
+// header and footer it produces are asserted in TestTicketPickerRender.
+var attachAction = pickerAction{"Attach to ticket", "attach"}
+
 func pickerItems() []pickerItem {
 	return []pickerItem{
 		{ID: 3, Title: "Fix the login bug", Column: "Todo", Status: ""},
@@ -34,7 +38,7 @@ func screenLines(s tcell.SimulationScreen) string {
 }
 
 func TestTicketPickerNavigateAndSelect(t *testing.T) {
-	p := newTicketPicker("Board (b)", pickerItems())
+	p := newTicketPicker(attachAction, "Board (b)", pickerItems())
 	if got := p.current().ID; got != 3 {
 		t.Fatalf("initial selection = #%d, want #3", got)
 	}
@@ -83,7 +87,7 @@ func TestTicketPickerNavigateAndSelect(t *testing.T) {
 }
 
 func TestTicketPickerFilter(t *testing.T) {
-	p := newTicketPicker("b", pickerItems())
+	p := newTicketPicker(attachAction, "b", pickerItems())
 	p.handleKey(formKey(tcell.KeyEnd))
 	pickerType(p, "bug")
 	if p.cursor != 0 {
@@ -142,7 +146,7 @@ func TestTicketPickerFilter(t *testing.T) {
 }
 
 func TestTicketPickerFilterEditing(t *testing.T) {
-	p := newTicketPicker("b", pickerItems())
+	p := newTicketPicker(attachAction, "b", pickerItems())
 	pickerType(p, "one two")
 	p.handleKey(formKey(tcell.KeyCtrlW))
 	if got := p.filter.String(); got != "one " {
@@ -177,7 +181,7 @@ func TestTicketPickerFilterEditing(t *testing.T) {
 
 func TestTicketPickerCancel(t *testing.T) {
 	for _, k := range []tcell.Key{tcell.KeyEscape, tcell.KeyCtrlC} {
-		p := newTicketPicker("b", pickerItems())
+		p := newTicketPicker(attachAction, "b", pickerItems())
 		pickerType(p, "x")
 		p.handleKey(formKey(k))
 		if !p.cancelled || p.selected {
@@ -188,7 +192,7 @@ func TestTicketPickerCancel(t *testing.T) {
 
 func TestTicketPickerRender(t *testing.T) {
 	screen := newFormScreen(t, 60, 16)
-	p := newTicketPicker("CLI Board (cli-board)", pickerItems())
+	p := newTicketPicker(attachAction, "CLI Board (cli-board)", pickerItems())
 	p.render(screen)
 	screen.Show()
 
@@ -255,7 +259,7 @@ func TestTicketPickerRender(t *testing.T) {
 func TestTicketPickerRenderTruncatesTitle(t *testing.T) {
 	screen := newFormScreen(t, 40, 12)
 	long := strings.Repeat("abcdefghij", 6)
-	p := newTicketPicker("b", []pickerItem{{ID: 1, Title: long, Column: "Todo", Status: "working"}})
+	p := newTicketPicker(attachAction, "b", []pickerItem{{ID: 1, Title: long, Column: "Todo", Status: "working"}})
 	p.render(screen)
 	screen.Show()
 	text := screenLines(screen)
@@ -283,7 +287,7 @@ func TestTicketPickerScrolls(t *testing.T) {
 	for i := 1; i <= 6; i++ {
 		items = append(items, pickerItem{ID: int64(i), Title: "ticket " + string(rune('a'+i-1)), Column: "Todo"})
 	}
-	p := newTicketPicker("b", items)
+	p := newTicketPicker(attachAction, "b", items)
 	p.render(screen)
 	screen.Show()
 	// With one visible row, the heading is scrolled away for the cursor.
@@ -340,7 +344,7 @@ func TestRunTicketPickerEndToEnd(t *testing.T) {
 		}
 	}
 
-	done := run(newTicketPicker("b", pickerItems()))
+	done := run(newTicketPicker(attachAction, "b", pickerItems()))
 	for _, r := range "ci" {
 		screen.InjectKey(tcell.KeyRune, r, tcell.ModNone)
 	}
@@ -353,7 +357,7 @@ func TestRunTicketPickerEndToEnd(t *testing.T) {
 		t.Errorf("picked #%d, want #7 (Wire CI)", o.item.ID)
 	}
 
-	done = run(newTicketPicker("b", pickerItems()))
+	done = run(newTicketPicker(attachAction, "b", pickerItems()))
 	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
 	screen.InjectKey(tcell.KeyDown, 0, tcell.ModNone)
 	screen.InjectKey(tcell.KeyEnter, 0, tcell.ModNone)
@@ -361,7 +365,7 @@ func TestRunTicketPickerEndToEnd(t *testing.T) {
 		t.Errorf("arrow selection: ok=%v err=%v item=#%d, want #7", o.ok, o.err, o.item.ID)
 	}
 
-	done = run(newTicketPicker("b", pickerItems()))
+	done = run(newTicketPicker(attachAction, "b", pickerItems()))
 	screen.InjectKey(tcell.KeyEscape, 0, tcell.ModNone)
 	if o := wait(t, done); o.err != nil || o.ok {
 		t.Errorf("cancel: ok=%v err=%v", o.ok, o.err)

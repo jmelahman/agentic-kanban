@@ -23,10 +23,12 @@ type pickerItem struct {
 	Status string // session status; "" when the ticket has no session yet
 }
 
-// loadBoardTickets fetches a board's open tickets in board order (columns
-// left to right, tickets top to bottom) with each ticket's session status,
-// and the board label the picker shows in its header.
-func loadBoardTickets(ctx context.Context, url, ident string) (label string, items []pickerItem, err error) {
+// loadBoardTickets fetches a board's tickets in board order (columns left to
+// right, tickets top to bottom) with each ticket's session status, and the
+// board label the picker shows in its header. With archived set it lists the
+// board's archived tickets instead of its open ones, for the subcommands
+// (`unarchive`, `delete`) that only ever act on those.
+func loadBoardTickets(ctx context.Context, url, ident string, archived bool) (label string, items []pickerItem, err error) {
 	c := client.New(url, nil)
 	id, err := c.ResolveBoardID(ctx, ident)
 	if err != nil {
@@ -68,7 +70,19 @@ func loadBoardTickets(ctx context.Context, url, ident string) (label string, ite
 	for _, s := range st.Sessions {
 		status[s.TicketID] = s.Status
 	}
+	// Board state carries only open tickets; archived ones come from their
+	// own endpoint but are grouped by the same columns.
 	tickets := append([]client.Ticket(nil), st.Tickets...)
+	if archived {
+		rawArchived, err := c.ListArchived(ctx, id)
+		if err != nil {
+			return "", nil, err
+		}
+		tickets = nil
+		if err := json.Unmarshal(rawArchived, &tickets); err != nil {
+			return "", nil, fmt.Errorf("decode archived tickets: %w", err)
+		}
+	}
 	sort.SliceStable(tickets, func(i, j int) bool {
 		ci, cj := columns[tickets[i].ColumnID], columns[tickets[j].ColumnID]
 		if ci.position != cj.position {
@@ -91,10 +105,19 @@ func loadBoardTickets(ctx context.Context, url, ident string) (label string, ite
 	return formatBoardLabel(st.Board.Name, st.Board.Slug), items, nil
 }
 
+// pickerAction names what a run of the picker stands in for: the heading it
+// shows and the verb on its Enter key. Every `kanban ticket` subcommand
+// invoked without a ticket id opens the same list under its own action, so
+// the screen says which one you're about to run.
+type pickerAction struct {
+	title string // heading, e.g. "Archive ticket"
+	verb  string // Enter's label in the footer, e.g. "archive"
+}
+
 // promptTicketPicker takes over the terminal with a tcell screen, runs the
 // ticket list, and returns the chosen ticket. ok is false when the user
 // cancelled (Esc / Ctrl+C).
-func promptTicketPicker(boardLabel string, items []pickerItem) (chosen pickerItem, ok bool, err error) {
+func promptTicketPicker(action pickerAction, boardLabel string, items []pickerItem) (chosen pickerItem, ok bool, err error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return chosen, false, fmt.Errorf("open terminal: %w", err)
@@ -110,7 +133,7 @@ func promptTicketPicker(boardLabel string, items []pickerItem) (chosen pickerIte
 			panic(r)
 		}
 	}()
-	return runTicketPicker(screen, newTicketPicker(boardLabel, items))
+	return runTicketPicker(screen, newTicketPicker(action, boardLabel, items))
 }
 
 // runTicketPicker is the event loop, split from promptTicketPicker so tests
@@ -143,6 +166,7 @@ func runTicketPicker(screen tcell.Screen, p *ticketPicker) (pickerItem, bool, er
 // and which visible row is highlighted. Like ticketForm it knows nothing
 // about the screen so key handling can be unit-tested without a terminal.
 type ticketPicker struct {
+	action     pickerAction
 	boardLabel string
 	items      []pickerItem
 	filter     *textBuffer
@@ -157,8 +181,9 @@ type ticketPicker struct {
 	pageRows int
 }
 
-func newTicketPicker(boardLabel string, items []pickerItem) *ticketPicker {
+func newTicketPicker(action pickerAction, boardLabel string, items []pickerItem) *ticketPicker {
 	return &ticketPicker{
+		action:     action,
 		boardLabel: boardLabel,
 		items:      items,
 		filter:     newTextBuffer("", false),
@@ -235,7 +260,7 @@ func (p *ticketPicker) submit() {
 //
 //	Up / Down, Ctrl+P / Ctrl+N   move the highlight
 //	PgUp / PgDn, Home / End      move by a page / to either end
-//	Enter                        attach to the highlighted ticket
+//	Enter                        run the action on the highlighted ticket
 //	Esc / Ctrl+C                 cancel
 //	printable keys               narrow the list; Backspace widens it again
 //	Left / Right, Ctrl+A / Ctrl+E, Ctrl+U / Ctrl+K / Ctrl+W   edit the filter
@@ -338,7 +363,7 @@ func (p *ticketPicker) render(s tcell.Screen) {
 	}
 	width := w - 2*formPad
 
-	putText(s, formPad, 0, width, base.Bold(true), "Attach to ticket · "+p.boardLabel)
+	putText(s, formPad, 0, width, base.Bold(true), p.action.title+" · "+p.boardLabel)
 
 	// Filter line: a prompt plus the single-line buffer, scrolled so the
 	// cursor stays on screen.
@@ -404,7 +429,7 @@ func (p *ticketPicker) render(s tcell.Screen) {
 		p.renderItem(s, formPad, y, width, idWidth, p.items[row.item], i == cursorRow)
 	}
 
-	putText(s, formPad, h-2, width, base.Dim(true), "↑↓ move · Enter attach · type to filter · Esc cancel")
+	putText(s, formPad, h-2, width, base.Dim(true), "↑↓ move · Enter "+p.action.verb+" · type to filter · Esc cancel")
 	if p.errMsg != "" {
 		putText(s, formPad, h-1, width, base.Foreground(tcell.ColorRed).Bold(true), p.errMsg)
 	}

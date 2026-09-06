@@ -444,6 +444,18 @@ func (h *handlers) createTicket(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 201, t)
 }
 
+// getTicket returns one ticket by id. Unlike the board-scoped listings it
+// needs no board context, so callers holding only a ticket id (the CLI's
+// `ticket info <id>`) can find the board it lives on.
+func (h *handlers) getTicket(w http.ResponseWriter, r *http.Request) {
+	t, err := h.store.GetTicket(r.Context(), pathID(r, "id"))
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	writeJSON(w, 200, t)
+}
+
 type updateTicketReq struct {
 	Title *string `json:"title"`
 	Body  *string `json:"body"`

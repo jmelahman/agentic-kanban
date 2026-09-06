@@ -243,6 +243,23 @@ func TestTickets_Lifecycle(t *testing.T) {
 		assertStatus(t, resp, 404)
 	})
 
+	// GET /api/tickets/{id} is the one ticket read that needs no board
+	// context, so a caller holding a bare id (the CLI's `ticket info`) can
+	// find the board it lives on.
+	t.Run("get_by_id", func(t *testing.T) {
+		tk := e.seedTicket(board, "Fetch me")
+		resp := e.get(fmt.Sprintf("/api/tickets/%d", tk.ID))
+		assertStatus(t, resp, 200)
+		got := decodeJSON[db.Ticket](t, resp)
+		if got.ID != tk.ID || got.BoardID != board.ID || got.Title != "Fetch me" {
+			t.Errorf("ticket = %+v", got)
+		}
+	})
+
+	t.Run("get_unknown_404", func(t *testing.T) {
+		assertStatus(t, e.get("/api/tickets/999999"), 404)
+	})
+
 	t.Run("update_rename", func(t *testing.T) {
 		tk := e.seedTicket(board, "OldName")
 		resp := e.patch(fmt.Sprintf("/api/tickets/%d", tk.ID), map[string]any{

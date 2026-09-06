@@ -16,9 +16,10 @@ kanban
 │   ├── state          Print full board state as JSON
 │   ├── archived       List archived tickets on a board
 │   └── archived-clear Permanently delete every archived ticket on a board
-├── ticket             Manage tickets on a board
+├── ticket             Manage tickets on a board (every id is optional; omit to pick from a list)
 │   ├── create         Create a ticket (interactively by default) and attach to its agent
-│   ├── attach         Attach your terminal to a ticket's agent (pick from a list without an id)
+│   ├── info           Show a ticket's details, with each value copyable to the clipboard
+│   ├── attach         Attach your terminal to a ticket's agent
 │   ├── update         Update title/body of a ticket
 │   ├── move           Move a ticket to a different column / position
 │   ├── archive        Archive a ticket
@@ -164,6 +165,33 @@ Permanently deletes every archived ticket on the board. Destructive.
 
 ## `ticket`
 
+Every `ticket` subcommand takes the ticket id as an optional positional
+argument. Without one, a full-screen list of the board's tickets opens and
+the subcommand acts on the ticket you pick:
+
+- The board is inferred from the git repo containing the current directory
+  (the same lookup as `board get` — an error if zero or several boards use
+  that repo). `--board <id|slug>` is a persistent flag on `ticket`, so any
+  subcommand can be pointed at a board you are not inside.
+- Tickets are grouped by column in board order, each with its session
+  status (`working`, `idle`, `stopped`, `no session`, …).
+- `↑`/`↓` (or `Ctrl+P`/`Ctrl+N`, `PgUp`/`PgDn`, `Home`/`End`) move the
+  highlight, and typing narrows the list — every word you type must match
+  somewhere in the ticket's `#id`, title, column, or status, so `#12`,
+  `login`, and `progress idle` all work.
+- The header and the `Enter` key name the pending action ("Archive
+  ticket … `Enter` archive"), so a list opened by `archive` can't be
+  mistaken for one opened by `attach`. `Enter` runs the subcommand on the
+  highlighted ticket; `Esc` cancels without touching anything.
+- `unarchive` and `delete` act only on archived tickets, so their lists
+  show the board's archived tickets instead of its open ones.
+- The list needs a real terminal, so in scripts and pipes the id is
+  required — the command fails before it fetches anything rather than
+  hanging.
+
+`ticket create` is the exception: there is no ticket to pick yet, so it
+prompts with a form instead.
+
 ### `ticket create`
 
 ```sh
@@ -216,6 +244,57 @@ kanban ticket create --board playground --title "Wire CI" --column "In Progress"
 kanban ticket create --title "Wire CI" --attach
 ```
 
+### `ticket info [id]`
+
+```sh
+kanban ticket info [id] [--board <board>] [--json]
+```
+
+Shows everything the web UI's Info tab does for a ticket: its description
+and board placement, the session working on it, that session's container,
+the worktree and branch, any pull request, and the ports the session has
+allocated.
+
+On a terminal this opens a full-screen viewer, grouped into `Ticket`,
+`Description`, `Session`, `Container`, `Workspace`, `Pull request`, and
+`Ports` sections. `↑`/`↓` (or `Ctrl+P`/`Ctrl+N`, `j`/`k`, `PgUp`/`PgDn`,
+`Home`/`End`, `g`/`G`) move between values, skipping rows that hold
+nothing to copy; `Enter` (or `c` / `y`) copies the highlighted value and
+says so in the footer; `Esc` (or `q` / `Ctrl+C`) closes.
+
+A few rows copy something more useful than they show: `ID` copies the
+bare number rather than `#42`, `PR` copies the title and URL together,
+and a port copies its `http://localhost:<host port>` URL.
+
+Copying writes an OSC 52 escape to your terminal *and*, when one is
+installed, pipes the text through a native helper (`pbcopy`, `wl-copy`,
+`xclip`, `xsel`, `clip.exe`). Neither covers every case alone — a helper
+writes the clipboard of the machine kanban runs on, which is the wrong
+one over ssh or from inside a container, while OSC 52 reaches the
+terminal you're sitting at but is silently dropped by terminals that
+don't implement it (and by tmux/screen without `set-clipboard on`).
+Writing both means the text lands wherever it can; if neither works,
+`--json` and the plain-text output are always available.
+
+Piped or redirected, the same fields print as plain text. `--json` prints
+them as a single object (`{ticket, board, column, session, ports}`).
+
+| Flag      | Default                    | Description                                                            |
+| --------- | -------------------------- | ---------------------------------------------------------------------- |
+| `--board` | board for the current repo | Board id or slug whose tickets to list. Only used when no id is given. |
+| `--json`  | `false`                    | Print the info as JSON instead of opening the viewer.                  |
+
+```sh
+# Pick a ticket from the board, then copy values out of it.
+kanban ticket info
+
+# Straight to a known ticket.
+kanban ticket info 42
+
+# Scripted.
+kanban ticket info 42 --json | jq -r .session.worktree_path
+```
+
 ### `ticket attach [id]`
 
 ```sh
@@ -232,31 +311,8 @@ kanban notices the dead container when you attach, marks the session
 stopped, and starts a fresh one before connecting. Keystrokes are
 forwarded as typed and the agent's terminal size follows your window.
 
-Without an id, a full-screen list of the board's open tickets opens
-instead. The board is inferred from the git repo containing the current
-directory (the same lookup as `board get` — an error if zero or several
-boards use that repo) unless `--board` names one. Tickets are grouped by
-column in board order, each with its session status (`working`, `idle`,
-`stopped`, `no session`, …). `↑`/`↓` (or `Ctrl+P`/`Ctrl+N`, `PgUp`/`PgDn`,
-`Home`/`End`) move the highlight, typing narrows the list — every word
-you type must match somewhere in the ticket's `#id`, title, column, or
-status, so `#12`, `login`, and `progress idle` all work — `Enter`
-attaches to the highlighted ticket, and `Esc` leaves without attaching.
-The list needs a real terminal, so in scripts and pipes the id is
-required.
-
-Without an id, a full-screen list of the board's open tickets opens
-instead. The board is inferred from the git repo containing the current
-directory (the same lookup as `board get` — an error if zero or several
-boards use that repo) unless `--board` names one. Tickets are grouped by
-column in board order, each with its session status (`working`, `idle`,
-`stopped`, `no session`, …). `↑`/`↓` (or `Ctrl+P`/`Ctrl+N`, `PgUp`/`PgDn`,
-`Home`/`End`) move the highlight, typing narrows the list — every word
-you type must match somewhere in the ticket's `#id`, title, column, or
-status, so `#12`, `login`, and `progress idle` all work — `Enter`
-attaches to the highlighted ticket, and `Esc` leaves without attaching.
-The list needs a real terminal, so in scripts and pipes the id is
-required.
+Without an id you pick a ticket from the board's list, as described
+[above](#ticket); `Enter` attaches to the highlighted one.
 
 Press the detach sequence (default `ctrl-p` then `ctrl-q`, as in
 `docker attach`) to return to your shell. Detaching never stops the
@@ -288,7 +344,7 @@ accepts the request; the CLI sends the server's own host as `Origin`,
 which matches a direct `kanban serve` and reverse proxies that preserve
 the `Host` header.
 
-### `ticket update <id> [flags]`
+### `ticket update [id] [flags]`
 
 | Flag      | Description                 |
 | --------- | --------------------------- |
@@ -296,29 +352,31 @@ the `Host` header.
 | `--body`  | New body.                   |
 | `--json`  | Print the full ticket JSON. |
 
-### `ticket move <id> --column-id <int> [--position <int>]`
+### `ticket move [id] --column-id <int> [--position <int>]`
 
 Moves a ticket. `--column-id` is numeric and required (look up column
 ids via `kanban board state <id>`).
 
-### `ticket archive <id>` / `ticket unarchive <id>`
+### `ticket archive [id]` / `ticket unarchive [id]`
 
 Archive or restore a ticket. Archiving stops any running session.
+`unarchive`'s list shows the board's archived tickets.
 
-### `ticket delete <id>`
+### `ticket delete [id]`
 
 Permanently deletes a ticket. The ticket must be archived first
-(`ticket archive <id>` then `ticket delete <id>`).
+(`ticket archive <id>` then `ticket delete <id>`), so its list shows the
+board's archived tickets.
 
-### `ticket done <id>`
+### `ticket done [id]`
 
 Moves the ticket to the board's rightmost column and stops its session.
 
-### `ticket sync <id> [--strategy rebase|merge]`
+### `ticket sync [id] [--strategy rebase|merge]`
 
 Sync a ticket branch from base. Strategy defaults to `rebase`.
 
-### `ticket merge <id> --strategy merge-commit|squash|rebase`
+### `ticket merge [id] --strategy merge-commit|squash|rebase`
 
 Merge a ticket branch into base. Strategy is required.
 
