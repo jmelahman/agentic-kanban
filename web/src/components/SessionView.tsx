@@ -69,12 +69,15 @@ const MERGE_STRATEGY_LABELS: Record<MergeStrategy, string> = {
   rebase: "rebase and merge",
 };
 
+// The board's merge.default_strategy (when set and still allowed) sorts to the
+// front, so the menu's first entry is the one `kanban ticket merge` would pick.
 function enabledMergeStrategies(cfg: MergeConfig): MergeStrategy[] {
   const out: MergeStrategy[] = [];
   if (cfg.allow_merge_commit) out.push("merge-commit");
   if (cfg.allow_squash) out.push("squash");
   if (cfg.allow_rebase) out.push("rebase");
-  return out;
+  const dflt = cfg.default_strategy as MergeStrategy;
+  return out.includes(dflt) ? [dflt, ...out.filter((s) => s !== dflt)] : out;
 }
 
 type SyncStrategy = "rebase" | "merge";
@@ -591,6 +594,7 @@ export function SessionView({
                     onClick={() => mergeMut.mutate(s)}
                   >
                     {MERGE_STRATEGY_LABELS[s]}
+                    {s === mergeConfig.default_strategy && " (default)"}
                   </Button>
                 ))}
               </div>

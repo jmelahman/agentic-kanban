@@ -687,7 +687,8 @@ type strategyReq struct {
 
 func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 	h.ticketStrategyAction(w, r,
-		[]string{"rebase", "merge"}, "rebase",
+		[]string{"rebase", "merge"},
+		func(string) string { return "rebase" },
 		func(repo, strat string) bool { return loadSyncConfig(repo).allows(strat) },
 		h.sessions.Sync,
 		true,
@@ -696,7 +697,8 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 	h.ticketStrategyAction(w, r,
-		[]string{"merge-commit", "squash", "rebase"}, "",
+		[]string{"merge-commit", "squash", "rebase"},
+		func(repo string) string { return loadMergeConfig(repo).DefaultStrategy },
 		func(repo, strat string) bool { return loadMergeConfig(repo).allows(strat) },
 		h.sessions.Merge,
 		false,
@@ -704,11 +706,14 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 }
 
 // ticketStrategyAction is the shared body of syncTicket and mergeTicket: parse
-// strategy, validate against the allowed set and the per-board config, ensure
-// a session exists, run the action, optionally publish session_updated.
+// strategy, resolve the board's default when the request omits one, validate
+// against the allowed set and the per-board config, ensure a session exists,
+// run the action, optionally publish session_updated. defaultFor takes the
+// board's repo path because the default itself is configurable per board
+// (merge.default_strategy).
 func (h *handlers) ticketStrategyAction(
 	w http.ResponseWriter, r *http.Request,
-	allowed []string, defaultStrategy string,
+	allowed []string, defaultFor func(repoPath string) string,
 	isAllowed func(repoPath, strategy string) bool,
 	action func(ctx context.Context, sessID int64, strategy string) error,
 	publishOnSuccess bool,
@@ -719,8 +724,13 @@ func (h *handlers) ticketStrategyAction(
 		h.httpError(w, err, 400)
 		return
 	}
-	if req.Strategy == "" && defaultStrategy != "" {
-		req.Strategy = defaultStrategy
+	_, board, code, err := h.ticketBoard(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, code)
+		return
+	}
+	if req.Strategy == "" {
+		req.Strategy = defaultFor(board.RepoPath)
 	}
 	valid := false
 	for _, s := range allowed {
@@ -731,11 +741,6 @@ func (h *handlers) ticketStrategyAction(
 	}
 	if !valid {
 		h.httpError(w, fmt.Errorf("strategy must be %s", joinStrategies(allowed)), 400)
-		return
-	}
-	_, board, code, err := h.ticketBoard(r.Context(), id)
-	if err != nil {
-		h.httpError(w, err, code)
 		return
 	}
 	if !isAllowed(board.RepoPath, req.Strategy) {

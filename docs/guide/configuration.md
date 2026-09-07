@@ -45,6 +45,7 @@ allow_merge_commit = true      # which strategies appear in the merge menu
 allow_squash       = true
 allow_rebase       = false
 ai_commit_message  = false     # opt in to harness-generated messages for the auto-commit (default off — uses ticket title)
+default_strategy   = "rebase"  # strategy used when a merge is requested without one (unset = must be named)
 
 [github]
 auto_move     = true           # move tickets when the linked PR/issue changes state
@@ -266,6 +267,34 @@ Two ways to fix it, in order of preference:
 2. **Mount your host gitconfig into the kanban container.** In `compose.yaml`, add `${HOME}/.gitconfig:/root/.gitconfig:ro` alongside the existing volumes. Useful if you want one identity across every board and don't mind the volume.
 
 The board-level setting wins when both are present (it's an explicit `-c` flag on the git invocation).
+
+## Default merge strategy
+
+`kanban ticket merge` (and the `merge_ticket` MCP tool) normally require an
+explicit strategy. Set `[merge].default_strategy` to name the one you reach for
+by default:
+
+```toml
+[merge]
+default_strategy = "rebase"
+```
+
+With that set, `kanban ticket merge 42` merges without `--strategy`; passing the
+flag still overrides it for a single merge. The value must be one of
+`merge-commit`, `squash`, or `rebase`, and must also be permitted by the
+`allow_*` toggles above — a default that its own board disables is rejected at
+merge time. Left unset, nothing changes: a merge without a strategy is an error.
+
+Like every key, it layers — put it in `~/.config/kanban/config.toml` for a
+personal preference across every board, or in a repo's `.kanban.toml` to pin
+one project (the user file wins). It is deliberately *not* derived from your
+`~/.gitconfig`: git has no setting that means "how to integrate a branch into
+its base" (`pull.rebase` governs `git pull`, which is kanban's *sync*, not its
+merge), and the container that runs the merge doesn't see your host gitconfig
+anyway.
+
+In the UI, the default strategy sorts to the top of the merge menu and is
+labelled `(default)`.
 
 ## AI-generated commit messages
 

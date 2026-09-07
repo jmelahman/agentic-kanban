@@ -378,7 +378,10 @@ Sync a ticket branch from base. Strategy defaults to `rebase`.
 
 ### `ticket merge [id] --strategy merge-commit|squash|rebase`
 
-Merge a ticket branch into base. Strategy is required.
+Merge a ticket branch into base. With no `--strategy`, the board's
+`merge.default_strategy` config key decides; if that is unset too, the strategy
+must be given explicitly. See
+[Default merge strategy](/guide/configuration#default-merge-strategy).
 
 ## `column`
 

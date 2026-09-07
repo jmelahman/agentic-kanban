@@ -117,6 +117,12 @@ type MergeSection struct {
 	// auto-commit kanban makes when a session has uncommitted changes at merge
 	// time. Default false: kanban uses the ticket title.
 	AICommitMessage *bool `toml:"ai_commit_message"`
+	// DefaultStrategy is the strategy used when a merge is requested without
+	// one (`kanban ticket merge` with no --strategy, the merge_ticket MCP
+	// tool with no strategy). Unset means no default: the caller must pick.
+	// It must be one of merge-commit, squash, or rebase, and must also be
+	// permitted by the Allow* toggles above.
+	DefaultStrategy *string `toml:"default_strategy"`
 }
 
 // DevcontainerSection augments the loaded devcontainer.json. Mounts and
@@ -359,6 +365,7 @@ func mergeMerge(p, u *MergeSection) *MergeSection {
 		out.AllowSquash = p.AllowSquash
 		out.AllowRebase = p.AllowRebase
 		out.AICommitMessage = p.AICommitMessage
+		out.DefaultStrategy = p.DefaultStrategy
 	}
 	if u != nil {
 		if u.AllowMergeCommit != nil {
@@ -372,6 +379,9 @@ func mergeMerge(p, u *MergeSection) *MergeSection {
 		}
 		if u.AICommitMessage != nil {
 			out.AICommitMessage = u.AICommitMessage
+		}
+		if u.DefaultStrategy != nil {
+			out.DefaultStrategy = u.DefaultStrategy
 		}
 	}
 	return &out

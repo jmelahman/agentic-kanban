@@ -704,7 +704,10 @@ shell in the container is attached instead of the agent.`,
 	mergeCmd := &cobra.Command{
 		Use:   "merge [id]",
 		Short: "Merge a ticket branch into base (merge-commit|squash|rebase)",
-		Args:  cobra.MaximumNArgs(1),
+		Long: "Merge a ticket branch into its base branch. With no --strategy, " +
+			"the board's merge.default_strategy config key decides; if that is " +
+			"unset the strategy must be given explicitly.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 			url := resolveURL(cmd, serverURL)
@@ -715,8 +718,7 @@ shell in the container is attached instead of the agent.`,
 			return runTicketMerge(ctx, url, cmd.OutOrStdout(), id, mergeStrategy)
 		},
 	}
-	mergeCmd.Flags().StringVar(&mergeStrategy, "strategy", "", "Merge strategy: merge-commit, squash, or rebase (required)")
-	_ = mergeCmd.MarkFlagRequired("strategy")
+	mergeCmd.Flags().StringVar(&mergeStrategy, "strategy", "", "Merge strategy: merge-commit, squash, or rebase (default: merge.default_strategy)")
 
 	parent.AddCommand(create, info, attach, update, move, archive, unarchive, delTicket, doneCmd, sync, mergeCmd)
 	// A cancelled picker or a failed API call isn't a usage error; don't

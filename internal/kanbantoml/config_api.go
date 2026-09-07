@@ -50,6 +50,7 @@ var schema = []KeySpec{
 	{Key: "merge.allow_squash", Kind: KindBool},
 	{Key: "merge.allow_rebase", Kind: KindBool},
 	{Key: "merge.ai_commit_message", Kind: KindBool},
+	{Key: "merge.default_strategy", Kind: KindString, Validate: validateMergeStrategy},
 
 	{Key: "github.auto_move", Kind: KindBool},
 	{Key: "github.draft_column", Kind: KindString},
@@ -121,6 +122,15 @@ func validateInterval(v any) error {
 		return fmt.Errorf("interval must be at least 1s")
 	}
 	return nil
+}
+
+func validateMergeStrategy(v any) error {
+	s, _ := v.(string)
+	switch s {
+	case "merge-commit", "squash", "rebase":
+		return nil
+	}
+	return fmt.Errorf("invalid merge strategy %q: must be merge-commit, squash, or rebase", s)
 }
 
 func validateTasks(v any) error {
@@ -283,6 +293,10 @@ func GetValue(f File, key string) (any, bool) {
 	case "merge.allow_rebase":
 		if f.Merge != nil && f.Merge.AllowRebase != nil {
 			return *f.Merge.AllowRebase, true
+		}
+	case "merge.default_strategy":
+		if f.Merge != nil && f.Merge.DefaultStrategy != nil {
+			return *f.Merge.DefaultStrategy, true
 		}
 	case "merge.ai_commit_message":
 		if f.Merge != nil && f.Merge.AICommitMessage != nil {

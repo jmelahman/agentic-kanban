@@ -167,7 +167,7 @@ board's rightmost column and stops its session.
 | Argument   | Type    | Required | Notes                                                |
 |------------|---------|----------|------------------------------------------------------|
 | `ticket`   | integer | yes      | Ticket id.                                           |
-| `strategy` | string  | yes      | `merge-commit`, `squash`, or `rebase`.               |
+| `strategy` | string  | no       | `merge-commit`, `squash`, or `rebase`. Defaults to the board's `merge.default_strategy`; an error when neither is set. |
 
 ### Columns
 

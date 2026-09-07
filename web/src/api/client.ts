@@ -105,6 +105,8 @@ export type MergeConfig = {
   allow_merge_commit: boolean;
   allow_squash: boolean;
   allow_rebase: boolean;
+  /** Strategy used when a merge is requested without one; "" when unset. */
+  default_strategy: string;
 };
 
 export type SyncConfig = {

@@ -399,3 +399,49 @@ allow_rebase = false
 		t.Errorf("sync.allow_rebase = %v; want false (preserved)", f.Sync)
 	}
 }
+
+func TestLoad_MergeDefaultStrategyUserWins(t *testing.T) {
+	withUserConfig(t, `[merge]
+default_strategy = "rebase"
+`)
+	repo := writeProject(t, `[merge]
+default_strategy = "squash"
+allow_rebase = true
+`)
+	f := Load(repo)
+	if f.Merge == nil || f.Merge.DefaultStrategy == nil {
+		t.Fatalf("merge.default_strategy missing: %+v", f.Merge)
+	}
+	if got := *f.Merge.DefaultStrategy; got != "rebase" {
+		t.Errorf("default_strategy = %q; want the user value %q", got, "rebase")
+	}
+}
+
+func TestLoad_MergeDefaultStrategyProjectOnly(t *testing.T) {
+	withUserConfig(t, "")
+	repo := writeProject(t, `[merge]
+default_strategy = "squash"
+`)
+	f := Load(repo)
+	if f.Merge == nil || f.Merge.DefaultStrategy == nil {
+		t.Fatalf("merge.default_strategy missing: %+v", f.Merge)
+	}
+	if got := *f.Merge.DefaultStrategy; got != "squash" {
+		t.Errorf("default_strategy = %q; want %q", got, "squash")
+	}
+}
+
+func TestValidateMergeStrategy(t *testing.T) {
+	spec, _, ok := Lookup("merge.default_strategy")
+	if !ok || spec.Validate == nil {
+		t.Fatal("merge.default_strategy is not a validated schema key")
+	}
+	for _, good := range []string{"merge-commit", "squash", "rebase"} {
+		if err := spec.Validate(good); err != nil {
+			t.Errorf("Validate(%q) = %v; want nil", good, err)
+		}
+	}
+	if err := spec.Validate("ff-only"); err == nil {
+		t.Error("Validate(\"ff-only\") = nil; want an error")
+	}
+}

@@ -419,14 +419,14 @@ func toolDefinitions() []map[string]any {
 		},
 		{
 			"name":        "merge_ticket",
-			"description": "Merge a ticket branch into base. Strategy is 'merge-commit', 'squash', or 'rebase'.",
+			"description": "Merge a ticket branch into base. Strategy is 'merge-commit', 'squash', or 'rebase'; omit it to use the board's merge.default_strategy.",
 			"inputSchema": map[string]any{
 				"type": "object",
 				"properties": map[string]any{
 					"ticket":   ticketIDSchema(),
-					"strategy": schemaProp("string", "merge-commit, squash, or rebase"),
+					"strategy": schemaProp("string", "merge-commit, squash, or rebase (default: merge.default_strategy)"),
 				},
-				"required": []string{"ticket", "strategy"},
+				"required": []string{"ticket"},
 			},
 		},
 		{
