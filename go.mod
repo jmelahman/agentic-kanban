@@ -5,7 +5,7 @@ go 1.26.6
 require (
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.8.1
-	github.com/gdamore/tcell/v2 v2.13.8
+	github.com/gdamore/tcell/v2 v2.13.10
 	github.com/gorilla/websocket v1.5.3
 	github.com/jmelahman/local-preview v0.2.1
 	github.com/pelletier/go-toml/v2 v2.4.3
