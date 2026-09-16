@@ -376,11 +376,15 @@ Moves the ticket to the board's rightmost column and stops its session.
 
 Sync a ticket branch from base. Strategy defaults to `rebase`.
 
-### `ticket merge [id] --strategy merge-commit|squash|rebase`
+### `ticket merge [id] [--strategy merge-commit|squash|rebase]`
 
-Merge a ticket branch into base. Strategy is required.
+Merge a ticket branch into base. `--strategy` is optional when the board can
+resolve one on its own: it falls back to
+[`merge.default_strategy`](/guide/configuration#default-merge-strategy),
+then to the board's only enabled strategy. With several enabled and no default
+configured, the strategy is required.
 
-Boards can disable individual strategies via [`merge.allow_*`](../guide/configuration.md).
+Boards can disable individual strategies via [`merge.allow_*`](/guide/configuration).
 Passing a disabled one is rejected with the strategies that board does accept,
 so `--strategy rebase` on a squash-only board reports
 `strategy rebase is disabled for this board; enabled: squash` rather than

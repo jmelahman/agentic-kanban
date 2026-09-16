@@ -287,7 +287,8 @@ func (c *Client) SyncTicket(ctx context.Context, id int64, strategy string) erro
 }
 
 // MergeTicket calls POST /api/tickets/{id}/merge. Strategy is one of
-// "merge-commit", "squash", or "rebase".
+// "merge-commit", "squash", or "rebase"; empty lets the server resolve the
+// board's configured default.
 func (c *Client) MergeTicket(ctx context.Context, id int64, strategy string) error {
 	_, err := c.do(ctx, http.MethodPost, "/api/tickets/"+strconv.FormatInt(id, 10)+"/merge",
 		map[string]string{"strategy": strategy}, http.StatusNoContent)

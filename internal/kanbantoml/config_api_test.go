@@ -116,6 +116,19 @@ func TestNormalizeValue(t *testing.T) {
 			t.Fatal("expected unknown-key error")
 		}
 	})
+	t.Run("merge default strategy", func(t *testing.T) {
+		v, err := NormalizeValue("merge.default_strategy", json.RawMessage(`"squash"`))
+		if err != nil || v != "squash" {
+			t.Fatalf("got %v, %v", v, err)
+		}
+	})
+	t.Run("merge default strategy rejects unknown", func(t *testing.T) {
+		// "merge" is a sync strategy — the merge spelling is "merge-commit",
+		// and a typo here would only surface at merge time.
+		if _, err := NormalizeValue("merge.default_strategy", json.RawMessage(`"merge"`)); err == nil {
+			t.Fatal("expected strategy validation error")
+		}
+	})
 	t.Run("interval invalid", func(t *testing.T) {
 		if _, err := NormalizeValue("buildcop.interval", json.RawMessage(`"3x"`)); err == nil {
 			t.Fatal("expected duration parse error")

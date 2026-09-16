@@ -45,6 +45,7 @@ allow_merge_commit = true      # which strategies appear in the merge menu
 allow_squash       = true
 allow_rebase       = false
 ai_commit_message  = false     # opt in to harness-generated messages for the auto-commit (default off — uses ticket title)
+default_strategy   = "squash"  # used when a merge names no strategy (unset by default)
 
 [github]
 auto_move     = true           # move tickets when the linked PR/issue changes state
@@ -266,6 +267,26 @@ Two ways to fix it, in order of preference:
 2. **Mount your host gitconfig into the kanban container.** In `compose.yaml`, add `${HOME}/.gitconfig:/root/.gitconfig:ro` alongside the existing volumes. Useful if you want one identity across every board and don't mind the volume.
 
 The board-level setting wins when both are present (it's an explicit `-c` flag on the git invocation).
+
+## Default merge strategy
+
+`[merge].default_strategy` is the strategy used when a merge request names
+none — `kanban ticket merge` with no `--strategy`, the `merge_ticket` MCP tool
+with no `strategy`, or a `POST /api/tickets/{id}/merge` with an empty body. It
+also leads the merge menu in the session pane, marked `(default)`.
+
+Resolution order for an unnamed strategy:
+
+1. `merge.default_strategy`, if set and enabled on this board.
+2. The board's only enabled strategy, if exactly one is enabled — there is
+   nothing to choose.
+3. Otherwise the request is rejected with `strategy is required`, listing the
+   enabled strategies.
+
+Setting it to a strategy the same config disables is a misconfiguration: it is
+reported as `default strategy <x> is disabled for this board` rather than
+silently falling through. `[sync]` has no equivalent key — sync defaults to
+`rebase`, falling back to `merge` when `allow_rebase = false`.
 
 ## AI-generated commit messages
 

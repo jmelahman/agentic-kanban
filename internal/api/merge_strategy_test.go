@@ -53,17 +53,71 @@ func TestMergeStrategy_ErrorNamesOnlyEnabledStrategies(t *testing.T) {
 	}
 }
 
-// The default strategy is subject to the same config, so an omitted strategy
-// reports the default as disabled and points at what's left.
-func TestSyncStrategy_DisabledDefaultNamesAlternative(t *testing.T) {
+// Sync defaults to rebase, but a board that disables rebase leaves exactly
+// one way to sync — take it rather than failing on a default nobody chose.
+func TestSyncStrategy_DisabledDefaultFallsBackToTheOnlyOption(t *testing.T) {
 	redirectUserConfig(t)
 	e := newEnv(t)
 	writeKanbanToml(t, e, "[sync]\nallow_rebase = false\n")
 	tk := e.seedTicket(e.seedBoard("Sync Cfg"), "T")
 
-	got := errorBody(t, e, fmt.Sprintf("/api/tickets/%d/sync", tk.ID), map[string]any{}, 400)
-	if got != "strategy rebase is disabled for this board; enabled: merge" {
-		t.Fatalf("omitted strategy error = %q", got)
+	// Reaching the session lookup means a strategy was resolved.
+	got := errorBody(t, e, fmt.Sprintf("/api/tickets/%d/sync", tk.ID), map[string]any{}, 404)
+	if got != "no session for ticket" {
+		t.Fatalf("omitted strategy error = %q, want it to resolve to merge", got)
+	}
+}
+
+// merge.default_strategy supplies the strategy when the request omits one.
+func TestMergeStrategy_ConfiguredDefault(t *testing.T) {
+	redirectUserConfig(t)
+	e := newEnv(t)
+	writeKanbanToml(t, e, "[merge]\ndefault_strategy = \"squash\"\n")
+	tk := e.seedTicket(e.seedBoard("Default Cfg"), "T")
+
+	got := errorBody(t, e, fmt.Sprintf("/api/tickets/%d/merge", tk.ID), map[string]any{}, 404)
+	if got != "no session for ticket" {
+		t.Fatalf("omitted strategy error = %q, want the configured default to apply", got)
+	}
+}
+
+// With every strategy enabled and no default configured, an omitted strategy
+// is genuinely ambiguous — say so, and list the choices.
+func TestMergeStrategy_RequiredWhenAmbiguous(t *testing.T) {
+	redirectUserConfig(t)
+	e := newEnv(t)
+	tk := e.seedTicket(e.seedBoard("No Default"), "T")
+
+	got := errorBody(t, e, fmt.Sprintf("/api/tickets/%d/merge", tk.ID), map[string]any{}, 400)
+	if got != "strategy is required; enabled: merge-commit, squash, or rebase" {
+		t.Fatalf("ambiguous omitted strategy error = %q", got)
+	}
+}
+
+// A default the same config disables, with more than one strategy left, is a
+// misconfiguration the caller can't fix by retrying — name the key's value.
+func TestMergeStrategy_DisabledDefaultIsReported(t *testing.T) {
+	redirectUserConfig(t)
+	e := newEnv(t)
+	writeKanbanToml(t, e, "[merge]\nallow_rebase = false\ndefault_strategy = \"rebase\"\n")
+	tk := e.seedTicket(e.seedBoard("Bad Default"), "T")
+
+	got := errorBody(t, e, fmt.Sprintf("/api/tickets/%d/merge", tk.ID), map[string]any{}, 400)
+	if got != "default strategy rebase is disabled for this board; enabled: merge-commit or squash" {
+		t.Fatalf("disabled default error = %q", got)
+	}
+}
+
+// A board that enables exactly one strategy leaves nothing to choose.
+func TestMergeStrategy_SingleEnabledIsImplied(t *testing.T) {
+	redirectUserConfig(t)
+	e := newEnv(t)
+	writeKanbanToml(t, e, "[merge]\nallow_merge_commit = false\nallow_rebase = false\n")
+	tk := e.seedTicket(e.seedBoard("Squash Only"), "T")
+
+	got := errorBody(t, e, fmt.Sprintf("/api/tickets/%d/merge", tk.ID), map[string]any{}, 404)
+	if got != "no session for ticket" {
+		t.Fatalf("omitted strategy error = %q, want squash to be implied", got)
 	}
 }
 

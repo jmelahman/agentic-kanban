@@ -688,7 +688,8 @@ type strategyReq struct {
 
 func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 	h.ticketStrategyAction(w, r,
-		[]string{"rebase", "merge"}, "rebase",
+		[]string{"rebase", "merge"},
+		func(string) string { return "rebase" },
 		func(repo, strat string) bool { return loadSyncConfig(repo).allows(strat) },
 		h.sessions.Sync,
 		true,
@@ -697,7 +698,8 @@ func (h *handlers) syncTicket(w http.ResponseWriter, r *http.Request) {
 
 func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 	h.ticketStrategyAction(w, r,
-		[]string{"merge-commit", "squash", "rebase"}, "",
+		kanbantoml.MergeStrategies,
+		func(repo string) string { return loadMergeConfig(repo).DefaultStrategy },
 		func(repo, strat string) bool { return loadMergeConfig(repo).allows(strat) },
 		h.sessions.Merge,
 		false,
@@ -709,7 +711,7 @@ func (h *handlers) mergeTicket(w http.ResponseWriter, r *http.Request) {
 // a session exists, run the action, optionally publish session_updated.
 func (h *handlers) ticketStrategyAction(
 	w http.ResponseWriter, r *http.Request,
-	allowed []string, defaultStrategy string,
+	allowed []string, defaultFor func(repoPath string) string,
 	isAllowed func(repoPath, strategy string) bool,
 	action func(ctx context.Context, sessID int64, strategy string) error,
 	publishOnSuccess bool,
@@ -738,18 +740,34 @@ func (h *handlers) ticketStrategyAction(
 		h.httpError(w, fmt.Errorf("every strategy is disabled for this board"), 400)
 		return
 	}
-	if req.Strategy == "" && defaultStrategy != "" {
-		req.Strategy = defaultStrategy
-	}
-	if !slices.Contains(enabled, req.Strategy) {
-		// Distinguish "real strategy, turned off here" from "not a strategy",
-		// but name the usable set either way.
-		if slices.Contains(allowed, req.Strategy) {
-			h.httpError(w, fmt.Errorf("strategy %s is disabled for this board; enabled: %s",
-				req.Strategy, joinStrategies(enabled)), 400)
+	explicit := req.Strategy != ""
+	if !explicit {
+		req.Strategy = defaultFor(board.RepoPath)
+		// A default the board disables is worth no more than no default at
+		// all, and when there's exactly one way to do it there's nothing for
+		// the caller to choose.
+		if !slices.Contains(enabled, req.Strategy) && len(enabled) == 1 {
+			req.Strategy = enabled[0]
+		}
+		if req.Strategy == "" {
+			h.httpError(w, fmt.Errorf("strategy is required; enabled: %s", joinStrategies(enabled)), 400)
 			return
 		}
-		h.httpError(w, fmt.Errorf("strategy must be %s", joinStrategies(enabled)), 400)
+	}
+	if !slices.Contains(enabled, req.Strategy) {
+		// Three ways to be wrong, and the caller can only act on the right
+		// one: their own typo, their own disabled pick, or a configured
+		// default that the same config turns off.
+		switch {
+		case !explicit:
+			h.httpError(w, fmt.Errorf("default strategy %s is disabled for this board; enabled: %s",
+				req.Strategy, joinStrategies(enabled)), 400)
+		case slices.Contains(allowed, req.Strategy):
+			h.httpError(w, fmt.Errorf("strategy %s is disabled for this board; enabled: %s",
+				req.Strategy, joinStrategies(enabled)), 400)
+		default:
+			h.httpError(w, fmt.Errorf("strategy must be %s", joinStrategies(enabled)), 400)
+		}
 		return
 	}
 	sess, err := h.store.GetSessionByTicket(r.Context(), id)

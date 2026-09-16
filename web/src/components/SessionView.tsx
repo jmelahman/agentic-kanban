@@ -74,6 +74,10 @@ function enabledMergeStrategies(cfg: MergeConfig): MergeStrategy[] {
   if (cfg.allow_merge_commit) out.push("merge-commit");
   if (cfg.allow_squash) out.push("squash");
   if (cfg.allow_rebase) out.push("rebase");
+  // The board's default leads the menu: it's what the CLI and MCP pick when
+  // no strategy is named, so the UI shouldn't disagree about what's usual.
+  const def = cfg.default_strategy as MergeStrategy;
+  if (out.includes(def)) return [def, ...out.filter((s) => s !== def)];
   return out;
 }
 
@@ -591,6 +595,9 @@ export function SessionView({
                     onClick={() => mergeMut.mutate(s)}
                   >
                     {MERGE_STRATEGY_LABELS[s]}
+                    {s === mergeConfig.default_strategy && (
+                      <span className="ml-1 text-fg-muted">(default)</span>
+                    )}
                   </Button>
                 ))}
               </div>

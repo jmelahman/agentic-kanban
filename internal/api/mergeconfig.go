@@ -11,6 +11,9 @@ type MergeConfig struct {
 	AllowMergeCommit bool `json:"allow_merge_commit"`
 	AllowSquash      bool `json:"allow_squash"`
 	AllowRebase      bool `json:"allow_rebase"`
+	// DefaultStrategy is the strategy a merge request with none of its own
+	// falls back to, and the one the UI preselects. Empty means unset.
+	DefaultStrategy string `json:"default_strategy"`
 }
 
 func defaultMergeConfig() MergeConfig {
@@ -42,6 +45,9 @@ func loadMergeConfig(repoPath string) MergeConfig {
 	}
 	if m.AllowRebase != nil {
 		cfg.AllowRebase = *m.AllowRebase
+	}
+	if m.DefaultStrategy != nil {
+		cfg.DefaultStrategy = *m.DefaultStrategy
 	}
 	return cfg
 }

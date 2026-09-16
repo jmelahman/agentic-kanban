@@ -715,8 +715,7 @@ shell in the container is attached instead of the agent.`,
 			return runTicketMerge(ctx, url, cmd.OutOrStdout(), id, mergeStrategy)
 		},
 	}
-	mergeCmd.Flags().StringVar(&mergeStrategy, "strategy", "", "Merge strategy: merge-commit, squash, or rebase (required)")
-	_ = mergeCmd.MarkFlagRequired("strategy")
+	mergeCmd.Flags().StringVar(&mergeStrategy, "strategy", "", "Merge strategy: merge-commit, squash, or rebase (default: merge.default_strategy)")
 
 	parent.AddCommand(create, info, attach, update, move, archive, unarchive, delTicket, doneCmd, sync, mergeCmd)
 	// A cancelled picker or a failed API call isn't a usage error; don't
@@ -846,6 +845,12 @@ func runTicketSync(ctx context.Context, url string, out io.Writer, id int64, str
 func runTicketMerge(ctx context.Context, url string, out io.Writer, id int64, strategy string) error {
 	if err := client.New(url, nil).MergeTicket(ctx, id, strategy); err != nil {
 		return err
+	}
+	// An omitted strategy is resolved server-side from the board config, and
+	// the 204 doesn't say which one won — don't invent a name for it.
+	if strategy == "" {
+		fmt.Fprintf(out, "merged ticket %d\n", id)
+		return nil
 	}
 	fmt.Fprintf(out, "merged ticket %d (%s)\n", id, strategy)
 	return nil

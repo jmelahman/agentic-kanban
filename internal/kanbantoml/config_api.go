@@ -50,6 +50,7 @@ var schema = []KeySpec{
 	{Key: "merge.allow_squash", Kind: KindBool},
 	{Key: "merge.allow_rebase", Kind: KindBool},
 	{Key: "merge.ai_commit_message", Kind: KindBool},
+	{Key: "merge.default_strategy", Kind: KindString, Validate: validateMergeStrategy},
 
 	{Key: "github.auto_move", Kind: KindBool},
 	{Key: "github.draft_column", Kind: KindString},
@@ -121,6 +122,21 @@ func validateInterval(v any) error {
 		return fmt.Errorf("interval must be at least 1s")
 	}
 	return nil
+}
+
+// MergeStrategies is the set of strategies `POST /api/tickets/{id}/merge`
+// accepts, in the order they are offered. Exported so the API layer and the
+// config validator agree on one list.
+var MergeStrategies = []string{"merge-commit", "squash", "rebase"}
+
+func validateMergeStrategy(v any) error {
+	s, _ := v.(string)
+	for _, valid := range MergeStrategies {
+		if s == valid {
+			return nil
+		}
+	}
+	return fmt.Errorf("merge.default_strategy must be one of %s", strings.Join(MergeStrategies, ", "))
 }
 
 func validateTasks(v any) error {
@@ -287,6 +303,10 @@ func GetValue(f File, key string) (any, bool) {
 	case "merge.ai_commit_message":
 		if f.Merge != nil && f.Merge.AICommitMessage != nil {
 			return *f.Merge.AICommitMessage, true
+		}
+	case "merge.default_strategy":
+		if f.Merge != nil && f.Merge.DefaultStrategy != nil {
+			return *f.Merge.DefaultStrategy, true
 		}
 	case "github.auto_move":
 		if f.GitHub != nil && f.GitHub.AutoMove != nil {
