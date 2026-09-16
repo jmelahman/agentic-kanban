@@ -426,3 +426,45 @@ func mustGitOut(t *testing.T, dir string, args ...string) string {
 	}
 	return out.String()
 }
+
+// An untracked file makes IsClean report dirty (the caller is about to
+// AddAll it) but leaves IsCleanTracked clean — the merge gate only guards
+// against losing *tracked* work, which a reset or aborted merge can discard.
+func TestIsCleanTracked_IgnoresUntracked(t *testing.T) {
+	repo := initBareishRepo(t)
+	mustGit(t, repo, "config", "user.name", "Seed")
+	mustGit(t, repo, "config", "user.email", "seed@example.com")
+	writeAndCommit(t, repo, "main", "seed.txt", "seed", "init")
+
+	assertClean := func(what string, fn func(string) (bool, error), want bool) {
+		t.Helper()
+		got, err := fn(repo)
+		if err != nil {
+			t.Fatalf("%s: %v", what, err)
+		}
+		if got != want {
+			t.Fatalf("%s = %v, want %v", what, got, want)
+		}
+	}
+
+	assertClean("IsClean on pristine repo", IsClean, true)
+	assertClean("IsCleanTracked on pristine repo", IsCleanTracked, true)
+
+	// An untracked scratch dir — the real-world case was a stray .claude/
+	// blocking every merge.
+	if err := os.MkdirAll(filepath.Join(repo, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".claude", "settings.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertClean("IsClean with untracked file", IsClean, false)
+	assertClean("IsCleanTracked with untracked file", IsCleanTracked, true)
+
+	// A modified tracked file is real risk: both must report dirty.
+	if err := os.WriteFile(filepath.Join(repo, "seed.txt"), []byte("edited\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertClean("IsClean with modified file", IsClean, false)
+	assertClean("IsCleanTracked with modified file", IsCleanTracked, false)
+}

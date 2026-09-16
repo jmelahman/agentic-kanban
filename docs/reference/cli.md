@@ -380,6 +380,17 @@ Sync a ticket branch from base. Strategy defaults to `rebase`.
 
 Merge a ticket branch into base. Strategy is required.
 
+Boards can disable individual strategies via [`merge.allow_*`](../guide/configuration.md).
+Passing a disabled one is rejected with the strategies that board does accept,
+so `--strategy rebase` on a squash-only board reports
+`strategy rebase is disabled for this board; enabled: squash` rather than
+listing all three. Note that `merge` is a **sync** strategy — the merge
+equivalent is `merge-commit`.
+
+The source repo must have the base branch checked out with no uncommitted
+changes to *tracked* files. Untracked files don't block the merge; if one
+would collide with an incoming path, git refuses the merge itself.
+
 ## `column`
 
 ### `column archive-all <id>`

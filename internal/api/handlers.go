@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -719,27 +720,36 @@ func (h *handlers) ticketStrategyAction(
 		h.httpError(w, err, 400)
 		return
 	}
-	if req.Strategy == "" && defaultStrategy != "" {
-		req.Strategy = defaultStrategy
-	}
-	valid := false
-	for _, s := range allowed {
-		if s == req.Strategy {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		h.httpError(w, fmt.Errorf("strategy must be %s", joinStrategies(allowed)), 400)
-		return
-	}
+	// Resolve the board before validating: the per-board config decides which
+	// of `allowed` the caller can actually pick, and an error that advertises
+	// a strategy the next request will reject just costs a round trip.
 	_, board, code, err := h.ticketBoard(r.Context(), id)
 	if err != nil {
 		h.httpError(w, err, code)
 		return
 	}
-	if !isAllowed(board.RepoPath, req.Strategy) {
-		h.httpError(w, fmt.Errorf("strategy %s is disabled for this board", req.Strategy), 400)
+	enabled := make([]string, 0, len(allowed))
+	for _, s := range allowed {
+		if isAllowed(board.RepoPath, s) {
+			enabled = append(enabled, s)
+		}
+	}
+	if len(enabled) == 0 {
+		h.httpError(w, fmt.Errorf("every strategy is disabled for this board"), 400)
+		return
+	}
+	if req.Strategy == "" && defaultStrategy != "" {
+		req.Strategy = defaultStrategy
+	}
+	if !slices.Contains(enabled, req.Strategy) {
+		// Distinguish "real strategy, turned off here" from "not a strategy",
+		// but name the usable set either way.
+		if slices.Contains(allowed, req.Strategy) {
+			h.httpError(w, fmt.Errorf("strategy %s is disabled for this board; enabled: %s",
+				req.Strategy, joinStrategies(enabled)), 400)
+			return
+		}
+		h.httpError(w, fmt.Errorf("strategy must be %s", joinStrategies(enabled)), 400)
 		return
 	}
 	sess, err := h.store.GetSessionByTicket(r.Context(), id)

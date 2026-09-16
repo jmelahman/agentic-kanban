@@ -546,7 +546,11 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 			return fmt.Errorf("commit pending changes: %w", err)
 		}
 	}
-	if clean, err := git.IsClean(paths.RepoPath); err != nil {
+	// Tracked files only: this gate exists because MergeSquash/ResetHard can
+	// discard uncommitted work, and neither touches untracked files. An
+	// untracked scratch dir is no reason to refuse the merge — if it would
+	// collide with an incoming path, git itself refuses with a clear error.
+	if clean, err := git.IsCleanTracked(paths.RepoPath); err != nil {
 		return fmt.Errorf("check source repo clean: %w", err)
 	} else if !clean {
 		return fmt.Errorf("source repo has uncommitted changes; commit or stash before merging")

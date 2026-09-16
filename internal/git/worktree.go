@@ -216,9 +216,27 @@ func Commit(worktreePath, message string, id Identity) error {
 	return run("git", args...)
 }
 
-// IsClean reports whether the worktree has no uncommitted changes.
+// IsClean reports whether the worktree has no uncommitted changes, counting
+// untracked files as dirty. Use it when the caller is about to stage
+// everything (git.AddAll), where an untracked file is work that would be
+// swept into the commit.
 func IsClean(worktreePath string) (bool, error) {
-	cmd := exec.Command("git", "-C", worktreePath, "status", "--porcelain")
+	return isClean(worktreePath, true)
+}
+
+// IsCleanTracked is IsClean but ignores untracked files. Use it for gates
+// that only protect against *losing* work — a reset or an aborted merge
+// leaves untracked files untouched, so they are no reason to refuse.
+func IsCleanTracked(worktreePath string) (bool, error) {
+	return isClean(worktreePath, false)
+}
+
+func isClean(worktreePath string, untrackedIsDirty bool) (bool, error) {
+	args := []string{"-C", worktreePath, "status", "--porcelain"}
+	if !untrackedIsDirty {
+		args = append(args, "--untracked-files=no")
+	}
+	cmd := exec.Command("git", args...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
