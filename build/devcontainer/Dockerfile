@@ -2,11 +2,14 @@ FROM ubuntu:26.04@sha256:678c6550cc43645e08669028bc177f50be4e7c5b8cca677067b1914
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    cargo \
     curl \
     fd-find \
     fzf \
     git \
+    gcc \
     jq \
+    libc6-dev \
     less \
     neovim \
     openssh-client \
@@ -46,7 +49,7 @@ RUN ARCH="$(dpkg --print-architecture)" \
       | tar -xz --strip-components=1 -C /usr/local/bin "prek-${TARGET}/prek" \
  && ln -s /usr/local/bin/prek /usr/local/bin/pre-commit
 
-RUN useradd -m -s /bin/bash dev \
+RUN useradd -m -s /bin/zsh dev \
  && chown -R dev:dev /home/dev \
  && echo "dev ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/dev \
  && chmod 0440 /etc/sudoers.d/dev
