@@ -1,4 +1,4 @@
-FROM ubuntu:26.04@sha256:678c6550cc43645e08669028bc177f50be4e7c5b8cca677067b1914d4afc7a03
+FROM ubuntu:26.04@sha256:9559ceb7c21e528e233e8dff26a0fb2682f4094cce06176eeb075d87a22b31de
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
