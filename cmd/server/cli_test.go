@@ -650,6 +650,26 @@ func TestTicketCreateCommand(t *testing.T) {
 		}
 	})
 
+	t.Run("harness_flag_checks", func(t *testing.T) {
+		t.Chdir(board.RepoPath)
+		before := countTickets(t)
+		_, err := run(t, "create", "--title", "No attach", "--harness", "pi")
+		if err == nil || !strings.Contains(err.Error(), "--harness needs --attach") {
+			t.Errorf("create --harness without --attach: err = %v", err)
+		}
+		if got := countTickets(t); got != before {
+			t.Errorf("tickets = %d, want %d (nothing created)", got, before)
+		}
+		_, err = run(t, "attach", "1", "--shell", "--harness", "pi")
+		if err == nil || !strings.Contains(err.Error(), "--shell") {
+			t.Errorf("attach --shell --harness: err = %v", err)
+		}
+		_, err = run(t, "attach", "1", "--harness", "nope")
+		if err == nil || !strings.Contains(err.Error(), `unknown harness "nope"`) {
+			t.Errorf("attach --harness nope: err = %v", err)
+		}
+	})
+
 	t.Run("attach_without_id_needs_tty", func(t *testing.T) {
 		t.Chdir(board.RepoPath)
 		_, err := run(t, "attach")
@@ -695,7 +715,11 @@ func TestLoadBoardTickets(t *testing.T) {
 	if err := store.ArchiveTicket(t.Context(), archived.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.UpsertSession(t.Context(), &db.Session{TicketID: inProgress.ID, Status: db.SessionStatusWorking}); err != nil {
+	sess := &db.Session{TicketID: inProgress.ID, Status: db.SessionStatusWorking}
+	if err := store.UpsertSession(t.Context(), sess); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.UpdateSessionHarness(t.Context(), sess.ID, "pi"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -709,7 +733,7 @@ func TestLoadBoardTickets(t *testing.T) {
 	want := []pickerItem{
 		{ID: first.ID, Title: "First", Column: cols[0].Name},
 		{ID: third.ID, Title: "Third", Column: cols[0].Name},
-		{ID: inProgress.ID, Title: "Second", Column: cols[1].Name, Status: db.SessionStatusWorking},
+		{ID: inProgress.ID, Title: "Second", Column: cols[1].Name, Status: db.SessionStatusWorking, Harness: "pi"},
 	}
 	if len(items) != len(want) {
 		t.Fatalf("items = %+v, want %+v", items, want)

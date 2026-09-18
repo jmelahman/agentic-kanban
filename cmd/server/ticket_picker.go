@@ -17,10 +17,11 @@ import (
 // plus the context that tells similar tickets apart (its column and the
 // state of its session, if any).
 type pickerItem struct {
-	ID     int64
-	Title  string
-	Column string
-	Status string // session status; "" when the ticket has no session yet
+	ID      int64
+	Title   string
+	Column  string
+	Status  string // session status; "" when the ticket has no session yet
+	Harness string // the session's own harness choice; "" for the default
 }
 
 // loadBoardTickets fetches a board's tickets in board order (columns left to
@@ -52,6 +53,7 @@ func loadBoardTickets(ctx context.Context, url, ident string, archived bool) (la
 		Sessions []struct {
 			TicketID int64  `json:"ticket_id"`
 			Status   string `json:"status"`
+			Harness  string `json:"harness"`
 		} `json:"sessions"`
 	}
 	if err := json.Unmarshal(raw, &st); err != nil {
@@ -67,8 +69,10 @@ func loadBoardTickets(ctx context.Context, url, ident string, archived bool) (la
 		columns[col.ID] = column{name: col.Name, position: col.Position}
 	}
 	status := make(map[int64]string, len(st.Sessions))
+	harnesses := make(map[int64]string, len(st.Sessions))
 	for _, s := range st.Sessions {
 		status[s.TicketID] = s.Status
+		harnesses[s.TicketID] = s.Harness
 	}
 	// Board state carries only open tickets; archived ones come from their
 	// own endpoint but are grouped by the same columns.
@@ -96,10 +100,11 @@ func loadBoardTickets(ctx context.Context, url, ident string, archived bool) (la
 	items = make([]pickerItem, 0, len(tickets))
 	for _, t := range tickets {
 		items = append(items, pickerItem{
-			ID:     t.ID,
-			Title:  t.Title,
-			Column: columns[t.ColumnID].name,
-			Status: status[t.ID],
+			ID:      t.ID,
+			Title:   t.Title,
+			Column:  columns[t.ColumnID].name,
+			Status:  status[t.ID],
+			Harness: harnesses[t.ID],
 		})
 	}
 	return formatBoardLabel(st.Board.Name, st.Board.Slug), items, nil
@@ -116,8 +121,10 @@ type pickerAction struct {
 
 // promptTicketPicker takes over the terminal with a tcell screen, runs the
 // ticket list, and returns the chosen ticket. ok is false when the user
-// cancelled (Esc / Ctrl+C).
-func promptTicketPicker(action pickerAction, boardLabel string, items []pickerItem) (chosen pickerItem, ok bool, err error) {
+// cancelled (Esc / Ctrl+C). A non-nil harnesses adds a harness row for the
+// highlighted ticket (used by `ticket attach`); chosen.Harness is then the
+// harness picked for it — see ticketPicker.chosen.
+func promptTicketPicker(action pickerAction, boardLabel string, items []pickerItem, harnesses *harnessOptions) (chosen pickerItem, ok bool, err error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return chosen, false, fmt.Errorf("open terminal: %w", err)
@@ -133,7 +140,9 @@ func promptTicketPicker(action pickerAction, boardLabel string, items []pickerIt
 			panic(r)
 		}
 	}()
-	return runTicketPicker(screen, newTicketPicker(action, boardLabel, items))
+	p := newTicketPicker(action, boardLabel, items)
+	p.harnesses = harnesses
+	return runTicketPicker(screen, p)
 }
 
 // runTicketPicker is the event loop, split from promptTicketPicker so tests
@@ -152,7 +161,7 @@ func runTicketPicker(screen tcell.Screen, p *ticketPicker) (pickerItem, bool, er
 			p.handleKey(ev)
 		}
 		if p.selected {
-			return p.current(), true, nil
+			return p.chosen(), true, nil
 		}
 		if p.cancelled {
 			return pickerItem{}, false, nil
@@ -174,6 +183,12 @@ type ticketPicker struct {
 	errMsg     string
 	selected   bool
 	cancelled  bool
+
+	// harnesses is nil unless the picker offers a harness row; picked holds
+	// the ←/→ choices per ticket id (index into harnesses.list), so moving
+	// the highlight away and back keeps what was chosen for that ticket.
+	harnesses *harnessOptions
+	picked    map[int64]int
 
 	// Owned by render(): the first list row on screen and how many list
 	// rows fit, which PgUp/PgDn use as their stride.
@@ -216,6 +231,51 @@ func (p *ticketPicker) visible() []int {
 		}
 	}
 	return idx
+}
+
+// harnessIdx is the harness shown for it: the ←/→ choice, else the
+// session's stored harness, else the default.
+func (p *ticketPicker) harnessIdx(it pickerItem) int {
+	if i, ok := p.picked[it.ID]; ok {
+		return i
+	}
+	return p.harnesses.initial(it.Harness)
+}
+
+// harnessChanged reports whether the harness shown for it differs from the
+// one its session launches today.
+func (p *ticketPicker) harnessChanged(it pickerItem) bool {
+	return p.harnessIdx(it) != p.harnesses.initial(it.Harness)
+}
+
+// cycleHarness steps the highlighted ticket's harness choice.
+func (p *ticketPicker) cycleHarness(delta int) {
+	vis := p.visible()
+	if len(vis) == 0 {
+		return
+	}
+	it := p.current()
+	if p.picked == nil {
+		p.picked = map[int64]int{}
+	}
+	p.picked[it.ID] = p.harnesses.cycle(p.harnessIdx(it), delta)
+}
+
+// chosen is the highlighted item as the caller should act on it: with a
+// harness row, Harness is replaced by the ID picked with ←/→, or cleared
+// when the pick matches what the session already launches (nothing to
+// change).
+func (p *ticketPicker) chosen() pickerItem {
+	it := p.current()
+	if p.harnesses == nil {
+		return it
+	}
+	if p.harnessChanged(it) {
+		it.Harness = p.harnesses.id(p.harnessIdx(it))
+	} else {
+		it.Harness = ""
+	}
+	return it
 }
 
 // current returns the highlighted item, or the zero item when the filter
@@ -263,7 +323,9 @@ func (p *ticketPicker) submit() {
 //	Enter                        run the action on the highlighted ticket
 //	Esc / Ctrl+C                 cancel
 //	printable keys               narrow the list; Backspace widens it again
-//	Left / Right, Ctrl+A / Ctrl+E, Ctrl+U / Ctrl+K / Ctrl+W   edit the filter
+//	Left / Right                 cycle the harness when there's a harness row,
+//	                             else move in the filter
+//	Ctrl+B / Ctrl+F, Ctrl+A / Ctrl+E, Ctrl+U / Ctrl+K / Ctrl+W   edit the filter
 func (p *ticketPicker) handleKey(ev *tcell.EventKey) {
 	p.errMsg = ""
 	before := p.filter.String()
@@ -289,8 +351,20 @@ func (p *ticketPicker) handleKey(ev *tcell.EventKey) {
 	case tcell.KeyDelete:
 		p.filter.del()
 	case tcell.KeyLeft:
+		if p.harnesses != nil {
+			p.cycleHarness(-1)
+			return
+		}
 		p.filter.left()
 	case tcell.KeyRight:
+		if p.harnesses != nil {
+			p.cycleHarness(1)
+			return
+		}
+		p.filter.right()
+	case tcell.KeyCtrlB:
+		p.filter.left()
+	case tcell.KeyCtrlF:
 		p.filter.right()
 	case tcell.KeyCtrlA:
 		p.filter.home()
@@ -391,7 +465,11 @@ func (p *ticketPicker) render(s tcell.Screen) {
 	s.ShowCursor(fx+cursor-scroll, pickerFilterRow)
 
 	// List.
-	listH := h - pickerFooterRows - pickerListRow
+	footer := pickerFooterRows
+	if p.harnesses != nil {
+		footer++ // the harness row, between the list and the help line
+	}
+	listH := h - footer - pickerListRow
 	if listH < 1 {
 		listH = 1
 	}
@@ -429,7 +507,19 @@ func (p *ticketPicker) render(s tcell.Screen) {
 		p.renderItem(s, formPad, y, width, idWidth, p.items[row.item], i == cursorRow)
 	}
 
-	putText(s, formPad, h-2, width, base.Dim(true), "↑↓ move · Enter "+p.action.verb+" · type to filter · Esc cancel")
+	help := "↑↓ move · Enter " + p.action.verb + " · type to filter · Esc cancel"
+	if p.harnesses != nil {
+		help = "↑↓ move · ←→ harness · Enter " + p.action.verb + " · type to filter · Esc cancel"
+		if vis := p.visible(); len(vis) > 0 {
+			it := p.current()
+			note := ""
+			if p.harnessChanged(it) && it.Status != "" && it.Status != "stopped" && it.Status != "error" {
+				note = "restarts the running agent"
+			}
+			drawHarnessRow(s, formPad, h-3, width, true, p.harnesses.label(p.harnessIdx(it)), note)
+		}
+	}
+	putText(s, formPad, h-2, width, base.Dim(true), help)
 	if p.errMsg != "" {
 		putText(s, formPad, h-1, width, base.Foreground(tcell.ColorRed).Bold(true), p.errMsg)
 	}

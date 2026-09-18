@@ -44,10 +44,12 @@ type ptyControl struct {
 // AttachAgent upgrades the request to a WebSocket and routes it through the
 // per-session agent PTY broker, which holds the docker exec connection across
 // client reconnects (e.g. page refresh). The command argument is the agent
-// CLI argv chosen by the caller (typically derived from the global harness
-// setting); it must be non-empty.
-func (m *Manager) AttachAgent(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, command []string, workDir string) error {
-	return m.attachKind(ctx, sess, w, r, "agent", command, workDir)
+// CLI argv for the session's harness, chosen by the caller; it must be
+// non-empty. harnessID names that harness and is recorded on the broker so a
+// later harness switch can tell whether the running agent needs replacing.
+// Both are ignored when the agent is already running.
+func (m *Manager) AttachAgent(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, harnessID string, command []string, workDir string) error {
+	return m.attachKind(ctx, sess, w, r, "agent", harnessID, command, workDir)
 }
 
 // AttachShell upgrades the request to a WebSocket and runs an interactive
@@ -56,10 +58,10 @@ func (m *Manager) AttachAgent(ctx context.Context, sess *db.Session, w http.Resp
 // /etc/passwd, falling back to /bin/sh) is used so the choice tracks whatever
 // the image declares — no need to hardcode bash here.
 func (m *Manager) AttachShell(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, workDir string) error {
-	return m.attachKind(ctx, sess, w, r, "shell", []string{"sh", "-c", `s=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f7); exec "${s:-/bin/sh}"`}, workDir)
+	return m.attachKind(ctx, sess, w, r, "shell", "", []string{"sh", "-c", `s=$(getent passwd "$(id -u)" 2>/dev/null | cut -d: -f7); exec "${s:-/bin/sh}"`}, workDir)
 }
 
-func (m *Manager) attachKind(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, kind string, command []string, workDir string) error {
+func (m *Manager) attachKind(ctx context.Context, sess *db.Session, w http.ResponseWriter, r *http.Request, kind, harnessID string, command []string, workDir string) error {
 	if sess.ContainerID == nil || *sess.ContainerID == "" {
 		http.Error(w, "session not running", http.StatusBadRequest)
 		return errors.New("not running")
@@ -75,7 +77,7 @@ func (m *Manager) attachKind(ctx context.Context, sess *db.Session, w http.Respo
 	}
 	defer conn.Close()
 
-	broker, err := m.brokers.attach(ctx, sess, kind, command, workDir)
+	broker, err := m.brokers.attach(ctx, sess, kind, harnessID, command, workDir)
 	if err != nil {
 		_ = conn.WriteMessage(websocket.TextMessage, []byte("error: "+err.Error()))
 		return err

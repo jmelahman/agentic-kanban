@@ -79,6 +79,31 @@ the id, tears down brokers and proxies) when the container is gone. Rules:
   there. Reconcile at the points where someone is about to act on the
   container.
 
+### Closing a PTY broker doesn't end its process
+
+A `sessionPTY` broker owns a hijacked `docker exec` connection with a TTY.
+Closing that connection (`shutdown`) only drops kanban's end: Docker doesn't
+kill a TTY exec when its client goes away, and with a TTY it doesn't even
+close the process's stdin, so the process keeps running unseen until its
+output buffers fill. That's fine when the whole container is about to be
+stopped (`Stop` → `closeFor`), but not when one PTY is replaced inside a
+running container — a harness switch that only closed the broker left the
+old `claude` running next to the new `pi`, still firing its status hooks.
+Rules:
+
+- Replacing a PTY in a live container means ending its process too.
+  Every brokered exec carries a unique `$KANBAN_PTY_ID`; `endPTYScript`
+  finds the exec's own process (tagged, `PPid: 0`) and sends `SIGHUP`,
+  then `SIGKILL`. Reuse that (`Manager.StopAgentUnless` is the model)
+  rather than just calling `shutdown`.
+- Take the broker out of the set under its lock *before* shutting it down,
+  so a concurrent attach starts a fresh exec instead of rejoining the one
+  being torn down.
+- A stopped agent never reports the `idle` that ends its `working` or
+  `awaiting_perm` status. Reset it column-scoped
+  (`ResetSessionActivity`), not through `PATCH …/status`, which would fire
+  `session.idle` hooks and an auto preview deploy.
+
 ### Per-origin SSE streams starve the WebSocket pool
 
 Browsers cap HTTP/1.1 connections at 6 per origin and route the initial

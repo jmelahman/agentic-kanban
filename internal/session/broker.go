@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"io"
 	"log"
@@ -100,6 +101,15 @@ type sessionPTY struct {
 	docker   *docker.Client
 	set      *brokerSet
 
+	// containerID is the container the exec runs in; harness is the harness
+	// id the agent was launched with ("" for other kinds). marker is this
+	// exec's unique $KANBAN_PTY_ID, which is how its process is found again
+	// inside the container: closing the hijacked connection doesn't end a
+	// TTY exec, so tearing one down on purpose means signalling it.
+	containerID string
+	harness     string
+	marker      string
+
 	mu      sync.Mutex
 	buf     *ringBuffer
 	cols    uint // currently-applied PTY size (aggregated across clients)
@@ -130,11 +140,15 @@ func newBrokerSet(dc *docker.Client) *brokerSet {
 	}
 }
 
+// ptyMarkerEnv names the env var that tags each brokered exec with its
+// broker's marker.
+const ptyMarkerEnv = "KANBAN_PTY_ID"
+
 // attach returns the broker for this session and kind, creating it (and
 // starting the underlying docker exec) on first use. Subsequent calls with
-// the same key return the existing broker — the cmd and workDir arguments
-// are only honored at creation time.
-func (s *brokerSet) attach(ctx context.Context, sess *db.Session, kind string, cmd []string, workDir string) (*sessionPTY, error) {
+// the same key return the existing broker — the harnessID, cmd and workDir
+// arguments are only honored at creation time.
+func (s *brokerSet) attach(ctx context.Context, sess *db.Session, kind, harnessID string, cmd []string, workDir string) (*sessionPTY, error) {
 	key := brokerKey{sessionID: sess.ID, kind: kind}
 	s.mu.Lock()
 	if b, ok := s.perSess[key]; ok {
@@ -145,23 +159,46 @@ func (s *brokerSet) attach(ctx context.Context, sess *db.Session, kind string, c
 		s.mu.Unlock()
 		return nil, errors.New("session not running")
 	}
-	att, err := s.docker.ExecAttachTTY(ctx, *sess.ContainerID, cmd, workDir, nil)
+	marker := kind + "-" + rand.Text()
+	att, err := s.docker.ExecAttachTTY(ctx, *sess.ContainerID, cmd, workDir, []string{ptyMarkerEnv + "=" + marker})
 	if err != nil {
 		s.mu.Unlock()
 		return nil, err
 	}
 	b := &sessionPTY{
-		key:      key,
-		attached: att,
-		docker:   s.docker,
-		set:      s,
-		buf:      newRingBuffer(replayBufferSize),
-		clients:  map[*websocket.Conn]*clientView{},
+		key:         key,
+		attached:    att,
+		docker:      s.docker,
+		set:         s,
+		containerID: *sess.ContainerID,
+		harness:     harnessID,
+		marker:      marker,
+		buf:         newRingBuffer(replayBufferSize),
+		clients:     map[*websocket.Conn]*clientView{},
 	}
 	s.perSess[key] = b
 	s.mu.Unlock()
 	go b.readLoop()
 	return b, nil
+}
+
+// closeAgentUnless tears down the session's agent broker unless it was
+// launched with harnessID, leaving the other kinds (the shell) running, and
+// returns the broker it closed (nil if none). The broker leaves the set
+// before its lock is released, so a concurrent attach starts a fresh agent
+// rather than rejoining the one being closed.
+func (s *brokerSet) closeAgentUnless(sessionID int64, harnessID string) *sessionPTY {
+	key := brokerKey{sessionID: sessionID, kind: "agent"}
+	s.mu.Lock()
+	b, ok := s.perSess[key]
+	if !ok || b.harness == harnessID {
+		s.mu.Unlock()
+		return nil
+	}
+	delete(s.perSess, key)
+	s.mu.Unlock()
+	b.shutdown()
+	return b
 }
 
 // closeFor tears down all brokers for a session. Idempotent and safe when no

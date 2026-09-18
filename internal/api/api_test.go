@@ -681,6 +681,90 @@ func TestSessions(t *testing.T) {
 			map[string]any{"branch_name": "kanban/whatever"})
 		assertStatus(t, resp, 404)
 	})
+
+	t.Run("harness_set_and_clear", func(t *testing.T) {
+		other := e.seedTicket(board, "Harness")
+		sess := e.seedSession(other)
+
+		events := e.subscribeBoardEvents(board.ID)
+		defer events.close()
+		events.waitReady(t)
+
+		resp := e.put(fmt.Sprintf("/api/sessions/%d/harness", sess.ID), map[string]any{"harness": "pi"})
+		assertStatus(t, resp, 200)
+		if got := decodeJSON[db.Session](t, resp); got.Harness != "pi" {
+			t.Errorf("response harness = %q; want pi", got.Harness)
+		}
+		if ev := events.next(t); ev.Type != "session_updated" {
+			t.Fatalf("expected session_updated event, got %q", ev.Type)
+		}
+
+		resp = e.put(fmt.Sprintf("/api/sessions/%d/harness", sess.ID), map[string]any{"harness": ""})
+		assertStatus(t, resp, 200)
+		got, err := e.store.GetSession(context.Background(), sess.ID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if got.Harness != "" {
+			t.Errorf("persisted harness = %q; want cleared", got.Harness)
+		}
+	})
+
+	t.Run("harness_switch_without_agent_keeps_status", func(t *testing.T) {
+		// Only stopping a running agent resets the status it reported; with
+		// no agent attached a switch is just a DB write.
+		other := e.seedTicket(board, "HarnessNoAgent")
+		sess := e.seedSession(other)
+		if err := e.store.UpdateSessionStatus(context.Background(), sess.ID, db.SessionStatusWorking); err != nil {
+			t.Fatal(err)
+		}
+		resp := e.put(fmt.Sprintf("/api/sessions/%d/harness", sess.ID), map[string]any{"harness": "pi"})
+		assertStatus(t, resp, 200)
+		got := decodeJSON[db.Session](t, resp)
+		if got.Harness != "pi" || got.Status != db.SessionStatusWorking {
+			t.Errorf("session = harness %q, status %q; want pi, working", got.Harness, got.Status)
+		}
+	})
+
+	t.Run("harness_rejects_unknown", func(t *testing.T) {
+		other := e.seedTicket(board, "HarnessBad")
+		sess := e.seedSession(other)
+		resp := e.put(fmt.Sprintf("/api/sessions/%d/harness", sess.ID), map[string]any{"harness": "nope"})
+		assertStatus(t, resp, 400)
+	})
+
+	t.Run("harness_unknown_session_404", func(t *testing.T) {
+		resp := e.put("/api/sessions/9999/harness", map[string]any{"harness": "pi"})
+		assertStatus(t, resp, 404)
+	})
+}
+
+func TestListHarnessesFlagsBoardDefault(t *testing.T) {
+	e := newEnv(t)
+	board := e.seedBoard("HarnessDefault")
+
+	resp := e.get("/api/harnesses")
+	assertStatus(t, resp, 200)
+	for _, h := range decodeJSON[[]map[string]any](t, resp) {
+		if _, ok := h["default"]; ok {
+			t.Errorf("harness %v flagged default without ?board", h["id"])
+		}
+	}
+
+	resp = e.get(fmt.Sprintf("/api/harnesses?board=%d", board.ID))
+	assertStatus(t, resp, 200)
+	var defaults []any
+	for _, h := range decodeJSON[[]map[string]any](t, resp) {
+		if h["default"] == true {
+			defaults = append(defaults, h["id"])
+		}
+	}
+	if len(defaults) != 1 {
+		t.Errorf("default harnesses = %v; want exactly one", defaults)
+	}
+
+	assertStatus(t, e.get("/api/harnesses?board=9999"), 404)
+	assertStatus(t, e.get("/api/harnesses?board=abc"), 400)
 }
 
 // ---------- Tasks ----------

@@ -25,6 +25,15 @@ func Resolve(repoPath string) Harness {
 	return Default()
 }
 
+// ForSession picks the harness for a session: its own stored choice when
+// that is a known ID, else the user/project default for repoPath.
+func ForSession(sessionHarness, repoPath string) Harness {
+	if IsKnown(sessionHarness) {
+		return Get(sessionHarness)
+	}
+	return Resolve(repoPath)
+}
+
 // WriteUserHarness sets (or clears, when id == "") the user-config harness
 // key, preserving any other top-level keys already in the file.
 func WriteUserHarness(id string) error {

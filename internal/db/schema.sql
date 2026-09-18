@@ -56,7 +56,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   -- so resume keeps working even if the board's paths are later edited.
   mount_path TEXT,
   repo_path TEXT,
-  claude_session_id TEXT
+  claude_session_id TEXT,
+  -- harness is the agent harness ID chosen for this session; NULL means the
+  -- user/project default. Added by migrate() on older databases.
+  harness TEXT
 );
 
 CREATE TABLE IF NOT EXISTS port_allocations (

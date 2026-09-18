@@ -25,7 +25,7 @@ When you're done with the work the agent did, you sync (rebase or merge the base
 :   The running container + worktree + harness for a ticket. Sessions have lifecycle states (`pending`, `running`, `stopped`, …) and emit hooks at state transitions.
 
 **Harness**
-:   The agent runner inside the container. Selectable globally in the app's settings; supports Claude Code and pi.dev today.
+:   The agent runner inside the container. The default is set in the app's settings (or `[harness].id` in [configuration](./configuration)), and a single ticket's session can use a different one via `kanban ticket create` / `kanban ticket attach`. Supports Claude Code and pi.dev today.
 
 **Worktree**
 :   A git worktree in `<data-dir>/worktrees/` (or the directory you set with `--worktrees-dir`). The session container bind-mounts the worktree, so file changes the agent makes are visible on the host.

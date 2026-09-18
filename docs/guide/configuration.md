@@ -11,7 +11,7 @@ Either file may be absent. Both accept the same schema.
 
 ```toml
 [harness]
-id = "claude-code"            # default harness for new sessions
+id = "claude"                 # default agent harness: "claude" or "pi"
 
 [worktrees]
 root = "/path/to/worktrees"   # parent dir for new worktrees (overrides --worktrees-dir)
@@ -153,6 +153,10 @@ Most sections are object-merged: a key set in the user file wins; keys only set 
 - `[devcontainer].mounts` and `[devcontainer].run_args` are **appended** to whatever the worktree's `devcontainer.json` already declares. They aren't overrides.
 - `[[task]]` entries merge by `label`: a user entry with the same `label` replaces the project entry, and user-only labels are appended.
 - `[[buildcop.boards]]` is **replaced wholesale** when the user file sets any entries — board names can change and there's no stable identity to merge by, so the rule is "if the user declared boards, those are the boards."
+
+## Choosing a harness per session
+
+`[harness].id` is only the default. One ticket's session can run a different harness: pick it on the **Harness** row of `kanban ticket create` or `kanban ticket attach` (`←`/`→`), pass `--harness <id>` to either, or call `PUT /api/sessions/{id}/harness`. The choice is stored on the session and wins over both config files; clearing it (`""` through the API) puts the session back on the default. Switching stops an agent that is running another harness — see [`ticket attach`](/reference/cli#ticket-attach-id).
 
 ## Managing config from the API / CLI / MCP
 

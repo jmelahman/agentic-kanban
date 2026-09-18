@@ -1451,7 +1451,7 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 	if board, err := h.boardForSession(r.Context(), sess); err == nil && board != nil {
 		repoPath = board.RepoPath
 	}
-	resolved := harness.Resolve(repoPath)
+	resolved := harness.ForSession(sess.Harness, repoPath)
 	cmd := resolved.PTYCommand
 	// Resume the prior Claude Code conversation when we have its UUID. The
 	// SessionStart hook in .claude/settings.local.json captures the UUID on
@@ -1477,7 +1477,7 @@ func (h *handlers) wsPTY(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if err := h.sessions.AttachAgent(r.Context(), sess, w, r, cmd, "/workspace"); err != nil {
+	if err := h.sessions.AttachAgent(r.Context(), sess, w, r, resolved.ID, cmd, "/workspace"); err != nil {
 		h.reconcileAfterAttach(r.Context(), sess)
 	}
 }
@@ -1611,8 +1611,92 @@ func readUserWorktreesRoot() string {
 	return *f.Worktrees.Root
 }
 
+// harnessEntry is one row of GET /api/harnesses. Default marks the harness
+// a session without its own choice launches for the requested board.
+type harnessEntry struct {
+	harness.Harness
+	Default bool `json:"default,omitempty"`
+}
+
+// listHarnesses returns the harness registry. With ?board=<id> the entry the
+// board's sessions fall back to (user config, then the repo's .kanban.toml,
+// then the built-in default) is flagged "default": true.
 func (h *handlers) listHarnesses(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, harness.Registry)
+	defaultID := ""
+	if raw := r.URL.Query().Get("board"); raw != "" {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			h.httpError(w, fmt.Errorf("board must be a numeric id"), 400)
+			return
+		}
+		board, err := h.store.GetBoard(r.Context(), id)
+		if err != nil {
+			h.httpError(w, err, 404)
+			return
+		}
+		defaultID = harness.Resolve(board.RepoPath).ID
+	}
+	out := make([]harnessEntry, len(harness.Registry))
+	for i, hr := range harness.Registry {
+		out[i] = harnessEntry{Harness: hr, Default: hr.ID == defaultID}
+	}
+	writeJSON(w, 200, out)
+}
+
+type updateSessionHarnessReq struct {
+	Harness string `json:"harness"`
+}
+
+// updateSessionHarness picks the agent harness for one session ("" returns
+// it to the user/project default). If the session's agent is running a
+// different harness than the one it now resolves to, that agent is stopped
+// so the next attach starts the new harness; the container, worktree and
+// shell stay up.
+func (h *handlers) updateSessionHarness(w http.ResponseWriter, r *http.Request) {
+	id := pathID(r, "id")
+	req, err := decodeBody[updateSessionHarnessReq](r)
+	if err != nil {
+		h.httpError(w, err, 400)
+		return
+	}
+	next := strings.TrimSpace(req.Harness)
+	if next != "" && !harness.IsKnown(next) {
+		h.httpError(w, fmt.Errorf("unknown harness %q", next), 400)
+		return
+	}
+	sess, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 404)
+		return
+	}
+	repoPath := ""
+	if board, err := h.boardForSession(r.Context(), sess); err == nil && board != nil {
+		repoPath = board.RepoPath
+	}
+	changed := next != sess.Harness
+	if changed {
+		if err := h.store.UpdateSessionHarness(r.Context(), id, next); err != nil {
+			if errors.Is(err, db.ErrNotFound) {
+				h.httpError(w, err, 404)
+				return
+			}
+			h.httpError(w, err, 500)
+			return
+		}
+	}
+	// Compare against the harness the running agent was launched with, not
+	// the session's previous setting: with no explicit pick, the default it
+	// launched under may have changed since.
+	stopped := h.sessions.StopAgentUnless(r.Context(), id, harness.ForSession(next, repoPath).ID)
+	if changed || stopped {
+		h.publishSessionUpdated(r.Context(), id)
+	}
+	fresh, err := h.store.GetSession(r.Context(), id)
+	if err != nil {
+		h.httpError(w, err, 500)
+		return
+	}
+	writeJSON(w, 200, fresh)
 }
 
 // helpers

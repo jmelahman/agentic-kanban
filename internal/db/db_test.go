@@ -270,3 +270,133 @@ func assertBoardLifecycle(t *testing.T, store *db.Store) {
 		t.Errorf("ListTickets = %+v; want one row with id %d", got, tk.ID)
 	}
 }
+
+func TestUpdateSessionHarness(t *testing.T) {
+	store, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("db.Open(:memory:): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := t.Context()
+
+	b := &db.Board{Name: "Harness", Slug: "harness", BaseBranch: "main", RepoPath: "/tmp/x"}
+	if err := store.CreateBoard(ctx, b); err != nil {
+		t.Fatalf("CreateBoard: %v", err)
+	}
+	cols, err := store.ListColumns(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("ListColumns: %v", err)
+	}
+	tk := &db.Ticket{BoardID: b.ID, ColumnID: cols[0].ID, Title: "t", Slug: "t"}
+	if err := store.CreateTicket(ctx, tk); err != nil {
+		t.Fatalf("CreateTicket: %v", err)
+	}
+	sess := &db.Session{TicketID: tk.ID, WorktreePath: "/tmp/wt", BranchName: "kanban/t", Status: db.SessionStatusStopped}
+	if err := store.UpsertSession(ctx, sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+
+	if err := store.UpdateSessionHarness(ctx, sess.ID, "pi"); err != nil {
+		t.Fatalf("UpdateSessionHarness: %v", err)
+	}
+	// A whole-row write from a stale snapshot must not clobber the harness.
+	sess.Status = db.SessionStatusIdle
+	if err := store.UpsertSession(ctx, sess); err != nil {
+		t.Fatalf("UpsertSession: %v", err)
+	}
+	got, err := store.GetSession(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if got.Harness != "pi" {
+		t.Errorf("harness = %q; want %q", got.Harness, "pi")
+	}
+	byBoard, err := store.ListSessionsByBoard(ctx, b.ID)
+	if err != nil || len(byBoard) != 1 || byBoard[0].Harness != "pi" {
+		t.Errorf("ListSessionsByBoard = %+v, %v; want one session with harness pi", byBoard, err)
+	}
+
+	if err := store.UpdateSessionHarness(ctx, sess.ID, ""); err != nil {
+		t.Fatalf("UpdateSessionHarness(clear): %v", err)
+	}
+	if got, _ := store.GetSessionByTicket(ctx, tk.ID); got == nil || got.Harness != "" {
+		t.Errorf("harness after clear = %+v; want empty", got)
+	}
+
+	if err := store.UpdateSessionHarness(ctx, 9999, "pi"); !errors.Is(err, db.ErrNotFound) {
+		t.Errorf("UpdateSessionHarness(unknown) error = %v; want ErrNotFound", err)
+	}
+}
+
+// TestResetSessionActivity checks only hook-reported activity is reset.
+func TestResetSessionActivity(t *testing.T) {
+	store, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("db.Open(:memory:): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := t.Context()
+
+	b := &db.Board{Name: "Activity", Slug: "activity", BaseBranch: "main", RepoPath: "/tmp/x"}
+	if err := store.CreateBoard(ctx, b); err != nil {
+		t.Fatalf("CreateBoard: %v", err)
+	}
+	cols, err := store.ListColumns(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("ListColumns: %v", err)
+	}
+	for _, tc := range []struct {
+		status string
+		want   string
+	}{
+		{db.SessionStatusWorking, db.SessionStatusIdle},
+		{db.SessionStatusAwaitingPerm, db.SessionStatusIdle},
+		{db.SessionStatusIdle, db.SessionStatusIdle},
+		{db.SessionStatusStopped, db.SessionStatusStopped},
+		{db.SessionStatusStarting, db.SessionStatusStarting},
+		{db.SessionStatusError, db.SessionStatusError},
+	} {
+		tk := &db.Ticket{BoardID: b.ID, ColumnID: cols[0].ID, Title: tc.status, Slug: tc.status}
+		if err := store.CreateTicket(ctx, tk); err != nil {
+			t.Fatalf("CreateTicket: %v", err)
+		}
+		sess := &db.Session{TicketID: tk.ID, WorktreePath: "/tmp/wt-" + tc.status, Status: tc.status}
+		if err := store.UpsertSession(ctx, sess); err != nil {
+			t.Fatalf("UpsertSession: %v", err)
+		}
+		changed, err := store.ResetSessionActivity(ctx, sess.ID)
+		if err != nil {
+			t.Fatalf("ResetSessionActivity(%s): %v", tc.status, err)
+		}
+		got, err := store.GetSession(ctx, sess.ID)
+		if err != nil {
+			t.Fatalf("GetSession: %v", err)
+		}
+		if got.Status != tc.want || changed != (tc.status != tc.want) {
+			t.Errorf("%s: status %q, changed %v; want %q, changed %v", tc.status, got.Status, changed, tc.want, tc.status != tc.want)
+		}
+	}
+}
+
+// TestMigrateAddsSessionHarness opens a database whose sessions table
+// predates the harness column and checks Open adds it.
+func TestMigrateAddsSessionHarness(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kanban.db")
+	store, err := db.Open(path)
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	if _, err := store.DB().Exec(`ALTER TABLE sessions DROP COLUMN harness`); err != nil {
+		t.Fatalf("drop harness: %v", err)
+	}
+	_ = store.Close()
+
+	store, err = db.Open(path)
+	if err != nil {
+		t.Fatalf("db.Open (migrate): %v", err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	if _, err := store.DB().Exec(`SELECT harness FROM sessions`); err != nil {
+		t.Errorf("sessions.harness missing after migrate: %v", err)
+	}
+}

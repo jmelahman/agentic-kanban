@@ -10,17 +10,20 @@ import (
 )
 
 // ticketFormResult is what the interactive `kanban ticket create` prompt
-// collects: a required title and an optional markdown body.
+// collects: a required title, an optional markdown body, and — when the form
+// offered a harness row — the harness ID picked for the ticket's session.
 type ticketFormResult struct {
-	Title string
-	Body  string
+	Title   string
+	Body    string
+	Harness string
 }
 
 // promptTicketForm takes over the terminal with a tcell screen, runs the
 // ticket form, and returns what the user entered. ok is false when the user
 // cancelled (Esc / Ctrl+C). initialBody pre-fills the description (from a
-// --body flag given without --title).
-func promptTicketForm(boardLabel, initialBody string) (res ticketFormResult, ok bool, err error) {
+// --body flag given without --title). A non-nil harnesses adds a harness
+// row starting on initialHarness (the default when "").
+func promptTicketForm(boardLabel, initialBody string, harnesses *harnessOptions, initialHarness string) (res ticketFormResult, ok bool, err error) {
 	screen, err := tcell.NewScreen()
 	if err != nil {
 		return res, false, fmt.Errorf("open terminal: %w", err)
@@ -36,7 +39,9 @@ func promptTicketForm(boardLabel, initialBody string) (res ticketFormResult, ok 
 			panic(r)
 		}
 	}()
-	return runTicketForm(screen, newTicketForm(boardLabel, "", initialBody))
+	f := newTicketForm(boardLabel, "", initialBody)
+	f.setHarnesses(harnesses, initialHarness)
+	return runTicketForm(screen, f)
 }
 
 // runTicketForm is the event loop, split from promptTicketForm so tests can
@@ -71,11 +76,13 @@ func runTicketForm(screen tcell.Screen, f *ticketForm) (ticketFormResult, bool, 
 const (
 	focusTitle = iota
 	focusBody
+	focusHarness
 )
 
-// ticketForm is the state behind the prompt: two editable fields, which one
-// has focus, and the outcome. It is deliberately independent of the screen
-// so key handling can be unit-tested without a terminal.
+// ticketForm is the state behind the prompt: two editable fields plus an
+// optional harness selector, which one has focus, and the outcome. It is
+// deliberately independent of the screen so key handling can be unit-tested
+// without a terminal.
 type ticketForm struct {
 	boardLabel string
 	title      *textBuffer
@@ -85,6 +92,11 @@ type ticketForm struct {
 	pasting    bool
 	submitted  bool
 	cancelled  bool
+
+	// harnesses is nil when the form has no harness row (the ticket won't
+	// be attached to, or there's only one harness); harnessIdx indexes it.
+	harnesses  *harnessOptions
+	harnessIdx int
 
 	// Scroll offsets are owned by render(): the title scrolls horizontally
 	// (in cells), the body vertically (in wrapped visual rows).
@@ -104,18 +116,56 @@ func newTicketForm(boardLabel, title, body string) *ticketForm {
 	return f
 }
 
+// setHarnesses adds the harness row, starting on initial (the default when
+// "" or unknown). A nil opts leaves the form without one.
+func (f *ticketForm) setHarnesses(opts *harnessOptions, initial string) {
+	f.harnesses = opts
+	if opts != nil {
+		f.harnessIdx = opts.initial(initial)
+	}
+}
+
+// fieldOrder is the Tab / Up-Down order of the fields, top to bottom as
+// they're drawn.
+func (f *ticketForm) fieldOrder() []int {
+	if f.harnesses == nil {
+		return []int{focusTitle, focusBody}
+	}
+	return []int{focusTitle, focusHarness, focusBody}
+}
+
+// step moves focus delta fields along fieldOrder, wrapping around.
+func (f *ticketForm) step(delta int) {
+	order := f.fieldOrder()
+	for i, fld := range order {
+		if fld == f.focus {
+			f.focus = order[((i+delta)%len(order)+len(order))%len(order)]
+			return
+		}
+	}
+	f.focus = focusTitle
+}
+
+// focused returns the text buffer with focus, or nil on the harness row.
 func (f *ticketForm) focused() *textBuffer {
-	if f.focus == focusBody {
+	switch f.focus {
+	case focusBody:
 		return f.body
+	case focusHarness:
+		return nil
 	}
 	return f.title
 }
 
 func (f *ticketForm) result() ticketFormResult {
-	return ticketFormResult{
+	res := ticketFormResult{
 		Title: strings.TrimSpace(f.title.String()),
 		Body:  strings.TrimSpace(f.body.String()),
 	}
+	if f.harnesses != nil {
+		res.Harness = f.harnesses.id(f.harnessIdx)
+	}
+	return res
 }
 
 func (f *ticketForm) submit() {
@@ -129,7 +179,8 @@ func (f *ticketForm) submit() {
 
 // handleKey applies one key event. Bindings:
 //
-//	Tab / Shift+Tab      switch field (Enter or Ctrl+J in the title also moves down)
+//	Tab / Shift+Tab      switch field (Enter or Ctrl+J in the title moves to the description)
+//	Left / Right         on the harness row: cycle the harness
 //	Ctrl+S               submit
 //	Esc / Ctrl+C         cancel
 //	arrows, Home/End     move; Up from the body's first line returns to the title
@@ -145,16 +196,26 @@ func (f *ticketForm) handleKey(ev *tcell.EventKey) {
 	switch ev.Key() {
 	case tcell.KeyEscape, tcell.KeyCtrlC:
 		f.cancelled = true
+		return
 	case tcell.KeyCtrlS:
 		f.submit()
+		return
 	case tcell.KeyTab:
-		if f.pasting {
+		if f.pasting && buf != nil {
 			buf.insert('\t')
 			return
 		}
-		f.focus = (f.focus + 1) % 2
+		f.step(1)
+		return
 	case tcell.KeyBacktab:
-		f.focus = (f.focus + 1) % 2
+		f.step(-1)
+		return
+	}
+	if buf == nil {
+		f.handleHarnessKey(ev)
+		return
+	}
+	switch ev.Key() {
 	case tcell.KeyEnter, tcell.KeyCtrlJ:
 		if f.focus == focusTitle {
 			if !f.pasting {
@@ -173,13 +234,13 @@ func (f *ticketForm) handleKey(ev *tcell.EventKey) {
 		buf.right()
 	case tcell.KeyUp:
 		if f.focus == focusBody && f.body.row == 0 {
-			f.focus = focusTitle
+			f.step(-1)
 			return
 		}
 		buf.up()
 	case tcell.KeyDown:
 		if f.focus == focusTitle {
-			f.focus = focusBody
+			f.step(1)
 			return
 		}
 		buf.down()
@@ -198,6 +259,24 @@ func (f *ticketForm) handleKey(ev *tcell.EventKey) {
 			return
 		}
 		buf.insert(ev.Rune())
+	}
+}
+
+// handleHarnessKey applies a key while the harness row has focus: ←/→
+// cycle the harness, ↑/↓ and Enter leave the row, anything else is ignored
+// (there's nothing to type into).
+func (f *ticketForm) handleHarnessKey(ev *tcell.EventKey) {
+	switch ev.Key() {
+	case tcell.KeyLeft:
+		f.harnessIdx = f.harnesses.cycle(f.harnessIdx, -1)
+	case tcell.KeyRight:
+		f.harnessIdx = f.harnesses.cycle(f.harnessIdx, 1)
+	case tcell.KeyUp:
+		f.step(-1)
+	case tcell.KeyDown, tcell.KeyEnter, tcell.KeyCtrlJ:
+		if !f.pasting {
+			f.step(1)
+		}
 	}
 }
 
@@ -364,6 +443,8 @@ const (
 	minFormHeight    = 12
 	titleLabelRow    = 2
 	titleBoxRow      = 3
+	harnessRow       = 7 // when present, pushes the description down harnessRows
+	harnessRows      = 2
 	bodyLabelRow     = 7
 	bodyBoxRow       = 8
 	formFooterRows   = 3 // blank + help + error
@@ -374,7 +455,11 @@ func (f *ticketForm) render(s tcell.Screen) {
 	s.Clear()
 	w, h := s.Size()
 	base := tcell.StyleDefault
-	if w < minFormWidth || h < minFormHeight {
+	bodyShift := 0
+	if f.harnesses != nil {
+		bodyShift = harnessRows
+	}
+	if w < minFormWidth || h < minFormHeight+bodyShift {
 		putText(s, 0, 0, w, base, "terminal too small for the ticket form")
 		s.HideCursor()
 		return
@@ -389,21 +474,34 @@ func (f *ticketForm) render(s tcell.Screen) {
 	drawBox(s, boxX, titleBoxRow, boxW, 3, f.focus == focusTitle)
 	cursorX, cursorY := f.renderTitle(s, boxX+1, titleBoxRow+1, inner)
 
+	if f.harnesses != nil {
+		drawHarnessRow(s, formPad, harnessRow, boxW, f.focus == focusHarness, f.harnesses.label(f.harnessIdx), "")
+	}
+
 	label = base.Dim(f.focus != focusBody)
-	putText(s, formPad, bodyLabelRow, boxW, label, "Description (optional, markdown)")
-	bodyH := h - formFooterRows - bodyBoxRow
+	putText(s, formPad, bodyLabelRow+bodyShift, boxW, label, "Description (optional, markdown)")
+	bodyTop := bodyBoxRow + bodyShift
+	bodyH := h - formFooterRows - bodyTop
 	if bodyH < minBodyBoxHeight {
 		bodyH = minBodyBoxHeight
 	}
-	drawBox(s, boxX, bodyBoxRow, boxW, bodyH, f.focus == focusBody)
-	bx, by := f.renderBody(s, boxX+1, bodyBoxRow+1, inner, bodyH-2)
+	drawBox(s, boxX, bodyTop, boxW, bodyH, f.focus == focusBody)
+	bx, by := f.renderBody(s, boxX+1, bodyTop+1, inner, bodyH-2)
 	if f.focus == focusBody {
 		cursorX, cursorY = bx, by
 	}
 
-	putText(s, formPad, h-2, boxW, base.Dim(true), "Tab switch field · Ctrl+S create ticket · Esc cancel")
+	help := "Tab switch field · Ctrl+S create ticket · Esc cancel"
+	if f.focus == focusHarness {
+		help = "←→ change harness · " + help
+	}
+	putText(s, formPad, h-2, boxW, base.Dim(true), help)
 	if f.errMsg != "" {
 		putText(s, formPad, h-1, boxW, base.Foreground(tcell.ColorRed).Bold(true), f.errMsg)
+	}
+	if f.focus == focusHarness {
+		s.HideCursor()
+		return
 	}
 	s.ShowCursor(cursorX, cursorY)
 }

@@ -68,6 +68,16 @@ type Session struct {
 	MountPath       string  `json:"mount_path,omitempty"`
 	RepoPath        string  `json:"repo_path,omitempty"`
 	ClaudeSessionID string  `json:"claude_session_id,omitempty"`
+	Harness         string  `json:"harness,omitempty"`
+}
+
+// Harness mirrors one entry of GET /api/harnesses. Default is set on the
+// harness a board's sessions fall back to when the listing is scoped to a
+// board.
+type Harness struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Default bool   `json:"default,omitempty"`
 }
 
 // Port mirrors one entry of GET /api/sessions/{id}/ports.
@@ -334,6 +344,31 @@ func (c *Client) ListPorts(ctx context.Context, sessionID int64) ([]Port, error)
 		return nil, err
 	}
 	return ports, nil
+}
+
+// ListHarnesses calls GET /api/harnesses. A non-zero boardID flags the
+// harness that board's sessions default to.
+func (c *Client) ListHarnesses(ctx context.Context, boardID int64) ([]Harness, error) {
+	path := "/api/harnesses"
+	if boardID != 0 {
+		path += "?board=" + strconv.FormatInt(boardID, 10)
+	}
+	raw, err := c.do(ctx, http.MethodGet, path, nil, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+	var hs []Harness
+	if err := json.Unmarshal(raw, &hs); err != nil {
+		return nil, err
+	}
+	return hs, nil
+}
+
+// SetSessionHarness calls PUT /api/sessions/{id}/harness. An empty id
+// returns the session to the default harness. The server restarts a running
+// agent when this changes which harness it launches.
+func (c *Client) SetSessionHarness(ctx context.Context, sessionID int64, harnessID string) (json.RawMessage, error) {
+	return c.do(ctx, http.MethodPut, "/api/sessions/"+strconv.FormatInt(sessionID, 10)+"/harness", map[string]string{"harness": harnessID}, http.StatusOK)
 }
 
 // ConfigPatchArgs is the request body for PATCH /api/config. Scope is "local"

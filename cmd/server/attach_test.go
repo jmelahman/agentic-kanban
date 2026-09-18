@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -388,11 +389,18 @@ func TestAttachSessionRemoteEnd(t *testing.T) {
 	})
 }
 
-// fakeSessionAPI answers the two session endpoints ensureRunningSession
-// uses, with a scriptable session row.
+// fakeSessionAPI answers the session endpoints ensureRunningSession uses,
+// with a scriptable session row. PUT .../harness records the order of calls
+// in *calls so tests can check the switch lands before the start.
 func fakeSessionAPI(t *testing.T, sess *sessionInfo, onStart func()) (*httptest.Server, *int) {
+	srv, starts, _ := fakeSessionAPIWithCalls(t, sess, onStart)
+	return srv, starts
+}
+
+func fakeSessionAPIWithCalls(t *testing.T, sess *sessionInfo, onStart func()) (*httptest.Server, *int, *[]string) {
 	t.Helper()
 	starts := 0
+	var calls []string
 	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
@@ -401,8 +409,17 @@ func fakeSessionAPI(t *testing.T, sess *sessionInfo, onStart func()) (*httptest.
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/tickets/42/session":
 			w.WriteHeader(http.StatusCreated)
+		case r.Method == http.MethodPut && r.URL.Path == "/api/sessions/7/harness":
+			var body struct {
+				Harness string `json:"harness"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			sess.Harness = body.Harness
+			calls = append(calls, "harness:"+body.Harness)
+			w.WriteHeader(http.StatusOK)
 		case r.Method == http.MethodPost && r.URL.Path == "/api/sessions/7/start":
 			starts++
+			calls = append(calls, "start")
 			if onStart != nil {
 				onStart()
 			}
@@ -414,7 +431,7 @@ func fakeSessionAPI(t *testing.T, sess *sessionInfo, onStart func()) (*httptest.
 		_ = json.NewEncoder(w).Encode(sess)
 	}))
 	t.Cleanup(srv.Close)
-	return srv, &starts
+	return srv, &starts, &calls
 }
 
 func TestEnsureRunningSession(t *testing.T) {
@@ -422,7 +439,7 @@ func TestEnsureRunningSession(t *testing.T) {
 		sess := &sessionInfo{ID: 7, TicketID: 42, Status: "idle", ContainerID: "abc"}
 		srv, starts := fakeSessionAPI(t, sess, nil)
 		var out bytes.Buffer
-		got, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42)
+		got, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -435,7 +452,7 @@ func TestEnsureRunningSession(t *testing.T) {
 		sess := &sessionInfo{ID: 7, TicketID: 42, Status: "stopped"}
 		srv, starts := fakeSessionAPI(t, sess, func() { sess.Status, sess.ContainerID = "idle", "abc" })
 		var out bytes.Buffer
-		got, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42)
+		got, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42, "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -447,11 +464,39 @@ func TestEnsureRunningSession(t *testing.T) {
 		}
 	})
 
+	t.Run("switches_harness_before_start", func(t *testing.T) {
+		sess := &sessionInfo{ID: 7, TicketID: 42, Status: "stopped"}
+		srv, _, calls := fakeSessionAPIWithCalls(t, sess, func() { sess.Status, sess.ContainerID = "idle", "abc" })
+		var out bytes.Buffer
+		got, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42, "pi")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := []string{"harness:pi", "start"}; !reflect.DeepEqual(*calls, want) {
+			t.Errorf("calls = %v, want %v", *calls, want)
+		}
+		if got.Harness != "pi" || !strings.Contains(out.String(), "switching session #7 to the pi harness") {
+			t.Errorf("got %+v out=%q", got, out.String())
+		}
+	})
+
+	t.Run("same_harness_is_not_resent", func(t *testing.T) {
+		sess := &sessionInfo{ID: 7, TicketID: 42, Status: "idle", ContainerID: "abc", Harness: "pi"}
+		srv, _, calls := fakeSessionAPIWithCalls(t, sess, nil)
+		var out bytes.Buffer
+		if _, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42, "pi"); err != nil {
+			t.Fatal(err)
+		}
+		if len(*calls) != 0 {
+			t.Errorf("calls = %v, want none", *calls)
+		}
+	})
+
 	t.Run("start_did_not_produce_container", func(t *testing.T) {
 		sess := &sessionInfo{ID: 7, TicketID: 42, Status: "error"}
 		srv, _ := fakeSessionAPI(t, sess, nil)
 		var out bytes.Buffer
-		_, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42)
+		_, err := ensureRunningSession(t.Context(), client.New(srv.URL, nil), &out, 42, "")
 		if err == nil || !strings.Contains(err.Error(), "not running") {
 			t.Errorf("err = %v", err)
 		}
@@ -464,11 +509,11 @@ func TestRunTicketAttachNeedsTTY(t *testing.T) {
 	t.Cleanup(func() { stdinIsTerminal = restore })
 
 	var out bytes.Buffer
-	err := runTicketAttach(t.Context(), "http://127.0.0.1:1", &out, 1, "agent", defaultDetachKeys)
+	err := runTicketAttach(t.Context(), "http://127.0.0.1:1", &out, 1, "agent", defaultDetachKeys, "")
 	if err == nil || !strings.Contains(err.Error(), "interactive terminal") {
 		t.Errorf("err = %v", err)
 	}
-	err = runTicketAttach(t.Context(), "http://127.0.0.1:1", &out, 1, "agent", "ctrl-1")
+	err = runTicketAttach(t.Context(), "http://127.0.0.1:1", &out, 1, "agent", "ctrl-1", "")
 	if err == nil || !strings.Contains(err.Error(), "detach keys") {
 		t.Errorf("bad detach keys: err = %v", err)
 	}

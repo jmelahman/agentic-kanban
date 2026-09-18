@@ -56,6 +56,10 @@ type Session struct {
 	// relaunched with `--resume <uuid>` so the conversation survives
 	// container/Kanban restarts.
 	ClaudeSessionID string `json:"claude_session_id,omitempty"`
+	// Harness is the agent harness ID picked for this session, or "" to use
+	// the user/project default (harness.Resolve). Written only by
+	// UpdateSessionHarness; UpsertSession leaves it alone.
+	Harness string `json:"harness,omitempty"`
 }
 
 type PortAllocation struct {

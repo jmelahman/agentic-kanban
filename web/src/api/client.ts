@@ -57,6 +57,7 @@ export type Session = {
   pr_url?: string;
   pr_title?: string;
   claude_session_id?: string;
+  harness?: string;
 };
 
 // SessionSummary is an instance-wide count of running containers, broken down
@@ -254,7 +255,7 @@ export type AppSettings = {
   sign_commits: boolean;
 };
 
-export type Harness = { id: string; label: string; pty_command: string[] };
+export type Harness = { id: string; label: string; pty_command: string[]; default?: boolean };
 
 export type Version = { version: string };
 

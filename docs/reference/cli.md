@@ -208,7 +208,12 @@ fastest way from "I have an idea" to "an agent is working on it":
    description. `Tab` switches fields, `Enter` in the title jumps to the
    description, `Ctrl+S` creates the ticket, `Esc` cancels without
    creating anything. Pasting multi-line text into the description works
-   (bracketed paste). `--body` pre-fills the description.
+   (bracketed paste). `--body` pre-fills the description. When the
+   server offers more than one agent harness and the ticket will be
+   attached, the form has a **Harness** row between the title and the
+   description. It starts on the board's default. Move to it with `Tab`,
+   then press `←`/`→` to switch harnesses. `--harness` sets the starting
+   value.
 3. The ticket is created in the leftmost column (or `--column`), its
    session is started — a first start pulls or builds the devcontainer
    image, which can take a few minutes — and your terminal attaches to
@@ -228,6 +233,7 @@ is created.
 | `--column`      | leftmost column                  | Column name (case-insensitive) or numeric id.                                                     |
 | `--attach`      | `true` when prompted, else `false` | Start the session and attach to the agent after creating. `--attach=false` opts out of the interactive default. |
 | `--detach-keys` | `ctrl-p,ctrl-q`                  | Key sequence that detaches from the agent (see `ticket attach`).                                  |
+| `--harness`     | board default                    | Agent harness to run in the new session (e.g. `claude`, `pi`). Needs `--attach`.                   |
 | `--json`        | `false`                          | Print the full ticket JSON instead of a one-line summary.                                         |
 
 ```sh
@@ -298,7 +304,7 @@ kanban ticket info 42 --json | jq -r .session.worktree_path
 ### `ticket attach [id]`
 
 ```sh
-kanban ticket attach [id] [--board <board>] [--shell] [--detach-keys <keys>]
+kanban ticket attach [id] [--board <board>] [--shell] [--harness <id>] [--detach-keys <keys>]
 ```
 
 Attaches the current terminal to the agent running in the ticket's
@@ -312,7 +318,22 @@ stopped, and starts a fresh one before connecting. Keystrokes are
 forwarded as typed and the agent's terminal size follows your window.
 
 Without an id you pick a ticket from the board's list, as described
-[above](#ticket); `Enter` attaches to the highlighted one.
+[above](#ticket); `Enter` attaches to the highlighted one. When the
+server offers more than one agent harness, the picker adds a **Harness**
+row showing which harness the highlighted ticket's session uses. Press
+`←`/`→` to change it before pressing `Enter`. Because the arrow keys
+belong to the harness row here, move the filter cursor with
+`Ctrl+B`/`Ctrl+F`.
+
+If you pick a different harness, or pass `--harness`, and it differs from
+what the session uses, the choice is saved on the session before attaching.
+If the session's agent is already running under another harness, it is
+stopped (sent `SIGHUP`, as when a terminal closes, then `SIGKILL` if it is
+still there a few seconds later) and the new harness starts as you attach.
+Anyone attached to the old agent sees the session end, and a *working* or
+*awaiting permission* status it reported resets to idle. The container, the
+worktree and the shell are not touched. The choice sticks: later attaches,
+and the web UI, launch the same harness.
 
 Press the detach sequence (default `ctrl-p` then `ctrl-q`, as in
 `docker attach`) to return to your shell. Detaching never stops the
@@ -326,6 +347,7 @@ comma-separated list of single characters or `ctrl-<key>` items.
 | --------------- | -------------------------- | ---------------------------------------------------------------------------- |
 | `--board`       | board for the current repo | Board id or slug whose tickets to list. Only used when no id is given.        |
 | `--shell`       | `false`                    | Attach an interactive shell in the session container instead of the agent.   |
+| `--harness`     | session's current harness  | Switch the session to this agent harness (e.g. `claude`, `pi`) before attaching. Can't be combined with `--shell`. |
 | `--detach-keys` | `ctrl-p,ctrl-q`            | Key sequence that detaches; swallowed, never forwarded to the session.       |
 
 ```sh
@@ -337,6 +359,9 @@ kanban ticket attach
 
 # Same, for a board you're not inside.
 kanban ticket attach --board playground
+
+# Switch ticket 42's agent to pi (restarts it if running).
+kanban ticket attach 42 --harness pi
 ```
 
 `--server` (or `KANBAN_URL`) must point at a server whose origin check

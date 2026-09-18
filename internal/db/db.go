@@ -85,7 +85,7 @@ func Open(path string) (*Store, error) {
 // CREATE TABLE IF NOT EXISTS in schema.sql cannot reach. Each step must
 // be safe to re-run on an already-migrated DB.
 func migrate(db *sql.DB) error {
-	hasColumn, err := boardsHasPosition(db)
+	hasColumn, err := tableHasColumn(db, "boards", "position")
 	if err != nil {
 		return fmt.Errorf("inspect boards: %w", err)
 	}
@@ -98,11 +98,22 @@ func migrate(db *sql.DB) error {
 			return fmt.Errorf("backfill boards.position: %w", err)
 		}
 	}
+	hasColumn, err = tableHasColumn(db, "sessions", "harness")
+	if err != nil {
+		return fmt.Errorf("inspect sessions: %w", err)
+	}
+	if !hasColumn {
+		if _, err := db.Exec(`ALTER TABLE sessions ADD COLUMN harness TEXT`); err != nil {
+			return fmt.Errorf("add sessions.harness: %w", err)
+		}
+	}
 	return nil
 }
 
-func boardsHasPosition(db *sql.DB) (bool, error) {
-	rows, err := db.Query(`PRAGMA table_info(boards)`)
+// tableHasColumn reports whether table has a column named column. table is
+// interpolated into the PRAGMA, so only pass constants.
+func tableHasColumn(db *sql.DB, table, column string) (bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return false, err
 	}
@@ -114,7 +125,7 @@ func boardsHasPosition(db *sql.DB) (bool, error) {
 		if err := rows.Scan(&cid, &name, &ctype, &notnull, &dflt, &pk); err != nil {
 			return false, err
 		}
-		if name == "position" {
+		if name == column {
 			return true, nil
 		}
 	}

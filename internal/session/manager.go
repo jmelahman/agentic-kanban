@@ -31,6 +31,11 @@ type Manager struct {
 	// Defaults to the docker client; tests swap in a stub via
 	// SetContainerProbe so a dead container can be simulated without a daemon.
 	containerRunning func(ctx context.Context, containerID string) (bool, error)
+
+	// endPTY ends the process behind a closed PTY broker, found by its
+	// $KANBAN_PTY_ID marker. Defaults to running endPTYScript in the
+	// container; tests swap in a stub.
+	endPTY func(ctx context.Context, containerID, marker string) error
 }
 
 func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
@@ -43,6 +48,7 @@ func NewManager(store *db.Store, dc *docker.Client, h *hooks.Runner) *Manager {
 	}
 	if dc != nil {
 		m.containerRunning = dc.ContainerRunning
+		m.endPTY = m.execEndPTY
 	}
 	return m
 }
@@ -384,6 +390,75 @@ func (m *Manager) Reconcile(ctx context.Context, sess *db.Session) (*db.Session,
 	return m.store.GetSession(ctx, sess.ID)
 }
 
+// endPTYTimeout bounds how long a harness switch waits for the old agent to
+// go away: endPTYScript gives it about five seconds after SIGHUP.
+const endPTYTimeout = 15 * time.Second
+
+// StopAgentUnless stops the session's running agent (the harness CLI) unless
+// it was launched with harnessID, so the next agent attach starts that
+// harness instead. The container, worktree and shell are left alone. Reports
+// whether an agent was stopped.
+//
+// Closing the broker only drops kanban's end of the exec: Docker doesn't end
+// a TTY exec when its client goes away, so the old agent would otherwise keep
+// running unseen. Its process is sent SIGHUP (as a closed terminal would) and
+// then SIGKILL if it lingers. A working/awaiting_perm status it reported is
+// reset to idle, since it will never send the matching idle.
+func (m *Manager) StopAgentUnless(ctx context.Context, sessionID int64, harnessID string) bool {
+	b := m.brokers.closeAgentUnless(sessionID, harnessID)
+	if b == nil {
+		return false
+	}
+	// Finish the job even if the request that asked for it goes away.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), endPTYTimeout)
+	defer cancel()
+	if m.endPTY != nil {
+		if err := m.endPTY(ctx, b.containerID, b.marker); err != nil {
+			log.Printf("session %d: stop %s agent: %v", sessionID, b.harness, err)
+		}
+	}
+	if _, err := m.store.ResetSessionActivity(ctx, sessionID); err != nil {
+		log.Printf("session %d: reset status after stopping agent: %v", sessionID, err)
+	}
+	return true
+}
+
+// endPTYScript signals the exec tagged KANBAN_PTY_ID=$1: SIGHUP, then
+// SIGKILL if it is still there about five seconds later. Only the exec's
+// own process (the one whose parent is outside the container, PPid 0) is
+// signalled; its foreground job gets SIGHUP from the kernel when it exits,
+// the same as closing a terminal. Prints the pids it signalled.
+const endPTYScript = `m="KANBAN_PTY_ID=$1"
+tagged() { tr '\0' '\n' 2>/dev/null <"/proc/$1/environ" | grep -qxF "$m"; }
+for s in /proc/[0-9]*/status; do
+	grep -q '^PPid:[[:space:]]*0$' "$s" 2>/dev/null || continue
+	p=${s#/proc/}
+	p=${p%/status}
+	tagged "$p" || continue
+	echo "$p"
+	kill -HUP "$p" 2>/dev/null
+	i=0
+	while tagged "$p" && [ "$i" -lt 10 ]; do
+		sleep 0.5 2>/dev/null || sleep 1
+		i=$((i + 1))
+	done
+	if tagged "$p"; then kill -KILL "$p" 2>/dev/null; fi
+done
+exit 0
+`
+
+// execEndPTY is the default endPTY: it runs endPTYScript in the container.
+func (m *Manager) execEndPTY(ctx context.Context, containerID, marker string) error {
+	out, err := m.docker.ExecRun(ctx, containerID, []string{"sh", "-c", endPTYScript, "sh", marker})
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(out) == "" {
+		return fmt.Errorf("no process tagged %s=%s in container %s", ptyMarkerEnv, marker, containerID)
+	}
+	return nil
+}
+
 // Stop tears down the devcontainer; worktree is preserved.
 func (m *Manager) Stop(ctx context.Context, sessionID int64) error {
 	sess, err := m.store.GetSession(ctx, sessionID)
@@ -535,7 +610,7 @@ func (m *Manager) Merge(ctx context.Context, sessionID int64, strategy string) e
 		}
 		msg := ticket.Title
 		if mc := kanbantoml.Load(paths.RepoPath).Merge; mc != nil && mc.AICommitMessage != nil && *mc.AICommitMessage {
-			h := harness.Resolve(paths.RepoPath)
+			h := harness.ForSession(sess.Harness, paths.RepoPath)
 			if generated, err := m.generateCommitMessage(ctx, sess, h, ticket.Title); err == nil {
 				msg = generated
 			} else {

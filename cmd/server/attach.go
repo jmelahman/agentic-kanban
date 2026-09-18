@@ -38,13 +38,15 @@ type sessionInfo struct {
 	TicketID    int64  `json:"ticket_id"`
 	Status      string `json:"status"`
 	ContainerID string `json:"container_id"`
+	Harness     string `json:"harness"`
 }
 
 // runTicketAttach ensures the ticket has a running session, then attaches
 // the calling terminal to its agent PTY (kind "agent") or to an interactive
-// shell in the container (kind "shell"). It returns after the user detaches
-// or the remote process exits; the session keeps running either way.
-func runTicketAttach(ctx context.Context, url string, out io.Writer, ticketID int64, kind, detachKeys string) error {
+// shell in the container (kind "shell"). A non-empty harnessID switches the
+// session to that harness first. It returns after the user detaches or the
+// remote process exits; the session keeps running either way.
+func runTicketAttach(ctx context.Context, url string, out io.Writer, ticketID int64, kind, detachKeys, harnessID string) error {
 	seq, err := parseDetachKeys(detachKeys)
 	if err != nil {
 		return err
@@ -52,7 +54,7 @@ func runTicketAttach(ctx context.Context, url string, out io.Writer, ticketID in
 	if !stdinIsTerminal() {
 		return errors.New("attach needs an interactive terminal on stdin and stdout")
 	}
-	sess, err := ensureRunningSession(ctx, client.New(url, nil), out, ticketID)
+	sess, err := ensureRunningSession(ctx, client.New(url, nil), out, ticketID, harnessID)
 	if err != nil {
 		return err
 	}
@@ -91,10 +93,14 @@ func runTicketAttach(ctx context.Context, url string, out io.Writer, ticketID in
 	return nil
 }
 
-// ensureRunningSession creates the ticket's session if missing and starts
-// it when stopped. Starting blocks while the devcontainer image is pulled
-// or built, which on a first run can take minutes, so it says so up front.
-func ensureRunningSession(ctx context.Context, c *client.Client, out io.Writer, ticketID int64) (sessionInfo, error) {
+// ensureRunningSession creates the ticket's session if missing, switches it
+// to harnessID when that's set and differs from its current choice, and
+// starts it when stopped. The switch happens before the start so a fresh
+// session never launches the wrong agent; on a running session the server
+// restarts the agent. Starting blocks while the devcontainer image is
+// pulled or built, which on a first run can take minutes, so it says so up
+// front.
+func ensureRunningSession(ctx context.Context, c *client.Client, out io.Writer, ticketID int64, harnessID string) (sessionInfo, error) {
 	var sess sessionInfo
 	raw, err := c.EnsureSession(ctx, ticketID)
 	if err != nil {
@@ -102,6 +108,15 @@ func ensureRunningSession(ctx context.Context, c *client.Client, out io.Writer, 
 	}
 	if err := json.Unmarshal(raw, &sess); err != nil {
 		return sess, fmt.Errorf("decode session: %w", err)
+	}
+	if harnessID != "" && harnessID != sess.Harness {
+		fmt.Fprintf(out, "switching session #%d to the %s harness\n", sess.ID, harnessID)
+		if raw, err = c.SetSessionHarness(ctx, sess.ID, harnessID); err != nil {
+			return sess, err
+		}
+		if err := json.Unmarshal(raw, &sess); err != nil {
+			return sess, fmt.Errorf("decode session: %w", err)
+		}
 	}
 	if sess.ContainerID != "" && sess.Status != "stopped" && sess.Status != "error" {
 		return sess, nil

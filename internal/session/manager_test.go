@@ -3,8 +3,13 @@ package session
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/jmelahman/kanban/internal/db"
@@ -455,4 +460,132 @@ func TestReconcile(t *testing.T) {
 			t.Errorf("session after failed restart = %+v, want error with no container", fresh)
 		}
 	})
+}
+
+func TestStopAgentUnless(t *testing.T) {
+	ctx := context.Background()
+	type call struct{ container, marker string }
+	stub := func(m *Manager, err error) *[]call {
+		var calls []call
+		m.endPTY = func(_ context.Context, container, marker string) error {
+			calls = append(calls, call{container, marker})
+			return err
+		}
+		return &calls
+	}
+	statusOf := func(t *testing.T, store *db.Store, id int64) string {
+		t.Helper()
+		sess, err := store.GetSession(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sess.Status
+	}
+
+	t.Run("different_harness_is_stopped", func(t *testing.T) {
+		m, store, _, _, sess := newReconcileEnv(t, db.SessionStatusWorking)
+		calls := stub(m, nil)
+		addFakeBroker(t, m.brokers, sess.ID, "agent", "claude")
+		shell, _ := addFakeBroker(t, m.brokers, sess.ID, "shell", "")
+
+		if !m.StopAgentUnless(ctx, sess.ID, "pi") {
+			t.Fatal("StopAgentUnless = false; want the claude agent stopped")
+		}
+		if want := []call{{"c0ffee", "agent-TEST"}}; len(*calls) != 1 || (*calls)[0] != want[0] {
+			t.Errorf("endPTY calls = %v; want %v", *calls, want)
+		}
+		if got := statusOf(t, store, sess.ID); got != db.SessionStatusIdle {
+			t.Errorf("status = %q; want idle once the agent that reported working is gone", got)
+		}
+		if shell.closed {
+			t.Error("shell broker was closed")
+		}
+	})
+
+	t.Run("failed_kill_still_resets_status", func(t *testing.T) {
+		m, store, _, _, sess := newReconcileEnv(t, db.SessionStatusAwaitingPerm)
+		stub(m, errors.New("exec failed"))
+		addFakeBroker(t, m.brokers, sess.ID, "agent", "claude")
+		if !m.StopAgentUnless(ctx, sess.ID, "pi") {
+			t.Fatal("StopAgentUnless = false; want true")
+		}
+		if got := statusOf(t, store, sess.ID); got != db.SessionStatusIdle {
+			t.Errorf("status = %q; want idle", got)
+		}
+	})
+
+	t.Run("same_harness_is_left_running", func(t *testing.T) {
+		m, store, _, _, sess := newReconcileEnv(t, db.SessionStatusWorking)
+		calls := stub(m, nil)
+		agent, _ := addFakeBroker(t, m.brokers, sess.ID, "agent", "pi")
+		if m.StopAgentUnless(ctx, sess.ID, "pi") {
+			t.Fatal("StopAgentUnless = true; want the pi agent kept")
+		}
+		if len(*calls) != 0 || agent.closed {
+			t.Errorf("agent disturbed: endPTY calls %v, closed %v", *calls, agent.closed)
+		}
+		if got := statusOf(t, store, sess.ID); got != db.SessionStatusWorking {
+			t.Errorf("status = %q; want working (untouched)", got)
+		}
+	})
+
+	t.Run("no_agent_running", func(t *testing.T) {
+		m, store, _, _, sess := newReconcileEnv(t, db.SessionStatusWorking)
+		calls := stub(m, nil)
+		if m.StopAgentUnless(ctx, sess.ID, "pi") {
+			t.Fatal("StopAgentUnless = true with no agent running")
+		}
+		if len(*calls) != 0 {
+			t.Errorf("endPTY calls = %v; want none", *calls)
+		}
+		if got := statusOf(t, store, sess.ID); got != db.SessionStatusWorking {
+			t.Errorf("status = %q; want working (untouched)", got)
+		}
+	})
+}
+
+// TestEndPTYScript runs the real script against local processes. Outside a
+// container a tagged process's parent is this test rather than PPid 0, so
+// the leader check is pointed at our pid.
+func TestEndPTYScript(t *testing.T) {
+	if _, err := os.Stat("/proc/self/environ"); err != nil {
+		t.Skip("no /proc")
+	}
+	const leaderCheck = `'^PPid:[[:space:]]*0$'`
+	if !strings.Contains(endPTYScript, leaderCheck) {
+		t.Fatalf("endPTYScript no longer contains %s", leaderCheck)
+	}
+	script := strings.Replace(endPTYScript, leaderCheck, fmt.Sprintf(`'^PPid:[[:space:]]*%d$'`, os.Getpid()), 1)
+
+	start := func(marker string) *exec.Cmd {
+		cmd := exec.Command("sleep", "60")
+		cmd.Env = append(os.Environ(), ptyMarkerEnv+"="+marker)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = cmd.Process.Kill(); _ = cmd.Wait() })
+		return cmd
+	}
+	target := start("agent-TARGET")
+	bystander := start("agent-OTHER")
+
+	out, err := exec.Command("sh", "-c", script, "sh", "agent-TARGET").CombinedOutput()
+	if err != nil {
+		t.Fatalf("script: %v\n%s", err, out)
+	}
+	if got, want := strings.TrimSpace(string(out)), strconv.Itoa(target.Process.Pid); got != want {
+		t.Errorf("script output = %q; want just the signalled pid %s", got, want)
+	}
+	var exitErr *exec.ExitError
+	if err := target.Wait(); !errors.As(err, &exitErr) || exitErr.Sys().(syscall.WaitStatus).Signal() != syscall.SIGHUP {
+		t.Errorf("target exit = %v; want killed by SIGHUP", err)
+	}
+	if err := bystander.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("process with another marker was signalled: %v", err)
+	}
+
+	out, err = exec.Command("sh", "-c", script, "sh", "agent-MISSING").CombinedOutput()
+	if err != nil || len(out) != 0 {
+		t.Errorf("no match: err %v, output %q; want silent success", err, out)
+	}
 }

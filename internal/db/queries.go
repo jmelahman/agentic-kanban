@@ -510,6 +510,37 @@ func (s *Store) UpdateClaudeSessionID(ctx context.Context, id int64, uuid string
 	return affectedOrNotFound(res)
 }
 
+// UpdateSessionHarness records the agent harness chosen for this session
+// (`kanban ticket create/attach`). An empty id clears it (SQL NULL) so the
+// session falls back to the user/project default. Column-scoped, and left
+// out of UpsertSession, so no other writer's snapshot can clobber it.
+func (s *Store) UpdateSessionHarness(ctx context.Context, id int64, harnessID string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET harness=? WHERE id=?`,
+		nullIfEmpty(harnessID), id,
+	)
+	if err != nil {
+		return err
+	}
+	return affectedOrNotFound(res)
+}
+
+// ResetSessionActivity drops a hook-reported working/awaiting_perm status
+// back to idle, for when the agent that reported it has been stopped and so
+// will never report the matching idle. Lifecycle statuses (stopped, starting,
+// error) are left to the session manager. Reports whether the row changed.
+func (s *Store) ResetSessionActivity(ctx context.Context, id int64) (bool, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE sessions SET status=? WHERE id=? AND status IN (?, ?)`,
+		SessionStatusIdle, id, SessionStatusWorking, SessionStatusAwaitingPerm,
+	)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 func (s *Store) UpdateSessionPR(ctx context.Context, id int64, prState string, prNumber *int64, prURL, prTitle string) error {
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE sessions SET pr_state=?, pr_number=?, pr_url=?, pr_title=? WHERE id=?`,
@@ -539,7 +570,7 @@ func (s *Store) RepointSessionBranch(ctx context.Context, id int64, branch strin
 
 func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 	sess, err := scanSession(s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id FROM sessions WHERE id=?`, id))
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id, harness FROM sessions WHERE id=?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -548,7 +579,7 @@ func (s *Store) GetSession(ctx context.Context, id int64) (*Session, error) {
 
 func (s *Store) GetSessionByTicket(ctx context.Context, ticketID int64) (*Session, error) {
 	sess, err := scanSession(s.db.QueryRowContext(ctx,
-		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id FROM sessions WHERE ticket_id=?`, ticketID))
+		`SELECT id, ticket_id, worktree_path, branch_name, container_id, container_name, status, started_at, stopped_at, pr_state, pr_number, pr_url, pr_title, mount_path, repo_path, claude_session_id, harness FROM sessions WHERE ticket_id=?`, ticketID))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -557,7 +588,7 @@ func (s *Store) GetSessionByTicket(ctx context.Context, ticketID int64) (*Sessio
 
 func (s *Store) ListSessionsByBoard(ctx context.Context, boardID int64) ([]Session, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state, s.pr_number, s.pr_url, s.pr_title, s.mount_path, s.repo_path, s.claude_session_id
+		`SELECT s.id, s.ticket_id, s.worktree_path, s.branch_name, s.container_id, s.container_name, s.status, s.started_at, s.stopped_at, s.pr_state, s.pr_number, s.pr_url, s.pr_title, s.mount_path, s.repo_path, s.claude_session_id, s.harness
          FROM sessions s JOIN tickets t ON t.id=s.ticket_id WHERE t.board_id=?`, boardID)
 	if err != nil {
 		return nil, err
@@ -819,8 +850,8 @@ func scanBoard(sc scanner) (*Board, error) {
 
 func scanSession(sc scanner) (*Session, error) {
 	var sess Session
-	var prState, mount, repo, prURL, prTitle, claudeSessionID sql.NullString
-	if err := sc.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &prState, &sess.PRNumber, &prURL, &prTitle, &mount, &repo, &claudeSessionID); err != nil {
+	var prState, mount, repo, prURL, prTitle, claudeSessionID, harness sql.NullString
+	if err := sc.Scan(&sess.ID, &sess.TicketID, &sess.WorktreePath, &sess.BranchName, &sess.ContainerID, &sess.ContainerName, &sess.Status, &sess.StartedAt, &sess.StoppedAt, &prState, &sess.PRNumber, &prURL, &prTitle, &mount, &repo, &claudeSessionID, &harness); err != nil {
 		return nil, err
 	}
 	sess.PRState = prState.String
@@ -829,6 +860,7 @@ func scanSession(sc scanner) (*Session, error) {
 	sess.MountPath = mount.String
 	sess.RepoPath = repo.String
 	sess.ClaudeSessionID = claudeSessionID.String
+	sess.Harness = harness.String
 	return &sess, nil
 }
 
