@@ -1,15 +1,14 @@
 FROM ubuntu:26.04@sha256:9559ceb7c21e528e233e8dff26a0fb2682f4094cce06176eeb075d87a22b31de
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     ca-certificates \
     cargo \
     curl \
     fd-find \
     fzf \
     git \
-    gcc \
     jq \
-    libc6-dev \
     less \
     neovim \
     openssh-client \
