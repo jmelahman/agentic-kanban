@@ -18,13 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && chmod 644 /usr/share/keyrings/githubcli-archive-keyring.gpg \
  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
       > /etc/apt/sources.list.d/github-cli.list \
- && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+ && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  && apt-get update \
  && apt-get install -y --no-install-recommends gh nodejs \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
 
-ARG GO_VERSION=1.26.3
+ARG GO_VERSION=1.27.1
 RUN ARCH="$(dpkg --print-architecture)" \
  && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" \
       | tar -C /usr/local -xz
@@ -35,7 +35,7 @@ RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/bokwoon95/wgo@l
 
 COPY --from=ghcr.io/astral-sh/uv@sha256:440fd6477af86a2f1b38080c539f1672cd22acb1b1a47e321dba5158ab08864d /uv /uvx /usr/local/bin/
 
-ARG PREK_VERSION=0.3.13
+ARG PREK_VERSION=0.5.3
 RUN ARCH="$(dpkg --print-architecture)" \
  && case "$ARCH" in \
       amd64) TARGET="x86_64-unknown-linux-gnu" ;; \
@@ -55,7 +55,7 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG PI_CODING_AGENT_VERSION=latest
 RUN npm install -g \
       @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
-      @mariozechner/pi-coding-agent@${PI_CODING_AGENT_VERSION}
+      @earendil-works/pi-coding-agent@${PI_CODING_AGENT_VERSION}
 
 COPY github_known_hosts /etc/ssh/ssh_known_hosts
 RUN chmod 644 /etc/ssh/ssh_known_hosts
